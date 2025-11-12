@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial commit: Pokemon card generator\n\nAdd Python scripts to download Pokemon images and generate printable PDF cards.\n\n- download_pokemon_images.py: Downloads images of first 100 Pokemon from PokeAPI\n- create_pokemon_cards.py: Creates A4 PDF with Pokemon cards in grid layout\n- .gitignore: Exclude generated images, PDFs, and Python artifacts\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
