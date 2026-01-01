@@ -3,14 +3,24 @@ import { BaseAnswerMode } from './BaseAnswerMode.js';
 /**
  * Letter matching game mode
  * Player must identify which letter is highlighted in the Pokemon's name
+ *
+ * @param {Object} config - Configuration options
+ * @param {string} config.nameCase - Case for Pokemon name display: 'lowercase' | 'uppercase' (default: 'lowercase')
+ * @param {string} config.alphabetCase - Case for alphabet buttons: 'lowercase' | 'uppercase' (default: 'uppercase')
  */
 export class LetterMatchMode extends BaseAnswerMode {
-    constructor() {
+    constructor(config = {}) {
         super();
         this.swedishAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ'.split('');
         this.currentLetter = null;
         this.usedLetters = [];
         this.uiElements = []; // Track UI elements for cleanup
+
+        // Configuration options
+        this.config = {
+            nameCase: config.nameCase || 'lowercase',      // 'lowercase' | 'uppercase'
+            alphabetCase: config.alphabetCase || 'uppercase' // 'lowercase' | 'uppercase'
+        };
     }
 
     generateChallenge(pokemon) {
@@ -61,7 +71,12 @@ export class LetterMatchMode extends BaseAnswerMode {
 
     displayPokemonName(scene) {
         const width = scene.cameras.main.width;
-        const nameLetters = this.challengeData.pokemonName.toUpperCase().split('');
+
+        // Apply case transformation based on config
+        const displayName = this.config.nameCase === 'uppercase'
+            ? this.challengeData.pokemonName.toUpperCase()
+            : this.challengeData.pokemonName.toLowerCase();
+        const nameLetters = displayName.split('');
 
         const letterWidth = 60;
         const letterHeight = 80;
@@ -75,7 +90,8 @@ export class LetterMatchMode extends BaseAnswerMode {
             const isHighlight = (index === this.challengeData.highlightIndex);
 
             // Skip special characters (display but don't create interactable boxes)
-            const isLetter = this.swedishAlphabet.includes(letter);
+            // Normalize to uppercase for checking against alphabet
+            const isLetter = this.swedishAlphabet.includes(letter.toUpperCase());
 
             if (isLetter) {
                 // Background box
@@ -143,7 +159,12 @@ export class LetterMatchMode extends BaseAnswerMode {
             button.setData('letter', letter);
             this.uiElements.push(button);
 
-            const text = scene.add.text(x, y, letter.toLowerCase(), {
+            // Apply case transformation based on config
+            const displayLetter = this.config.alphabetCase === 'uppercase'
+                ? letter
+                : letter.toLowerCase();
+
+            const text = scene.add.text(x, y, displayLetter, {
                 font: 'bold 24px Arial',
                 fill: isUsed ? '#999999' : '#ffffff'
             }).setOrigin(0.5);

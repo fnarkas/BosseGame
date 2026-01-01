@@ -4,7 +4,7 @@
   "description": "Ett pedagogiskt spel för barn som lär ut svenska alfabetet genom att fånga Pokemon!",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview"
   },

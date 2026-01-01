@@ -43,7 +43,11 @@ export class MainGameScene extends Phaser.Scene {
         if (modeName === 'debug') {
             this.answerMode = new DebugMode();
         } else {
-            this.answerMode = new LetterMatchMode();
+            // Configure letter match mode: lowercase name, uppercase alphabet
+            this.answerMode = new LetterMatchMode({
+                nameCase: 'lowercase',
+                alphabetCase: 'uppercase'
+            });
         }
 
         // Set up callback for answer mode
