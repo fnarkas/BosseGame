@@ -10,6 +10,26 @@ export class MainGameScene extends Phaser.Scene {
         this.attemptsLeft = 3;
         this.usedLetters = [];
         this.isAnimating = false; // Prevent multiple clicks during animation
+
+        // Depth constants for layering
+        this.DEPTH = {
+            PARTICLES: 50,
+            POKEBALL: 51,
+            POPUP_OVERLAY: 200,
+            POPUP_BACKGROUND: 201,
+            POPUP_CONTENT: 202,
+            POPUP_BUTTON_TEXT: 203
+        };
+
+        // Animation constants
+        this.ANIMATION = {
+            POKEBALL_THROW_DURATION: 500,
+            POKEBALL_WIGGLE_COUNT: 3,
+            POKEBALL_WIGGLE_INITIAL_ANGLE: 20,
+            PARTICLE_BURST_COUNT: [50, 40, 30],
+            PARTICLE_BURST_DELAYS: [0, 150, 300],
+            SUCCESS_POPUP_DELAY: 1000
+        };
     }
 
     create() {
@@ -301,7 +321,7 @@ export class MainGameScene extends Phaser.Scene {
         this.tweens.add({
             targets: pokeball,
             y: pokemonY,
-            duration: 500,
+            duration: this.ANIMATION.POKEBALL_THROW_DURATION,
             ease: 'Cubic.easeOut',
             onComplete: () => {
                 // Hide Pokemon once pokeball reaches it
@@ -315,15 +335,15 @@ export class MainGameScene extends Phaser.Scene {
         this.tweens.add({
             targets: pokeball,
             angle: 720,
-            duration: 500,
+            duration: this.ANIMATION.POKEBALL_THROW_DURATION,
             ease: 'Linear'
         });
     }
 
     wigglePokeball(pokeball, isCorrect) {
         let wiggleCount = 0;
-        const maxWiggles = 3;
-        const initialAngle = 20; // Starting wiggle intensity
+        const maxWiggles = this.ANIMATION.POKEBALL_WIGGLE_COUNT;
+        const initialAngle = this.ANIMATION.POKEBALL_WIGGLE_INITIAL_ANGLE; // Starting wiggle intensity
 
         const wiggle = () => {
             // Decrease intensity with each wiggle
@@ -442,25 +462,25 @@ export class MainGameScene extends Phaser.Scene {
         console.log('Particles created, setting depth and exploding');
 
         // Particles behind pokeball (but in front of background)
-        particles.setDepth(50);
-        pokeball.setDepth(51);
+        particles.setDepth(this.DEPTH.PARTICLES);
+        pokeball.setDepth(this.DEPTH.POKEBALL);
 
-        particles.explode(50);
+        particles.explode(this.ANIMATION.PARTICLE_BURST_COUNT[0]);
 
         // Second burst after a short delay
-        this.time.delayedCall(150, () => {
+        this.time.delayedCall(this.ANIMATION.PARTICLE_BURST_DELAYS[1], () => {
             console.log('Second burst');
-            particles.explode(40);
+            particles.explode(this.ANIMATION.PARTICLE_BURST_COUNT[1]);
         });
 
         // Third burst for extra intensity
-        this.time.delayedCall(300, () => {
+        this.time.delayedCall(this.ANIMATION.PARTICLE_BURST_DELAYS[2], () => {
             console.log('Third burst');
-            particles.explode(30);
+            particles.explode(this.ANIMATION.PARTICLE_BURST_COUNT[2]);
         });
 
-        // Wait 1 second then show info popup
-        this.time.delayedCall(1000, () => {
+        // Wait then show info popup
+        this.time.delayedCall(this.ANIMATION.SUCCESS_POPUP_DELAY, () => {
             console.log('Destroying particles and showing popup');
             particles.destroy();
             this.showPokemonInfoPopup(pokeball);
@@ -479,33 +499,33 @@ export class MainGameScene extends Phaser.Scene {
             // Create semi-transparent background overlay
             const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
             overlay.setInteractive();
-            overlay.setDepth(200);
+            overlay.setDepth(this.DEPTH.POPUP_OVERLAY);
 
             // Create popup background (taller to fit image)
             const popupWidth = 450;
             const popupHeight = 450;
             const popup = this.add.rectangle(width / 2, height / 2, popupWidth, popupHeight, 0xFFFFFF);
             popup.setStrokeStyle(4, 0x000000);
-            popup.setDepth(201);
+            popup.setDepth(this.DEPTH.POPUP_BACKGROUND);
 
             // Pokemon image
             const pokemonImage = this.add.image(width / 2, height / 2 - 120, `pokemon_${this.currentPokemon.id}`);
             pokemonImage.setScale(0.4);
-            pokemonImage.setDepth(202);
+            pokemonImage.setDepth(this.DEPTH.POPUP_CONTENT);
 
             // Pokemon number
             const numberText = this.add.text(width / 2, height / 2 + 10, `#${String(data.id).padStart(3, '0')}`, {
                 font: 'bold 24px Arial',
                 fill: '#666666'
             }).setOrigin(0.5);
-            numberText.setDepth(202);
+            numberText.setDepth(this.DEPTH.POPUP_CONTENT);
 
             // Pokemon name
             const nameText = this.add.text(width / 2, height / 2 + 45, data.name.toUpperCase(), {
                 font: 'bold 32px Arial',
                 fill: '#000000'
             }).setOrigin(0.5);
-            nameText.setDepth(202);
+            nameText.setDepth(this.DEPTH.POPUP_CONTENT);
 
             // Pokemon types
             const types = data.types.map(t => t.type.name.toUpperCase()).join(' / ');
@@ -513,26 +533,26 @@ export class MainGameScene extends Phaser.Scene {
                 font: 'bold 20px Arial',
                 fill: '#333333'
             }).setOrigin(0.5);
-            typeText.setDepth(202);
+            typeText.setDepth(this.DEPTH.POPUP_CONTENT);
 
             // Height and Weight
             const statsText = this.add.text(width / 2, height / 2 + 120, `Height: ${data.height / 10}m  |  Weight: ${data.weight / 10}kg`, {
                 font: '18px Arial',
                 fill: '#666666'
             }).setOrigin(0.5);
-            statsText.setDepth(202);
+            statsText.setDepth(this.DEPTH.POPUP_CONTENT);
 
             // Continue button
             const continueBtn = this.add.rectangle(width / 2, height / 2 + 170, 150, 40, 0x4CAF50);
             continueBtn.setStrokeStyle(2, 0x000000);
             continueBtn.setInteractive({ useHandCursor: true });
-            continueBtn.setDepth(202);
+            continueBtn.setDepth(this.DEPTH.POPUP_CONTENT);
 
             const continueText = this.add.text(width / 2, height / 2 + 170, 'CONTINUE', {
                 font: 'bold 18px Arial',
                 fill: '#FFFFFF'
             }).setOrigin(0.5);
-            continueText.setDepth(203);
+            continueText.setDepth(this.DEPTH.POPUP_BUTTON_TEXT);
 
             continueBtn.on('pointerover', () => {
                 continueBtn.setFillStyle(0x66BB6A);
