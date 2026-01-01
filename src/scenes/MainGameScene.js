@@ -441,9 +441,9 @@ export class MainGameScene extends Phaser.Scene {
 
         console.log('Particles created, setting depth and exploding');
 
-        // Move particles in front so they're visible
-        particles.setDepth(100);
-        pokeball.setDepth(99);
+        // Particles behind pokeball (but in front of background)
+        particles.setDepth(50);
+        pokeball.setDepth(51);
 
         particles.explode(50);
 
