@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
 """
-Create a PDF with Pokémon cards in a grid layout for printing on A4 paper.
+Create a PDF with Pokémon numbers on the back of cards for printing.
+The layout is mirrored horizontally to align with the front when paper is flipped.
 """
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
-from PIL import Image
-import os
 from pathlib import Path
 
 
-def create_pokemon_cards_pdf(
+def create_pokemon_backs_pdf(
     image_dir="pokemon_images",
-    output_pdf="pokemon_cards.pdf",
+    output_pdf="pokemon_backs.pdf",
     cards_per_row=3,
     cards_per_col=3
 ):
     """
-    Create a PDF with Pokémon cards in a grid layout.
+    Create a PDF with Pokémon numbers for the back of cards.
 
     Args:
-        image_dir: Directory containing Pokémon images
+        image_dir: Directory containing Pokémon images (to count them)
         output_pdf: Output PDF filename
         cards_per_row: Number of cards per row (default: 3)
         cards_per_col: Number of cards per column (default: 3)
@@ -37,7 +36,7 @@ def create_pokemon_cards_pdf(
     # A4 dimensions
     page_width, page_height = A4
 
-    # Calculate card dimensions
+    # Calculate card dimensions (same as front)
     margin = 10 * mm
     usable_width = page_width - (2 * margin)
     usable_height = page_height - (2 * margin)
@@ -45,19 +44,13 @@ def create_pokemon_cards_pdf(
     card_width = usable_width / cards_per_row
     card_height = usable_height / cards_per_col
 
-    # Image and text sizing
-    image_padding = 5 * mm
-    text_height = 8 * mm
-    image_height = card_height - text_height - (2 * image_padding)
-    image_width = card_width - (2 * image_padding)
-
     # Create PDF
     c = canvas.Canvas(output_pdf, pagesize=A4)
 
     cards_per_page = cards_per_row * cards_per_col
     total_pages = (len(image_files) + cards_per_page - 1) // cards_per_page
 
-    print(f"Creating PDF with {total_pages} pages...")
+    print(f"Creating backs PDF with {total_pages} pages...")
 
     for page_num in range(total_pages):
         print(f"Generating page {page_num + 1}/{total_pages}...")
@@ -71,28 +64,32 @@ def create_pokemon_cards_pdf(
             row = idx // cards_per_row
             col = idx % cards_per_row
 
+            # MIRROR HORIZONTALLY: flip the column position
+            # When you flip paper horizontally, left becomes right
+            mirrored_col = (cards_per_row - 1) - col
+
             # Calculate x, y position (reportlab uses bottom-left origin)
-            x = margin + (col * card_width)
+            x = margin + (mirrored_col * card_width)
             y = page_height - margin - ((row + 1) * card_height)
 
+            # Extract Pokémon number and name from filename (format: 001_bulbasaur.png)
+            parts = image_path.stem.split('_', 1)
+            pokemon_number = str(int(parts[0]))  # Remove leading zeros
+            pokemon_name = parts[1].upper() if len(parts) > 1 else ""
+
             try:
-                # Draw the image centered in the card
-                img_x = x + image_padding
-                img_y = y + image_padding
+                # Draw the Pokémon number large and centered
+                c.setFont("Helvetica-Bold", 48)
+                text_x = x + (card_width / 2)
+                text_y = y + (card_height / 2)
+                c.drawCentredString(text_x, text_y, pokemon_number)
 
-                # Draw image maintaining aspect ratio with transparency support
-                c.drawImage(
-                    str(image_path),
-                    img_x,
-                    img_y,
-                    width=image_width,
-                    height=card_height - (2 * image_padding),
-                    preserveAspectRatio=True,
-                    anchor='c',
-                    mask='auto'  # Enable transparency
-                )
+                # Draw the Pokémon name below the number
+                c.setFont("Helvetica-Bold", 14)
+                name_y = text_y - 20 * mm
+                c.drawCentredString(text_x, name_y, pokemon_name)
 
-                # Optional: Draw border around each card for cutting guide
+                # Optional: Draw border around each card for alignment check
                 c.setStrokeColorRGB(0.8, 0.8, 0.8)
                 c.setLineWidth(0.5)
                 c.rect(x, y, card_width, card_height, stroke=1, fill=0)
@@ -105,16 +102,21 @@ def create_pokemon_cards_pdf(
 
     # Save the PDF
     c.save()
-    print(f"\n✓ PDF created successfully: {output_pdf}")
+    print(f"\n✓ Backs PDF created successfully: {output_pdf}")
     print(f"  Total cards: {len(image_files)}")
     print(f"  Pages: {total_pages}")
     print(f"  Grid: {cards_per_row}x{cards_per_col} cards per page")
+    print("\nPrinting instructions:")
+    print("1. Print 'pokemon_cards.pdf' (fronts) first")
+    print("2. Flip the printed pages horizontally (like turning a book page)")
+    print("3. Put them back in the printer")
+    print("4. Print 'pokemon_backs.pdf' on the back side")
 
 
 if __name__ == "__main__":
-    create_pokemon_cards_pdf(
+    create_pokemon_backs_pdf(
         image_dir="pokemon_images",
-        output_pdf="pokemon_cards.pdf",
-        cards_per_row=3,  # 3 columns
-        cards_per_col=3   # 3 rows = 9 cards per page
+        output_pdf="pokemon_backs.pdf",
+        cards_per_row=3,  # Must match the front
+        cards_per_col=3   # Must match the front
     )

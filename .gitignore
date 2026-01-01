@@ -41,5 +41,13 @@ ENV/
 # Downloaded Pokemon images
 pokemon_images/
 
-# Generated PDF
+# Generated PDFs
 pokemon_cards.pdf
+pokemon_backs.pdf
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Vite build output
+dist/
