@@ -1,15 +1,15 @@
 import Phaser from 'phaser';
+import { LetterMatchMode } from '../answerModes/LetterMatchMode.js';
+import { DebugMode } from '../answerModes/DebugMode.js';
 
 export class MainGameScene extends Phaser.Scene {
     constructor() {
         super({ key: 'MainGameScene' });
-        this.swedishAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ'.split('');
         this.currentPokemon = null;
         this.currentPokemonSprite = null;
-        this.currentLetter = null;
         this.attemptsLeft = 3;
-        this.usedLetters = [];
         this.isAnimating = false; // Prevent multiple clicks during animation
+        this.answerMode = null; // Will be set in create() based on game mode
 
         // Depth constants for layering
         this.DEPTH = {
@@ -35,6 +35,21 @@ export class MainGameScene extends Phaser.Scene {
     create() {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
+
+        // Initialize answer mode based on registry
+        const modeName = this.registry.get('answerMode') || 'letter';
+        console.log('Initializing answer mode:', modeName);
+
+        if (modeName === 'debug') {
+            this.answerMode = new DebugMode();
+        } else {
+            this.answerMode = new LetterMatchMode();
+        }
+
+        // Set up callback for answer mode
+        this.answerMode.setAnswerCallback((isCorrect) => {
+            this.handleAnswer(isCorrect);
+        });
 
         // Background
         this.add.rectangle(0, 0, width, height, 0x87CEEB).setOrigin(0);
@@ -110,15 +125,19 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     startNewEncounter() {
-        // Reset attempts and used letters
+        // Reset attempts
         this.attemptsLeft = 3;
-        this.usedLetters = [];
 
         // Clean up previous Pokemon sprite and its tweens
         if (this.currentPokemonSprite) {
             this.tweens.killTweensOf(this.currentPokemonSprite);
             this.currentPokemonSprite.destroy();
             this.currentPokemonSprite = null;
+        }
+
+        // Clean up answer mode UI
+        if (this.answerMode) {
+            this.answerMode.cleanup(this);
         }
 
         // Clear previous UI
@@ -131,11 +150,11 @@ export class MainGameScene extends Phaser.Scene {
         // Spawn random Pokemon
         this.spawnPokemon();
 
-        // Pick random letter
-        this.currentLetter = Phaser.Utils.Array.GetRandom(this.swedishAlphabet);
+        // Generate challenge using answer mode
+        this.answerMode.generateChallenge(this.currentPokemon);
 
-        // Create UI
-        this.createChallengeUI();
+        // Create UI using answer mode
+        this.answerMode.createChallengeUI(this, this.attemptsLeft);
     }
 
     spawnPokemon() {
@@ -199,112 +218,17 @@ export class MainGameScene extends Phaser.Scene {
         return pokeball;
     }
 
-    createChallengeUI() {
-        const width = this.cameras.main.width;
-        const height = this.cameras.main.height;
-
-        // Show attempts
-        const heartsText = '❤️'.repeat(this.attemptsLeft) + '🖤'.repeat(3 - this.attemptsLeft);
-        this.attemptsDisplay = this.add.text(width / 2, 380, heartsText, {
-            font: '36px Arial'
-        }).setOrigin(0.5);
-        this.attemptsDisplay.setData('clearOnNewEncounter', true);
-
-        // Show lowercase letter
-        this.add.text(width / 2, 500, this.currentLetter.toLowerCase(), {
-            font: 'bold 72px Arial',
-            fill: '#FFD700',
-            stroke: '#000000',
-            strokeThickness: 6,
-            backgroundColor: '#ffffff',
-            padding: { x: 30, y: 10 }
-        }).setOrigin(0.5).setData('clearOnNewEncounter', true);
-
-        // Create letter buttons (capital letters)
-        this.createLetterButtons();
-    }
-
-    createLetterButtons() {
-        const width = this.cameras.main.width;
-        const startY = 600;
-        const buttonWidth = 50;
-        const buttonHeight = 50;
-        const spacing = 10;
-        const lettersPerRow = 10;
-
-        this.swedishAlphabet.forEach((letter, index) => {
-            const row = Math.floor(index / lettersPerRow);
-            const col = index % lettersPerRow;
-
-            const x = width / 2 - (lettersPerRow * (buttonWidth + spacing)) / 2 + col * (buttonWidth + spacing) + buttonWidth / 2;
-            const y = startY + row * (buttonHeight + spacing);
-
-            const isUsed = this.usedLetters.includes(letter);
-            const bgColor = isUsed ? 0x666666 : 0x4CAF50;
-
-            const button = this.add.rectangle(x, y, buttonWidth, buttonHeight, bgColor);
-            button.setStrokeStyle(2, 0x000000);
-            button.setData('clearOnNewEncounter', true);
-
-            const text = this.add.text(x, y, letter, {
-                font: 'bold 24px Arial',
-                fill: isUsed ? '#999999' : '#ffffff'
-            }).setOrigin(0.5);
-            text.setData('clearOnNewEncounter', true);
-
-            if (!isUsed) {
-                button.setInteractive({ useHandCursor: true });
-
-                button.on('pointerover', () => {
-                    button.setFillStyle(0x66BB6A);
-                });
-
-                button.on('pointerout', () => {
-                    button.setFillStyle(0x4CAF50);
-                });
-
-                button.on('pointerdown', () => {
-                    this.checkAnswer(letter);
-                });
-
-                // Store reference for easy update
-                button.setData('letter', letter);
-                button.setData('textObj', text);
-            }
-        });
-    }
-
-    checkAnswer(selectedLetter) {
+    handleAnswer(isCorrect) {
         if (this.isAnimating) return;
 
         this.isAnimating = true;
-        const isCorrect = selectedLetter === this.currentLetter;
 
         if (!isCorrect) {
-            this.usedLetters.push(selectedLetter);
             this.attemptsLeft--;
         }
 
         // Throw pokeball
         this.throwPokeball(isCorrect);
-    }
-
-    updateAttemptsDisplay() {
-        const heartsText = '❤️'.repeat(this.attemptsLeft) + '🖤'.repeat(3 - this.attemptsLeft);
-        this.attemptsDisplay.setText(heartsText);
-    }
-
-    updateLetterButtons() {
-        // Recreate letter buttons with updated used letters
-        this.children.list.forEach(child => {
-            if (child.getData && child.getData('letter')) {
-                child.destroy();
-                if (child.getData('textObj')) {
-                    child.getData('textObj').destroy();
-                }
-            }
-        });
-        this.createLetterButtons();
     }
 
     throwPokeball(isCorrect) {
@@ -622,9 +546,8 @@ export class MainGameScene extends Phaser.Scene {
                                 ease: 'Sine.easeInOut'
                             });
 
-                            // Update UI
-                            this.updateAttemptsDisplay();
-                            this.updateLetterButtons();
+                            // Update UI using answer mode
+                            this.answerMode.updateUI(this, this.attemptsLeft, this.answerMode.getUsedData());
                             this.isAnimating = false;
                         }
                     }

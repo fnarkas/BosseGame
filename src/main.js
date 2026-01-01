@@ -7,6 +7,18 @@ import { PokedexScene } from './scenes/PokedexScene.js';
 // Make POKEMON_DATA globally available
 window.POKEMON_DATA = POKEMON_DATA;
 
+// Detect URL path to determine answer mode
+const path = window.location.pathname;
+let answerMode;
+
+if (path === '/debug' || path === '/debug/') {
+    answerMode = 'debug';
+    console.log('Running in DEBUG mode');
+} else {
+    answerMode = 'letter'; // default
+    console.log('Running in LETTER MATCH mode');
+}
+
 // Main game configuration
 const config = {
     type: Phaser.AUTO,
@@ -19,6 +31,12 @@ const config = {
         default: 'arcade',
         arcade: {
             debug: false
+        }
+    },
+    callbacks: {
+        preBoot: (game) => {
+            // Set answer mode in registry before scenes start
+            game.registry.set('answerMode', answerMode);
         }
     }
 };
