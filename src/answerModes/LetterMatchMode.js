@@ -2,7 +2,7 @@ import { BaseAnswerMode } from './BaseAnswerMode.js';
 
 /**
  * Letter matching game mode
- * Player must identify which letter the Pokemon's name starts with
+ * Player must identify which letter is highlighted in the Pokemon's name
  */
 export class LetterMatchMode extends BaseAnswerMode {
     constructor() {
@@ -17,12 +17,24 @@ export class LetterMatchMode extends BaseAnswerMode {
         // Reset state
         this.usedLetters = [];
 
-        // Pick a random letter
-        this.currentLetter = Phaser.Utils.Array.GetRandom(this.swedishAlphabet);
+        // Extract letters from Pokemon name (uppercase, filter special chars)
+        const nameLetters = pokemon.name
+            .toUpperCase()
+            .split('')
+            .filter(char => this.swedishAlphabet.includes(char));
+
+        // Pick a random letter from the Pokemon's name
+        this.currentLetter = Phaser.Utils.Array.GetRandom(nameLetters);
+
+        // Find the first position of this letter in the name (for highlighting)
+        const normalizedName = pokemon.name.toUpperCase();
+        const highlightIndex = normalizedName.indexOf(this.currentLetter);
 
         this.challengeData = {
             correctAnswer: this.currentLetter,
-            pokemon: pokemon
+            pokemon: pokemon,
+            pokemonName: pokemon.name,
+            highlightIndex: highlightIndex
         };
 
         return this.challengeData;
@@ -40,20 +52,71 @@ export class LetterMatchMode extends BaseAnswerMode {
         this.attemptsDisplay.setData('clearOnNewEncounter', true);
         this.uiElements.push(this.attemptsDisplay);
 
-        // Show lowercase letter challenge
-        const letterDisplay = scene.add.text(width / 2, 500, this.currentLetter.toLowerCase(), {
-            font: 'bold 72px Arial',
-            fill: '#FFD700',
-            stroke: '#000000',
-            strokeThickness: 6,
-            backgroundColor: '#ffffff',
-            padding: { x: 30, y: 10 }
-        }).setOrigin(0.5);
-        letterDisplay.setData('clearOnNewEncounter', true);
-        this.uiElements.push(letterDisplay);
+        // Display Pokemon name with highlighted letter
+        this.displayPokemonName(scene);
 
         // Create letter buttons
         this.createLetterButtons(scene);
+    }
+
+    displayPokemonName(scene) {
+        const width = scene.cameras.main.width;
+        const nameLetters = this.challengeData.pokemonName.toUpperCase().split('');
+
+        const letterWidth = 60;
+        const letterHeight = 80;
+        const spacing = 10;
+        const totalWidth = nameLetters.length * (letterWidth + spacing) - spacing;
+        const startX = (width - totalWidth) / 2 + letterWidth / 2;
+        const y = 500;
+
+        nameLetters.forEach((letter, index) => {
+            const x = startX + index * (letterWidth + spacing);
+            const isHighlight = (index === this.challengeData.highlightIndex);
+
+            // Skip special characters (display but don't create interactable boxes)
+            const isLetter = this.swedishAlphabet.includes(letter);
+
+            if (isLetter) {
+                // Background box
+                const bg = scene.add.rectangle(x, y, letterWidth, letterHeight,
+                    isHighlight ? 0xFFD700 : 0xE8E8E8);
+                bg.setStrokeStyle(isHighlight ? 5 : 2, isHighlight ? 0xFF6B00 : 0xCCCCCC);
+                bg.setData('clearOnNewEncounter', true);
+
+                // Make non-highlighted letters more inactive
+                if (!isHighlight) {
+                    bg.setAlpha(0.4);
+                }
+
+                this.uiElements.push(bg);
+
+                // Add glow effect for highlighted letter
+                if (isHighlight) {
+                    const glow = scene.add.rectangle(x, y, letterWidth + 10, letterHeight + 10, 0xFFD700, 0.3);
+                    glow.setData('clearOnNewEncounter', true);
+                    this.uiElements.push(glow);
+                    bg.setDepth(1);
+                }
+            }
+
+            // Letter text
+            const text = scene.add.text(x, y, letter, {
+                font: isHighlight ? 'bold 52px Arial' : 'bold 44px Arial',
+                fill: isHighlight ? '#000000' : '#999999'
+            }).setOrigin(0.5);
+            text.setData('clearOnNewEncounter', true);
+
+            // Make non-highlighted letters more inactive
+            if (!isHighlight) {
+                text.setAlpha(0.4);
+            }
+
+            if (isHighlight) {
+                text.setDepth(2);
+            }
+            this.uiElements.push(text);
+        });
     }
 
     createLetterButtons(scene) {
@@ -80,7 +143,7 @@ export class LetterMatchMode extends BaseAnswerMode {
             button.setData('letter', letter);
             this.uiElements.push(button);
 
-            const text = scene.add.text(x, y, letter, {
+            const text = scene.add.text(x, y, letter.toLowerCase(), {
                 font: 'bold 24px Arial',
                 fill: isUsed ? '#999999' : '#ffffff'
             }).setOrigin(0.5);
