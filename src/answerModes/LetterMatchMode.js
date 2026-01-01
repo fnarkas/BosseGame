@@ -44,9 +44,9 @@ export class LetterMatchMode extends BaseAnswerMode {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
 
-        // Show attempts (hearts)
+        // Show attempts (hearts) - positioned above Pokemon with more margin
         const heartsText = '❤️'.repeat(attemptsLeft) + '🖤'.repeat(3 - attemptsLeft);
-        this.attemptsDisplay = scene.add.text(width / 2, 380, heartsText, {
+        this.attemptsDisplay = scene.add.text(width / 2, 70, heartsText, {
             font: '36px Arial'
         }).setOrigin(0.5);
         this.attemptsDisplay.setData('clearOnNewEncounter', true);
