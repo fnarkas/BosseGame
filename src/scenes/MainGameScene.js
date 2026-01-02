@@ -225,14 +225,24 @@ export class MainGameScene extends Phaser.Scene {
     handleAnswer(isCorrect) {
         if (this.isAnimating) return;
 
-        this.isAnimating = true;
-
         if (!isCorrect) {
+            // Wrong answer - just lose a life and update UI
             this.attemptsLeft--;
-        }
 
-        // Throw pokeball
-        this.throwPokeball(isCorrect);
+            // Check if out of lives
+            if (this.attemptsLeft <= 0) {
+                // Pokemon runs away
+                this.isAnimating = true;
+                this.pokemonRunsAway();
+            } else {
+                // Still have lives - update UI and continue
+                this.answerMode.updateUI(this, this.attemptsLeft, this.answerMode.getUsedData());
+            }
+        } else {
+            // Correct answer and all letters collected - throw pokeball!
+            this.isAnimating = true;
+            this.throwPokeball(isCorrect);
+        }
     }
 
     throwPokeball(isCorrect) {

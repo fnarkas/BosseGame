@@ -16,6 +16,17 @@ export class LetterMatchMode extends BaseAnswerMode {
         this.usedLetters = [];
         this.uiElements = []; // Track UI elements for cleanup
 
+        // Progressive letter collection state
+        this.collectedIndices = new Set(); // Indices in name that have been collected
+        this.allLetterIndices = []; // All valid letter indices in the Pokemon name
+        this.remainingIndices = []; // Indices that still need to be collected
+        this.currentLetterPosition = 0; // Track current position in sequential order
+
+        // UI element references for animations
+        this.currentHighlightBg = null;
+        this.currentHighlightText = null;
+        this.currentHighlightGlow = null;
+
         // Configuration options
         this.config = {
             nameCase: config.nameCase || 'lowercase',      // 'lowercase' | 'uppercase'
@@ -26,25 +37,29 @@ export class LetterMatchMode extends BaseAnswerMode {
     generateChallenge(pokemon) {
         // Reset state
         this.usedLetters = [];
+        this.collectedIndices = new Set();
+        this.allLetterIndices = [];
+        this.remainingIndices = [];
+        this.currentLetterPosition = 0; // Start from the beginning
 
-        // Extract letters from Pokemon name (uppercase, filter special chars)
-        const nameLetters = pokemon.name
-            .toUpperCase()
-            .split('')
-            .filter(char => this.swedishAlphabet.includes(char));
-
-        // Pick a random letter from the Pokemon's name
-        this.currentLetter = Phaser.Utils.Array.GetRandom(nameLetters);
-
-        // Find the first position of this letter in the name (for highlighting)
+        // Find all valid letter indices in the Pokemon name
         const normalizedName = pokemon.name.toUpperCase();
-        const highlightIndex = normalizedName.indexOf(this.currentLetter);
+        normalizedName.split('').forEach((char, index) => {
+            if (this.swedishAlphabet.includes(char)) {
+                this.allLetterIndices.push(index);
+                this.remainingIndices.push(index);
+            }
+        });
+
+        // Pick the FIRST letter in the name (sequential order)
+        const firstIndex = this.allLetterIndices[0];
+        this.currentLetter = normalizedName[firstIndex];
 
         this.challengeData = {
             correctAnswer: this.currentLetter,
             pokemon: pokemon,
             pokemonName: pokemon.name,
-            highlightIndex: highlightIndex
+            highlightIndex: firstIndex
         };
 
         return this.challengeData;
@@ -53,6 +68,9 @@ export class LetterMatchMode extends BaseAnswerMode {
     createChallengeUI(scene, attemptsLeft) {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
+
+        // Store scene reference for later updates
+        this.scene = scene;
 
         // Show attempts (hearts) - positioned above Pokemon with more margin
         const heartsText = '❤️'.repeat(attemptsLeft) + '🖤'.repeat(3 - attemptsLeft);
@@ -88,50 +106,211 @@ export class LetterMatchMode extends BaseAnswerMode {
         nameLetters.forEach((letter, index) => {
             const x = startX + index * (letterWidth + spacing);
             const isHighlight = (index === this.challengeData.highlightIndex);
+            const isCollected = this.collectedIndices.has(index);
 
             // Skip special characters (display but don't create interactable boxes)
             // Normalize to uppercase for checking against alphabet
             const isLetter = this.swedishAlphabet.includes(letter.toUpperCase());
 
             if (isLetter) {
-                // Background box
-                const bg = scene.add.rectangle(x, y, letterWidth, letterHeight,
-                    isHighlight ? 0xFFD700 : 0xE8E8E8);
-                bg.setStrokeStyle(isHighlight ? 5 : 2, isHighlight ? 0xFF6B00 : 0xCCCCCC);
-                bg.setData('clearOnNewEncounter', true);
+                // Determine visual state
+                let bgColor, borderColor, borderWidth, alpha;
 
-                // Make non-highlighted letters more inactive
-                if (!isHighlight) {
-                    bg.setAlpha(0.4);
+                if (isCollected) {
+                    // Collected state: solid green/blue
+                    bgColor = 0x4CAF50; // Green
+                    borderColor = 0x388E3C; // Darker green
+                    borderWidth = 3;
+                    alpha = 1.0;
+                } else if (isHighlight) {
+                    // Highlighted state: gold
+                    bgColor = 0xFFD700;
+                    borderColor = 0xFF6B00;
+                    borderWidth = 5;
+                    alpha = 1.0;
+                } else {
+                    // Uncollected state: faded gray
+                    bgColor = 0xE8E8E8;
+                    borderColor = 0xCCCCCC;
+                    borderWidth = 2;
+                    alpha = 0.4;
                 }
 
+                // Background box
+                const bg = scene.add.rectangle(x, y, letterWidth, letterHeight, bgColor);
+                bg.setStrokeStyle(borderWidth, borderColor);
+                bg.setData('clearOnNewEncounter', true);
+                bg.setData('pokemonNameLetter', true); // Mark for selective removal
+                bg.setAlpha(alpha);
                 this.uiElements.push(bg);
 
                 // Add glow effect for highlighted letter
                 if (isHighlight) {
                     const glow = scene.add.rectangle(x, y, letterWidth + 10, letterHeight + 10, 0xFFD700, 0.3);
                     glow.setData('clearOnNewEncounter', true);
+                    glow.setData('pokemonNameLetter', true); // Mark for selective removal
                     this.uiElements.push(glow);
                     bg.setDepth(1);
+
+                    // Store reference for animations
+                    this.currentHighlightGlow = glow;
+                }
+
+                // Store reference to highlighted background for animations
+                if (isHighlight) {
+                    this.currentHighlightBg = bg;
+                    this.currentHighlightX = x;
+                    this.currentHighlightY = y;
                 }
             }
 
             // Letter text
-            const text = scene.add.text(x, y, letter, {
-                font: isHighlight ? 'bold 52px Arial' : 'bold 44px Arial',
-                fill: isHighlight ? '#000000' : '#999999'
-            }).setOrigin(0.5);
-            text.setData('clearOnNewEncounter', true);
-
-            // Make non-highlighted letters more inactive
-            if (!isHighlight) {
-                text.setAlpha(0.4);
+            let textColor, fontSize, textAlpha;
+            if (isCollected) {
+                textColor = '#FFFFFF';
+                fontSize = 'bold 52px Arial';
+                textAlpha = 1.0;
+            } else if (isHighlight) {
+                textColor = '#000000';
+                fontSize = 'bold 52px Arial';
+                textAlpha = 1.0;
+            } else {
+                textColor = '#999999';
+                fontSize = 'bold 44px Arial';
+                textAlpha = 0.4;
             }
 
-            if (isHighlight) {
+            const text = scene.add.text(x, y, letter, {
+                font: fontSize,
+                fill: textColor
+            }).setOrigin(0.5);
+            text.setData('clearOnNewEncounter', true);
+            text.setData('pokemonNameLetter', true); // Mark for selective removal
+            text.setAlpha(textAlpha);
+
+            if (isHighlight || isCollected) {
                 text.setDepth(2);
             }
             this.uiElements.push(text);
+
+            // Store reference to highlighted text for animations
+            if (isHighlight) {
+                this.currentHighlightText = text;
+            }
+        });
+    }
+
+    updateLetterDisplay() {
+        // Remove all Pokemon name letter elements
+        const elementsToRemove = [];
+        this.uiElements.forEach(element => {
+            if (element.getData && element.getData('pokemonNameLetter')) {
+                elementsToRemove.push(element);
+            }
+        });
+
+        elementsToRemove.forEach(element => {
+            const index = this.uiElements.indexOf(element);
+            if (index > -1) {
+                this.uiElements.splice(index, 1);
+            }
+            element.destroy();
+        });
+
+        // Re-render Pokemon name with updated state
+        this.displayPokemonName(this.scene);
+    }
+
+    showCorrectLetterEffect() {
+        if (!this.currentHighlightX || !this.currentHighlightY || !this.scene) {
+            return;
+        }
+
+        // Use stored center position of the letter
+        const x = this.currentHighlightX;
+        const y = this.currentHighlightY;
+
+        // Create star-shaped particle texture (bigger)
+        const graphics = this.scene.add.graphics();
+        graphics.fillStyle(0xFFD700, 1);
+
+        // Draw a larger star (centered in texture)
+        const starPoints = 5;
+        const outerRadius = 16;  // Increased from 8
+        const innerRadius = 8;   // Increased from 4
+        const centerOffset = 20; // Center the star in the 40x40 texture
+        graphics.beginPath();
+        for (let i = 0; i < starPoints * 2; i++) {
+            const radius = i % 2 === 0 ? outerRadius : innerRadius;
+            const angle = (i * Math.PI) / starPoints - Math.PI / 2;
+            const px = centerOffset + radius * Math.cos(angle);
+            const py = centerOffset + radius * Math.sin(angle);
+            if (i === 0) {
+                graphics.moveTo(px, py);
+            } else {
+                graphics.lineTo(px, py);
+            }
+        }
+        graphics.closePath();
+        graphics.fillPath();
+
+        graphics.generateTexture('correctLetterStar', 40, 40);  // Increased from 20x20
+        graphics.destroy();
+
+        // Create particle emitter around the letter with bigger particles
+        const particles = this.scene.add.particles(x, y, 'correctLetterStar', {
+            speed: { min: 150, max: 250 },  // Increased speed for more impact
+            angle: { min: 0, max: 360 },
+            scale: { start: 1.5, end: 0 },  // Increased starting scale from 1 to 1.5
+            lifespan: 700,  // Slightly longer lifespan
+            gravityY: 150,  // Increased gravity
+            quantity: 20    // More particles (increased from 15)
+        });
+        particles.setDepth(50);
+        particles.explode();
+
+        // Clean up particles after animation
+        this.scene.time.delayedCall(900, () => {
+            particles.destroy();
+        });
+    }
+
+    showIncorrectLetterEffect() {
+        if (!this.currentHighlightBg || !this.currentHighlightText || !this.scene) {
+            return;
+        }
+
+        const originalBgColor = 0xFFD700;
+        const originalBorderColor = 0xFF6B00;
+        const errorColor = 0xFF0000;
+
+        // Flash red
+        this.currentHighlightBg.setFillStyle(errorColor);
+        this.currentHighlightBg.setStrokeStyle(5, errorColor);
+
+        // Shake animation
+        const originalX = this.currentHighlightBg.x;
+        const originalTextX = this.currentHighlightText.x;
+        const glowOriginalX = this.currentHighlightGlow ? this.currentHighlightGlow.x : null;
+
+        this.scene.tweens.add({
+            targets: [this.currentHighlightBg, this.currentHighlightText, this.currentHighlightGlow].filter(t => t !== null),
+            x: originalX - 5,
+            duration: 50,
+            yoyo: true,
+            repeat: 3,
+            onComplete: () => {
+                // Return to original position
+                this.currentHighlightBg.x = originalX;
+                this.currentHighlightText.x = originalTextX;
+                if (this.currentHighlightGlow) {
+                    this.currentHighlightGlow.x = glowOriginalX;
+                }
+
+                // Return to original color
+                this.currentHighlightBg.setFillStyle(originalBgColor);
+                this.currentHighlightBg.setStrokeStyle(5, originalBorderColor);
+            }
         });
     }
 
@@ -183,9 +362,35 @@ export class LetterMatchMode extends BaseAnswerMode {
                 });
 
                 button.on('pointerdown', () => {
-                    const isCorrect = this.checkAnswer(letter);
-                    if (this.answerCallback) {
-                        this.answerCallback(isCorrect);
+                    const result = this.checkAnswer(letter);
+
+                    // Only call callback if result is not null
+                    // null = correct but more letters remain (handled internally)
+                    // true = all letters collected (trigger catch)
+                    // false = wrong answer (lose life)
+                    if (result === null) {
+                        // Correct letter but more remain - show particle effect
+                        this.showCorrectLetterEffect();
+
+                        // Delay UI update so particle effect is fully visible before redraw
+                        this.scene.time.delayedCall(600, () => {
+                            this.updateLetterDisplay();
+                        });
+                    } else if (result === false) {
+                        // Wrong answer - show shake/red effect
+                        this.showIncorrectLetterEffect();
+
+                        // Delay callback until shake animation completes (400ms)
+                        this.scene.time.delayedCall(450, () => {
+                            if (this.answerCallback) {
+                                this.answerCallback(result);
+                            }
+                        });
+                    } else if (result === true) {
+                        // All letters collected - trigger pokeball catch
+                        if (this.answerCallback) {
+                            this.answerCallback(result);
+                        }
                     }
                 });
 
@@ -200,8 +405,18 @@ export class LetterMatchMode extends BaseAnswerMode {
         const heartsText = '❤️'.repeat(attemptsLeft) + '🖤'.repeat(3 - attemptsLeft);
         this.attemptsDisplay.setText(heartsText);
 
-        // Update used letters
+        // Store scene reference
+        this.scene = scene;
+
+        // Restore collected letters state
         this.usedLetters = usedData.usedLetters || [];
+        this.collectedIndices = new Set(usedData.collectedIndices || []);
+        this.allLetterIndices = usedData.allLetterIndices || [];
+        this.remainingIndices = usedData.remainingIndices || [];
+        this.currentLetterPosition = usedData.currentLetterPosition || 0;
+
+        // Update Pokemon name display to show collected letters
+        this.updateLetterDisplay();
 
         // Recreate letter buttons with updated used letters
         const buttonsToRemove = [];
@@ -227,9 +442,35 @@ export class LetterMatchMode extends BaseAnswerMode {
 
     checkAnswer(selectedLetter) {
         if (selectedLetter === this.currentLetter) {
-            return true;
+            // Correct letter! Add to collected
+            this.collectedIndices.add(this.challengeData.highlightIndex);
+
+            // Remove from remaining
+            const indexInRemaining = this.remainingIndices.indexOf(this.challengeData.highlightIndex);
+            if (indexInRemaining > -1) {
+                this.remainingIndices.splice(indexInRemaining, 1);
+            }
+
+            // Move to next position
+            this.currentLetterPosition++;
+
+            // Check if all letters have been collected
+            if (this.currentLetterPosition >= this.allLetterIndices.length) {
+                // All letters collected! Return true to trigger pokeball catch
+                return true;
+            } else {
+                // More letters remain - pick next SEQUENTIAL letter
+                const nextIndex = this.allLetterIndices[this.currentLetterPosition];
+                const normalizedName = this.challengeData.pokemonName.toUpperCase();
+                this.currentLetter = normalizedName[nextIndex];
+                this.challengeData.highlightIndex = nextIndex;
+                this.challengeData.correctAnswer = this.currentLetter;
+
+                // Return null to indicate "correct but not done" - don't trigger callback
+                return null;
+            }
         } else {
-            // Add to used letters
+            // Wrong letter - add to used letters
             this.usedLetters.push(selectedLetter);
             return false;
         }
@@ -248,7 +489,11 @@ export class LetterMatchMode extends BaseAnswerMode {
 
     getUsedData() {
         return {
-            usedLetters: this.usedLetters
+            usedLetters: this.usedLetters,
+            collectedIndices: Array.from(this.collectedIndices), // Convert Set to Array
+            allLetterIndices: this.allLetterIndices,
+            remainingIndices: this.remainingIndices,
+            currentLetterPosition: this.currentLetterPosition
         };
     }
 }
