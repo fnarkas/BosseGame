@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { WordEmojiMatchMode } from '../pokeballGameModes/WordEmojiMatchMode.js';
+import { LetterListeningMode } from '../pokeballGameModes/LetterListeningMode.js';
 
 export class PokeballGameScene extends Phaser.Scene {
     constructor() {
@@ -8,6 +9,7 @@ export class PokeballGameScene extends Phaser.Scene {
         this.pokeballCount = 0;
         this.pokeballCounterText = null;
         this.isProcessingAnswer = false;
+        this.challengeCount = 0; // Track number of challenges completed
     }
 
     create() {
@@ -55,12 +57,8 @@ export class PokeballGameScene extends Phaser.Scene {
             strokeThickness: 4
         }).setOrigin(1, 0);
 
-        // Initialize game mode
-        const modeName = this.registry.get('pokeballGameMode') || 'word-emoji';
-        console.log('Initializing pokeball game mode:', modeName);
-
-        // For now, only WordEmojiMatchMode is available
-        this.gameMode = new WordEmojiMatchMode();
+        // Initialize game mode - alternate between modes
+        this.selectGameMode();
 
         // Set up callback for game mode
         this.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
@@ -69,6 +67,18 @@ export class PokeballGameScene extends Phaser.Scene {
 
         // Start first challenge
         this.loadNextChallenge();
+    }
+
+    selectGameMode() {
+        // Alternate between game modes based on challenge count
+        // Even challenges: Letter Listening, Odd challenges: Word-Emoji Match
+        if (this.challengeCount % 2 === 0) {
+            this.gameMode = new LetterListeningMode();
+            console.log('Selected game mode: Letter Listening');
+        } else {
+            this.gameMode = new WordEmojiMatchMode();
+            console.log('Selected game mode: Word-Emoji Match');
+        }
     }
 
     loadNextChallenge() {
@@ -107,6 +117,16 @@ export class PokeballGameScene extends Phaser.Scene {
             this.time.delayedCall(1500, () => {
                 successText.destroy();
                 this.gameMode.cleanup(this);
+
+                // Increment challenge count and switch mode
+                this.challengeCount++;
+                this.selectGameMode();
+
+                // Set up callback for new mode
+                this.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
+                    this.handleAnswer(isCorrect, answer, x, y);
+                });
+
                 this.loadNextChallenge();
             });
         } else {

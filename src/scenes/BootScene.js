@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { SWEDISH_LETTERS } from '../letterData.js';
 
 export class BootScene extends Phaser.Scene {
     constructor() {
@@ -45,6 +46,9 @@ export class BootScene extends Phaser.Scene {
 
         // Load Pokemon name audio
         this.loadPokemonAudio();
+
+        // Load Swedish letter audio
+        this.loadLetterAudio();
     }
 
     loadPokemonImages() {
@@ -93,6 +97,15 @@ export class BootScene extends Phaser.Scene {
             const audioFilename = `${pokemon.id.toString().padStart(3, '0')}_${pokemon.name.toLowerCase().replace('-', '')}.mp3`;
             const audioKey = `pokemon_audio_${pokemon.id}`;
             this.load.audio(audioKey, `pokemon_audio/${audioFilename}`);
+        });
+    }
+
+    loadLetterAudio() {
+        // Load Swedish letter audio for all 29 letters
+        SWEDISH_LETTERS.forEach(letter => {
+            const audioKey = `letter_audio_${letter.toLowerCase()}`;
+            const audioFilename = `${letter.toLowerCase()}.mp3`;
+            this.load.audio(audioKey, `letter_audio/${audioFilename}`);
         });
     }
 
