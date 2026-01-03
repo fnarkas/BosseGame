@@ -92,7 +92,7 @@ export class PokedexScene extends Phaser.Scene {
         const startX = 150;
         const startY = 120;
         const itemWidth = 200;
-        const itemHeight = 220;
+        const itemHeight = 250; // Increased height for type icons
         const cols = 4; // 4 Pokemon per row
         const spacing = 30;
 
@@ -148,6 +148,30 @@ export class PokedexScene extends Phaser.Scene {
                     font: '20px Arial'
                 });
                 this.scrollContainer.add(pokeballIcon);
+            }
+
+            // Type icons for ALL Pokemon (from local POKEMON_DATA)
+            const types = pokemon.types;
+            if (types && types.length > 0) {
+                const typeIconSize = 24;
+                const typeSpacing = 5;
+                const numTypes = types.length;
+                const totalTypeWidth = numTypes * typeIconSize + (numTypes - 1) * typeSpacing;
+                const typeStartX = x - totalTypeWidth / 2;
+                const typeY = y + 108;
+
+                types.forEach((typeId, typeIndex) => {
+                    const typeX = typeStartX + typeIndex * (typeIconSize + typeSpacing);
+                    const typeIcon = this.add.image(typeX, typeY, `type_${typeId}`);
+                    typeIcon.setScale(0.75);
+
+                    // Fade uncaught Pokemon type icons
+                    if (!isCaught) {
+                        typeIcon.setAlpha(0.3);
+                    }
+
+                    this.scrollContainer.add(typeIcon);
+                });
             }
         });
 

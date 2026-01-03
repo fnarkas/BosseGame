@@ -10,6 +10,8 @@ export class MainGameScene extends Phaser.Scene {
         this.attemptsLeft = 3;
         this.isAnimating = false; // Prevent multiple clicks during animation
         this.answerMode = null; // Will be set in create() based on game mode
+        this.pokeballCount = 0;
+        this.pokeballCounterText = null;
 
         // Depth constants for layering
         this.DEPTH = {
@@ -36,6 +38,9 @@ export class MainGameScene extends Phaser.Scene {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
 
+        // Load pokeball count from registry
+        this.pokeballCount = this.registry.get('pokeballCount') || 0;
+
         // Initialize answer mode based on registry
         const modeName = this.registry.get('answerMode') || 'letter';
         console.log('Initializing answer mode:', modeName);
@@ -58,11 +63,35 @@ export class MainGameScene extends Phaser.Scene {
         // Background
         this.add.rectangle(0, 0, width, height, 0x87CEEB).setOrigin(0);
 
+        // Pokeball counter (top left)
+        // Pokeball icon
+        this.pokeballIcon = this.add.image(20, 25, 'pokeball_poke-ball');
+        this.pokeballIcon.setOrigin(0, 0);
+        this.pokeballIcon.setScale(1.5);
+
+        // Count text
+        this.pokeballCounterText = this.add.text(65, 32, `x${this.pokeballCount}`, {
+            font: 'bold 32px Arial',
+            fill: '#ffffff',
+            stroke: '#000000',
+            strokeThickness: 4
+        }).setOrigin(0, 0);
+
+        // Pokeball game button (emoji only)
+        const pokeballGameBtn = this.add.text(width - 90, 20, '🎮', {
+            font: '64px Arial',
+            fill: '#ffffff'
+        }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
+
+        pokeballGameBtn.on('pointerdown', () => {
+            this.scene.start('PokeballGameScene');
+        });
+
         // Pokedex button (emoji only)
         const pokedexBtn = this.add.text(width - 20, 20, '📖', {
             font: '64px Arial',
             fill: '#ffffff'
-        }).setOrigin(1, 0).setInteractive();
+        }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
 
         pokedexBtn.on('pointerdown', () => {
             this.scene.start('PokedexScene');
@@ -239,7 +268,22 @@ export class MainGameScene extends Phaser.Scene {
                 this.answerMode.updateUI(this, this.attemptsLeft, this.answerMode.getUsedData());
             }
         } else {
-            // Correct answer and all letters collected - throw pokeball!
+            // Correct answer and all letters collected - check if player has pokeballs!
+            if (this.pokeballCount <= 0) {
+                // No pokeballs! Show message
+                this.showNoPokeballsPopup();
+                return;
+            }
+
+            // Deduct pokeball
+            this.pokeballCount--;
+            this.registry.set('pokeballCount', this.pokeballCount);
+            localStorage.setItem('pokeballCount', this.pokeballCount.toString());
+
+            // Update counter display
+            this.pokeballCounterText.setText(`x${this.pokeballCount}`);
+
+            // Throw pokeball to catch Pokemon!
             this.isAnimating = true;
             this.throwPokeball(isCorrect);
         }
@@ -347,7 +391,7 @@ export class MainGameScene extends Phaser.Scene {
             }
         });
 
-        // Save to caught Pokemon
+        // Save to caught Pokemon (with type data)
         this.saveCaughtPokemon();
     }
 
@@ -425,105 +469,211 @@ export class MainGameScene extends Phaser.Scene {
         });
     }
 
-    async showPokemonInfoPopup(pokeball) {
+    showNoPokeballsPopup() {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
 
-        // Fetch Pokemon details from PokeAPI
-        try {
-            const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${this.currentPokemon.id}`);
-            const data = await response.json();
+        // Create semi-transparent background overlay
+        const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
+        overlay.setInteractive();
+        overlay.setDepth(this.DEPTH.POPUP_OVERLAY);
 
-            // Create semi-transparent background overlay
-            const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
-            overlay.setInteractive();
-            overlay.setDepth(this.DEPTH.POPUP_OVERLAY);
+        // Create popup background
+        const popupWidth = 500;
+        const popupHeight = 300;
+        const popup = this.add.rectangle(width / 2, height / 2, popupWidth, popupHeight, 0xFFFFFF);
+        popup.setStrokeStyle(4, 0x000000);
+        popup.setDepth(this.DEPTH.POPUP_BACKGROUND);
 
-            // Create popup background (taller to fit image)
-            const popupWidth = 450;
-            const popupHeight = 450;
-            const popup = this.add.rectangle(width / 2, height / 2, popupWidth, popupHeight, 0xFFFFFF);
-            popup.setStrokeStyle(4, 0x000000);
-            popup.setDepth(this.DEPTH.POPUP_BACKGROUND);
+        // Title text
+        const titleText = this.add.text(width / 2, height / 2 - 80, 'Inga Pokébollar!', {
+            font: 'bold 42px Arial',
+            fill: '#E74C3C'
+        }).setOrigin(0.5);
+        titleText.setDepth(this.DEPTH.POPUP_CONTENT);
 
-            // Pokemon image
-            const pokemonImage = this.add.image(width / 2, height / 2 - 120, `pokemon_${this.currentPokemon.id}`);
-            pokemonImage.setScale(0.4);
-            pokemonImage.setDepth(this.DEPTH.POPUP_CONTENT);
+        // Message text
+        const messageText = this.add.text(width / 2, height / 2 - 20, 'Du behöver Pokébollar för att fånga Pokemon!\nSpela Pokéball-spelet för att tjäna fler!', {
+            font: '20px Arial',
+            fill: '#000000',
+            align: 'center'
+        }).setOrigin(0.5);
+        messageText.setDepth(this.DEPTH.POPUP_CONTENT);
 
-            // Pokemon number
-            const numberText = this.add.text(width / 2, height / 2 + 10, `#${String(data.id).padStart(3, '0')}`, {
-                font: 'bold 24px Arial',
-                fill: '#666666'
-            }).setOrigin(0.5);
-            numberText.setDepth(this.DEPTH.POPUP_CONTENT);
+        // Go to Pokeball Game button
+        const gameBtn = this.add.rectangle(width / 2 - 90, height / 2 + 80, 160, 50, 0x4CAF50);
+        gameBtn.setStrokeStyle(3, 0x000000);
+        gameBtn.setInteractive({ useHandCursor: true });
+        gameBtn.setDepth(this.DEPTH.POPUP_CONTENT);
 
-            // Pokemon name
-            const nameText = this.add.text(width / 2, height / 2 + 45, data.name.toUpperCase(), {
-                font: 'bold 32px Arial',
-                fill: '#000000'
-            }).setOrigin(0.5);
-            nameText.setDepth(this.DEPTH.POPUP_CONTENT);
+        const gameBtnText = this.add.text(width / 2 - 90, height / 2 + 80, 'Spela Spel', {
+            font: 'bold 20px Arial',
+            fill: '#FFFFFF'
+        }).setOrigin(0.5);
+        gameBtnText.setDepth(this.DEPTH.POPUP_BUTTON_TEXT);
 
-            // Pokemon types
-            const types = data.types.map(t => t.type.name.toUpperCase()).join(' / ');
-            const typeText = this.add.text(width / 2, height / 2 + 85, `Type: ${types}`, {
-                font: 'bold 20px Arial',
-                fill: '#333333'
-            }).setOrigin(0.5);
-            typeText.setDepth(this.DEPTH.POPUP_CONTENT);
+        gameBtn.on('pointerover', () => {
+            gameBtn.setFillStyle(0x66BB6A);
+        });
 
-            // Height and Weight
-            const statsText = this.add.text(width / 2, height / 2 + 120, `Height: ${data.height / 10}m  |  Weight: ${data.weight / 10}kg`, {
-                font: '18px Arial',
-                fill: '#666666'
-            }).setOrigin(0.5);
-            statsText.setDepth(this.DEPTH.POPUP_CONTENT);
+        gameBtn.on('pointerout', () => {
+            gameBtn.setFillStyle(0x4CAF50);
+        });
 
-            // Continue button
-            const continueBtn = this.add.rectangle(width / 2, height / 2 + 170, 150, 40, 0x4CAF50);
-            continueBtn.setStrokeStyle(2, 0x000000);
-            continueBtn.setInteractive({ useHandCursor: true });
-            continueBtn.setDepth(this.DEPTH.POPUP_CONTENT);
+        gameBtn.on('pointerdown', () => {
+            // Clean up popup
+            overlay.destroy();
+            popup.destroy();
+            titleText.destroy();
+            messageText.destroy();
+            gameBtn.destroy();
+            gameBtnText.destroy();
+            cancelBtn.destroy();
+            cancelBtnText.destroy();
 
-            const continueText = this.add.text(width / 2, height / 2 + 170, 'CONTINUE', {
-                font: 'bold 18px Arial',
-                fill: '#FFFFFF'
-            }).setOrigin(0.5);
-            continueText.setDepth(this.DEPTH.POPUP_BUTTON_TEXT);
+            // Go to pokeball game
+            this.scene.start('PokeballGameScene');
+        });
 
-            continueBtn.on('pointerover', () => {
-                continueBtn.setFillStyle(0x66BB6A);
-            });
+        // Cancel button
+        const cancelBtn = this.add.rectangle(width / 2 + 90, height / 2 + 80, 160, 50, 0xE74C3C);
+        cancelBtn.setStrokeStyle(3, 0x000000);
+        cancelBtn.setInteractive({ useHandCursor: true });
+        cancelBtn.setDepth(this.DEPTH.POPUP_CONTENT);
 
-            continueBtn.on('pointerout', () => {
-                continueBtn.setFillStyle(0x4CAF50);
-            });
+        const cancelBtnText = this.add.text(width / 2 + 90, height / 2 + 80, 'Avbryt', {
+            font: 'bold 20px Arial',
+            fill: '#FFFFFF'
+        }).setOrigin(0.5);
+        cancelBtnText.setDepth(this.DEPTH.POPUP_BUTTON_TEXT);
 
-            continueBtn.on('pointerdown', () => {
-                // Clean up popup
-                overlay.destroy();
-                popup.destroy();
-                pokemonImage.destroy();
-                numberText.destroy();
-                nameText.destroy();
-                typeText.destroy();
-                statsText.destroy();
-                continueBtn.destroy();
-                continueText.destroy();
-                pokeball.destroy();
+        cancelBtn.on('pointerover', () => {
+            cancelBtn.setFillStyle(0xC0392B);
+        });
 
-                this.isAnimating = false;
-                this.startNewEncounter();
-            });
+        cancelBtn.on('pointerout', () => {
+            cancelBtn.setFillStyle(0xE74C3C);
+        });
 
-        } catch (error) {
-            console.error('Failed to fetch Pokemon data:', error);
-            // If API fails, just continue
-            pokeball.destroy();
+        cancelBtn.on('pointerdown', () => {
+            // Clean up popup
+            overlay.destroy();
+            popup.destroy();
+            titleText.destroy();
+            messageText.destroy();
+            gameBtn.destroy();
+            gameBtnText.destroy();
+            cancelBtn.destroy();
+            cancelBtnText.destroy();
+        });
+    }
+
+    showPokemonInfoPopup(pokeball) {
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+
+        // Get Pokemon details from local POKEMON_DATA
+        const data = POKEMON_DATA.find(p => p.id === this.currentPokemon.id);
+        if (!data) {
+            console.error('Pokemon data not found for ID:', this.currentPokemon.id);
             this.isAnimating = false;
             this.startNewEncounter();
+            return;
         }
+
+        // Create semi-transparent background overlay
+        const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
+        overlay.setInteractive();
+        overlay.setDepth(this.DEPTH.POPUP_OVERLAY);
+
+        // Create popup background (taller to fit image)
+        const popupWidth = 450;
+        const popupHeight = 450;
+        const popup = this.add.rectangle(width / 2, height / 2, popupWidth, popupHeight, 0xFFFFFF);
+        popup.setStrokeStyle(4, 0x000000);
+        popup.setDepth(this.DEPTH.POPUP_BACKGROUND);
+
+        // Pokemon image
+        const pokemonImage = this.add.image(width / 2, height / 2 - 120, `pokemon_${this.currentPokemon.id}`);
+        pokemonImage.setScale(0.4);
+        pokemonImage.setDepth(this.DEPTH.POPUP_CONTENT);
+
+        // Pokemon number
+        const numberText = this.add.text(width / 2, height / 2 + 10, `#${String(data.id).padStart(3, '0')}`, {
+            font: 'bold 24px Arial',
+            fill: '#666666'
+        }).setOrigin(0.5);
+        numberText.setDepth(this.DEPTH.POPUP_CONTENT);
+
+        // Pokemon name
+        const nameText = this.add.text(width / 2, height / 2 + 45, data.name.toUpperCase(), {
+            font: 'bold 32px Arial',
+            fill: '#000000'
+        }).setOrigin(0.5);
+        nameText.setDepth(this.DEPTH.POPUP_CONTENT);
+
+        // Pokemon types - display type icons
+        const typeIconSize = 80;
+        const typeSpacing = 10;
+        const numTypes = data.types.length;
+        const totalTypeWidth = numTypes * typeIconSize + (numTypes - 1) * typeSpacing;
+        const startX = (width - totalTypeWidth) / 2 + typeIconSize / 2;
+        const typeY = height / 2 + 85;
+
+        const typeIcons = [];
+        data.types.forEach((typeId, index) => {
+            const x = startX + index * (typeIconSize + typeSpacing);
+
+            // Type icon
+            const typeIcon = this.add.image(x, typeY, `type_${typeId}`);
+            typeIcon.setScale(2.5); // Scale up the icon
+            typeIcon.setDepth(this.DEPTH.POPUP_CONTENT);
+            typeIcons.push(typeIcon);
+        });
+
+        // Height and Weight
+        const statsText = this.add.text(width / 2, height / 2 + 120, `Height: ${data.height / 10}m  |  Weight: ${data.weight / 10}kg`, {
+            font: '18px Arial',
+            fill: '#666666'
+        }).setOrigin(0.5);
+        statsText.setDepth(this.DEPTH.POPUP_CONTENT);
+
+        // Continue button
+        const continueBtn = this.add.rectangle(width / 2, height / 2 + 170, 150, 40, 0x4CAF50);
+        continueBtn.setStrokeStyle(2, 0x000000);
+        continueBtn.setInteractive({ useHandCursor: true });
+        continueBtn.setDepth(this.DEPTH.POPUP_CONTENT);
+
+        const continueText = this.add.text(width / 2, height / 2 + 170, 'CONTINUE', {
+            font: 'bold 18px Arial',
+            fill: '#FFFFFF'
+        }).setOrigin(0.5);
+        continueText.setDepth(this.DEPTH.POPUP_BUTTON_TEXT);
+
+        continueBtn.on('pointerover', () => {
+            continueBtn.setFillStyle(0x66BB6A);
+        });
+
+        continueBtn.on('pointerout', () => {
+            continueBtn.setFillStyle(0x4CAF50);
+        });
+
+        continueBtn.on('pointerdown', () => {
+            // Clean up popup
+            overlay.destroy();
+            popup.destroy();
+            pokemonImage.destroy();
+            numberText.destroy();
+            nameText.destroy();
+            typeIcons.forEach(icon => icon.destroy());
+            statsText.destroy();
+            continueBtn.destroy();
+            continueText.destroy();
+            pokeball.destroy();
+
+            this.isAnimating = false;
+            this.startNewEncounter();
+        });
     }
 
     catchFailed(pokeball) {
@@ -621,6 +771,7 @@ export class MainGameScene extends Phaser.Scene {
 
         // Check if already caught
         if (!caughtList.find(p => p.id === this.currentPokemon.id)) {
+            // Save without types - they come from POKEMON_DATA
             caughtList.push({
                 id: this.currentPokemon.id,
                 name: this.currentPokemon.name,
