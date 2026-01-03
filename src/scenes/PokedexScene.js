@@ -148,6 +148,36 @@ export class PokedexScene extends Phaser.Scene {
                     font: '20px Arial'
                 });
                 this.scrollContainer.add(pokeballIcon);
+
+                // Speaker button to play Pokemon name audio
+                const speakerBtn = this.add.text(x + 75, y + 70, '🔊', {
+                    font: '28px Arial'
+                }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+                // Hover effect
+                speakerBtn.on('pointerover', () => {
+                    speakerBtn.setScale(1.2);
+                });
+
+                speakerBtn.on('pointerout', () => {
+                    speakerBtn.setScale(1.0);
+                });
+
+                // Play audio on click
+                speakerBtn.on('pointerdown', () => {
+                    // Visual feedback
+                    speakerBtn.setScale(0.9);
+                    this.time.delayedCall(100, () => {
+                        speakerBtn.setScale(1.0);
+                    });
+
+                    // Play Pokemon name audio
+                    if (this.sound.get(`pokemon_audio_${pokemon.id}`)) {
+                        this.sound.play(`pokemon_audio_${pokemon.id}`);
+                    }
+                });
+
+                this.scrollContainer.add(speakerBtn);
             }
 
             // Type icons for ALL Pokemon (from local POKEMON_DATA)

@@ -8,7 +8,10 @@
       "Bash(npm install:*)",
       "Bash(npm run dev:*)",
       "WebFetch(domain:pokeapi.co)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd Pokeball mini-game system and migrate to local Pokemon data\n\nMajor Features:\n- Add Pokeball mini-game (Swedish word-emoji matching) to earn pokeballs\n- Integrate pokeball currency system - players need pokeballs to catch Pokemon\n- Players start with 5 pokeballs and earn more by playing the mini-game\n- Add navigation button (🎮) to access pokeball game from main scene\n\nData Architecture Changes:\n- Migrate from live PokeAPI fetching to preprocessed local data\n- Enhanced pokemonData.js with comprehensive Pokemon data (types, stats, height, weight)\n- Created fetch_pokemon_data.py script to preprocess Pokemon data from PokeAPI\n- All Pokemon data now loaded locally for offline gameplay\n\nGame Scenes:\n- PokeballGameScene: New mini-game scene for earning pokeballs\n- Word-emoji matching challenges with 20+ Swedish vocabulary words\n- Success feedback with particle effects\n- Pokeball counter displayed in both scenes\n\nCode Improvements:\n- Fixed syntax errors in MainGameScene (typeText cleanup issue)\n- Updated PokedexScene to show type icons for ALL Pokemon (faded for uncaught)\n- Simplified caught Pokemon storage - types now come from POKEMON_DATA\n- Removed async API calls during gameplay for instant popup displays\n\nAssets Added:\n- 16 pokeball sprite variants (downloaded via download_pokeball_sprites.py)\n- 18 Pokemon type icons (downloaded via download_type_icons.py)\n- BasePokeballGameMode class for extensible game mode system\n- WordEmojiMatchMode implementation with Swedish vocabulary\n\nBenefits:\n✅ No internet required during gameplay (only for initial setup)\n✅ Instant Pokemon info popups - no network delays\n✅ Engaging mini-game for earning pokeballs\n✅ Type icons visible for all Pokemon in Pokedex\n✅ Cleaner code - no async/await or network error handling\n✅ More interactive gameplay loop between catching and earning\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(chmod:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

@@ -42,6 +42,9 @@ export class BootScene extends Phaser.Scene {
 
         // Load type icons
         this.loadTypeIcons();
+
+        // Load Pokemon name audio
+        this.loadPokemonAudio();
     }
 
     loadPokemonImages() {
@@ -82,6 +85,14 @@ export class BootScene extends Phaser.Scene {
         for (let typeId = 1; typeId <= 18; typeId++) {
             this.load.image(`type_${typeId}`, `type_icons/${typeId}.png`);
         }
+    }
+
+    loadPokemonAudio() {
+        // Load Pokemon name audio for all 100 Pokemon
+        POKEMON_DATA.forEach(pokemon => {
+            const audioFilename = `${pokemon.id.toString().padStart(3, '0')}_${pokemon.name.toLowerCase().replace('-', '')}.mp3`;
+            this.load.audio(`pokemon_audio_${pokemon.id}`, `pokemon_audio/${audioFilename}`);
+        });
     }
 
     create() {
