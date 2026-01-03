@@ -91,7 +91,8 @@ export class BootScene extends Phaser.Scene {
         // Load Pokemon name audio for all 100 Pokemon
         POKEMON_DATA.forEach(pokemon => {
             const audioFilename = `${pokemon.id.toString().padStart(3, '0')}_${pokemon.name.toLowerCase().replace('-', '')}.mp3`;
-            this.load.audio(`pokemon_audio_${pokemon.id}`, `pokemon_audio/${audioFilename}`);
+            const audioKey = `pokemon_audio_${pokemon.id}`;
+            this.load.audio(audioKey, `pokemon_audio/${audioFilename}`);
         });
     }
 

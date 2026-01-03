@@ -172,9 +172,7 @@ export class PokedexScene extends Phaser.Scene {
                     });
 
                     // Play Pokemon name audio
-                    if (this.sound.get(`pokemon_audio_${pokemon.id}`)) {
-                        this.sound.play(`pokemon_audio_${pokemon.id}`);
-                    }
+                    this.sound.play(`pokemon_audio_${pokemon.id}`);
                 });
 
                 this.scrollContainer.add(speakerBtn);
