@@ -726,24 +726,87 @@ export class MainGameScene extends Phaser.Scene {
         const pokemonX = this.currentPokemonSprite.x;
         const pokemonY = this.currentPokemonSprite.y;
 
-        // Create smoke texture if not already created
-        if (!this.textures.exists('smoke')) {
-            const smokeGraphics = this.add.graphics();
-            smokeGraphics.fillStyle(0xCCCCCC, 1);
-            smokeGraphics.fillCircle(0, 0, 8);
-            smokeGraphics.generateTexture('smoke', 16, 16);
-            smokeGraphics.destroy();
+        // Create dust cloud texture if not already created
+        if (!this.textures.exists('dustCloud')) {
+            const dustGraphics = this.add.graphics();
+
+            // Create irregular, cloud-like dust particle
+            // Draw multiple overlapping circles for organic look
+            dustGraphics.fillStyle(0xFFFFFF, 0.8);
+            dustGraphics.fillCircle(16, 16, 10);
+
+            dustGraphics.fillStyle(0xFFFFFF, 0.6);
+            dustGraphics.fillCircle(12, 18, 8);
+            dustGraphics.fillCircle(20, 14, 7);
+
+            dustGraphics.fillStyle(0xFFFFFF, 0.4);
+            dustGraphics.fillCircle(10, 14, 6);
+            dustGraphics.fillCircle(22, 18, 6);
+            dustGraphics.fillCircle(16, 22, 5);
+
+            dustGraphics.generateTexture('dustCloud', 32, 32);
+            dustGraphics.destroy();
         }
 
-        // Create smoke particles
-        const smokeParticles = this.add.particles(pokemonX, pokemonY, 'smoke', {
-            speed: { min: 50, max: 100 },
-            angle: { min: 0, max: 360 },
-            scale: { start: 2, end: 4 },
-            alpha: { start: 0.6, end: 0 },
+        // Layer 1: Large, slow background dust clouds
+        const largeDust = this.add.particles(pokemonX, pokemonY + 20, 'dustCloud', {
+            speed: { min: 30, max: 80 },
+            angle: { min: 170, max: 370 }, // Mostly horizontal spread
+            scale: { start: 3.5, end: 5 },
+            alpha: { start: 0.4, end: 0 },
+            lifespan: 1200,
+            gravityY: 80,
+            rotate: { start: 0, end: 180 },
+            tint: [0xD4A574, 0xC8997A], // Brownish earth tones
+            emitting: false
+        });
+
+        // Layer 2: Medium particles with more speed
+        const mediumDust = this.add.particles(pokemonX, pokemonY + 10, 'dustCloud', {
+            speed: { min: 60, max: 120 },
+            angle: { min: 160, max: 380 },
+            scale: { start: 2, end: 3.5 },
+            alpha: { start: 0.5, end: 0 },
             lifespan: 1000,
-            frequency: 50,
-            tint: [0xCCCCCC, 0x999999, 0xDDDDDD]
+            gravityY: 100,
+            rotate: { start: 0, end: 360 },
+            tint: [0xE0C097, 0xD4A574, 0xC8997A],
+            emitting: false
+        });
+
+        // Layer 3: Small, fast detail particles
+        const smallDust = this.add.particles(pokemonX, pokemonY, 'dustCloud', {
+            speed: { min: 80, max: 150 },
+            angle: { min: 150, max: 390 },
+            scale: { start: 1, end: 2 },
+            alpha: { start: 0.6, end: 0 },
+            lifespan: 800,
+            gravityY: 120,
+            rotate: { start: 0, end: 360 },
+            tint: [0xB8936A, 0xC8997A, 0xE0C097],
+            emitting: false
+        });
+
+        // Initial explosive burst
+        largeDust.explode(15);
+        mediumDust.explode(25);
+        smallDust.explode(35);
+
+        // Continue emitting for a brief period (creates the "cloud" effect)
+        this.time.delayedCall(50, () => {
+            largeDust.emitting = true;
+            mediumDust.emitting = true;
+            smallDust.emitting = true;
+            largeDust.setFrequency(80);
+            mediumDust.setFrequency(60);
+            smallDust.setFrequency(40);
+        });
+
+        // Stop emission after cloud forms
+        this.time.delayedCall(450, () => {
+            largeDust.stop();
+            mediumDust.stop();
+            smallDust.stop();
         });
 
         // Fade out and move Pokemon
@@ -752,15 +815,14 @@ export class MainGameScene extends Phaser.Scene {
             alpha: 0,
             y: pokemonY - 50,
             duration: 800,
-            ease: 'Power2',
-            onComplete: () => {
-                smokeParticles.stop();
-            }
+            ease: 'Power2'
         });
 
-        // Continue after delay
+        // Continue after delay and cleanup
         this.time.delayedCall(1500, () => {
-            smokeParticles.destroy();
+            largeDust.destroy();
+            mediumDust.destroy();
+            smallDust.destroy();
             this.isAnimating = false;
             this.startNewEncounter();
         });
