@@ -47,13 +47,13 @@ export class PokeballGameScene extends Phaser.Scene {
         });
 
         // Coin counter (top right)
-        // Coin sprite
-        const coinIcon = this.add.image(width - 110, 40, 'coin');
+        // Coin sprite (using tiny version for better quality)
+        const coinIcon = this.add.image(width - 110, 40, 'coin-tiny');
         coinIcon.setOrigin(0, 0.5);
-        coinIcon.setScale(0.625); // 128px * 0.625 = 80px
+        coinIcon.setScale(1.25); // 64px * 1.25 = 80px
 
         // Count text
-        this.coinCounterText = this.add.text(width - 20, 32, `x${this.coinCount}`, {
+        this.coinCounterText = this.add.text(width - 20, 32, `${this.coinCount}`, {
             font: 'bold 32px Arial',
             fill: '#ffffff',
             stroke: '#000000',
@@ -124,7 +124,7 @@ export class PokeballGameScene extends Phaser.Scene {
             showGiftBoxReward(this, coinReward, () => {
                 // Animation complete - update coin count
                 this.coinCount = addCoins(coinReward);
-                this.coinCounterText.setText(`x${this.coinCount}`);
+                this.coinCounterText.setText(`${this.coinCount}`);
 
                 // Clean up and load next challenge
                 this.gameMode.cleanup(this);

@@ -145,8 +145,8 @@ function explodeAndReveal(scene, giftBox, coinAmount, onComplete) {
  * Show the coin amount reveal
  */
 function showCoinReveal(scene, x, y, coinAmount, onComplete) {
-  // Create coin sprite
-  const coinSprite = scene.add.image(x, y - 30, 'coin');
+  // Create coin sprite (using tiny version for better quality)
+  const coinSprite = scene.add.image(x, y - 30, 'coin-tiny');
   coinSprite.setOrigin(0.5);
   coinSprite.setDepth(1001);
   coinSprite.setScale(0);
@@ -167,7 +167,7 @@ function showCoinReveal(scene, x, y, coinAmount, onComplete) {
   // Animate coin and text
   scene.tweens.add({
     targets: [coinSprite, amountText],
-    scale: 0.8, // 128px * 0.8 = ~102px (good size for reward reveal)
+    scale: 1.6, // 64px * 1.6 = ~102px (good size for reward reveal)
     duration: 400,
     ease: 'Back.easeOut',
     onComplete: () => {
