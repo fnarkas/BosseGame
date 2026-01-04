@@ -13,7 +13,9 @@
       "Bash(chmod:*)",
       "Bash(git commit:*)",
       "Bash(identify:*)",
-      "Bash(./process_type_icons.sh:*)"
+      "Bash(./process_type_icons.sh:*)",
+      "Bash(convert:*)",
+      "Bash(magick:*)"
     ],
     "deny": [],
     "ask": []

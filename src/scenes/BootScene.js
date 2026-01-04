@@ -41,6 +41,17 @@ export class BootScene extends Phaser.Scene {
         // Load pokeball sprites
         this.loadPokeballSprites();
 
+        // Load coin sprite (optimized 128x128 version)
+        this.load.image('coin', 'coin-small.png');
+
+        // Load tiny coin sprite for inventory (64x64)
+        this.load.image('coin-tiny', 'coin-tiny.png');
+
+        // Load UI button icons (optimized 128x128 versions)
+        this.load.image('dice-icon', 'dice-icon-small.png');
+        this.load.image('pokedex-icon', 'pokedex-icon-small.png');
+        this.load.image('store-icon', 'store-icon-small.png');
+
         // Load type icons
         this.loadTypeIcons();
 
@@ -62,11 +73,18 @@ export class BootScene extends Phaser.Scene {
     }
 
     loadPokeballSprites() {
-        // Load pokeball sprites
-        const pokeballs = [
-            'poke-ball',
-            'great-ball',
-            'ultra-ball',
+        // Load optimized 128x128 pokeball sprites (converted from high-quality webp)
+        this.load.image('pokeball_poke-ball', 'pokeball_sprites/poke-ball-small.png');
+        this.load.image('pokeball_great-ball', 'pokeball_sprites/great-ball-small.png');
+        this.load.image('pokeball_ultra-ball', 'pokeball_sprites/ultra-ball-small.png');
+
+        // Load tiny 64x64 pokeball sprites for inventory
+        this.load.image('pokeball_poke-ball-tiny', 'pokeball_sprites/poke-ball-tiny.png');
+        this.load.image('pokeball_great-ball-tiny', 'pokeball_sprites/great-ball-tiny.png');
+        this.load.image('pokeball_ultra-ball-tiny', 'pokeball_sprites/ultra-ball-tiny.png');
+
+        // Load old PNG pokeball sprites (for other types)
+        const otherPokeballs = [
             'master-ball',
             'safari-ball',
             'net-ball',
@@ -82,7 +100,7 @@ export class BootScene extends Phaser.Scene {
             'cherish-ball'
         ];
 
-        pokeballs.forEach(ballName => {
+        otherPokeballs.forEach(ballName => {
             this.load.image(`pokeball_${ballName}`, `pokeball_sprites/${ballName}.png`);
         });
     }

@@ -313,3 +313,158 @@ canvas {
         height: 150px;
     }
 }
+
+/* Store Overlay */
+#store-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    z-index: 1000;
+    overflow-y: auto;
+}
+
+.store-header {
+    position: sticky;
+    top: 0;
+    background: rgba(44, 62, 80, 0.95);
+    padding: 20px;
+    text-align: center;
+    z-index: 10;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.store-title {
+    font-size: 48px;
+    font-weight: bold;
+    color: #FFD700;
+    text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.8);
+    margin: 0;
+}
+
+.store-coin-balance {
+    position: absolute;
+    right: 20px;
+    top: 30px;
+    font-size: 36px;
+    color: #FFD700;
+    font-weight: bold;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.coin-icon {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+}
+
+.store-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 30px;
+    padding: 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.pokeball-card {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border: 3px solid #000;
+    transition: transform 0.2s;
+}
+
+.pokeball-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+}
+
+.pokeball-card-image {
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+    margin-bottom: 15px;
+}
+
+.pokeball-card-name {
+    font-size: 28px;
+    font-weight: bold;
+    color: #000;
+    margin-bottom: 10px;
+}
+
+.pokeball-card-price {
+    font-size: 32px;
+    color: #FFD700;
+    margin-bottom: 10px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.coin-icon-small {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+}
+
+.pokeball-card-inventory {
+    font-size: 20px;
+    color: #666;
+    margin-bottom: 20px;
+}
+
+.pokeball-buy-btn {
+    background: #4CAF50;
+    color: white;
+    border: 2px solid #000;
+    border-radius: 8px;
+    padding: 12px 40px;
+    font-size: 20px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s;
+    width: 100%;
+}
+
+.pokeball-buy-btn:hover:not(:disabled) {
+    background: #66BB6A;
+}
+
+.pokeball-buy-btn:active:not(:disabled) {
+    background: #388E3C;
+}
+
+.pokeball-buy-btn:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+@media (max-width: 768px) {
+    .store-grid {
+        grid-template-columns: 1fr;
+        padding: 20px;
+    }
+
+    .store-title {
+        font-size: 32px;
+    }
+
+    .store-coin-balance {
+        font-size: 24px;
+        right: 10px;
+        top: 25px;
+    }
+}

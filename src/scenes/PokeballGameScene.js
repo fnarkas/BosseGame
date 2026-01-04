@@ -2,13 +2,15 @@ import Phaser from 'phaser';
 import { WordEmojiMatchMode } from '../pokeballGameModes/WordEmojiMatchMode.js';
 import { LetterListeningMode } from '../pokeballGameModes/LetterListeningMode.js';
 import { LeftRightMode } from '../pokeballGameModes/LeftRightMode.js';
+import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
+import { showGiftBoxReward } from '../rewardAnimation.js';
 
 export class PokeballGameScene extends Phaser.Scene {
     constructor() {
         super({ key: 'PokeballGameScene' });
         this.gameMode = null;
-        this.pokeballCount = 0;
-        this.pokeballCounterText = null;
+        this.coinCount = 0;
+        this.coinCounterText = null;
         this.isProcessingAnswer = false;
         this.challengeCount = 0; // Track number of challenges completed
     }
@@ -17,8 +19,8 @@ export class PokeballGameScene extends Phaser.Scene {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
 
-        // Load pokeball count from registry
-        this.pokeballCount = this.registry.get('pokeballCount') || 0;
+        // Load coin count from localStorage
+        this.coinCount = getCoinCount();
 
         // Background
         this.add.rectangle(0, 0, width, height, 0x87CEEB).setOrigin(0);
@@ -44,14 +46,14 @@ export class PokeballGameScene extends Phaser.Scene {
             this.scene.start('MainGameScene');
         });
 
-        // Pokeball counter (top right)
-        // Pokeball icon
-        this.pokeballIcon = this.add.image(width - 90, 25, 'pokeball_poke-ball');
-        this.pokeballIcon.setOrigin(0, 0);
-        this.pokeballIcon.setScale(1.5);
+        // Coin counter (top right)
+        // Coin sprite
+        const coinIcon = this.add.image(width - 110, 40, 'coin');
+        coinIcon.setOrigin(0, 0.5);
+        coinIcon.setScale(0.625); // 128px * 0.625 = 80px
 
         // Count text
-        this.pokeballCounterText = this.add.text(width - 20, 32, `x${this.pokeballCount}`, {
+        this.coinCounterText = this.add.text(width - 20, 32, `x${this.coinCount}`, {
             font: 'bold 32px Arial',
             fill: '#ffffff',
             stroke: '#000000',
@@ -112,28 +114,19 @@ export class PokeballGameScene extends Phaser.Scene {
         this.isProcessingAnswer = true;
 
         if (isCorrect) {
-            // Show success feedback
+            // Show success feedback particles
             this.showSuccessFeedback(x, y);
 
-            // Award pokeball
-            this.pokeballCount++;
-            this.registry.set('pokeballCount', this.pokeballCount);
-            localStorage.setItem('pokeballCount', this.pokeballCount.toString());
+            // Generate random coin reward (1-3)
+            const coinReward = getRandomCoinReward();
 
-            // Update counter display
-            this.pokeballCounterText.setText(`x${this.pokeballCount}`);
+            // Show gift box reward animation
+            showGiftBoxReward(this, coinReward, () => {
+                // Animation complete - update coin count
+                this.coinCount = addCoins(coinReward);
+                this.coinCounterText.setText(`x${this.coinCount}`);
 
-            // Show success message
-            const successText = this.add.text(this.cameras.main.width / 2, 600, 'Rätt! +1 Pokéball', {
-                font: 'bold 36px Arial',
-                fill: '#27AE60',
-                stroke: '#FFFFFF',
-                strokeThickness: 4
-            }).setOrigin(0.5);
-
-            // Load next challenge after delay
-            this.time.delayedCall(1500, () => {
-                successText.destroy();
+                // Clean up and load next challenge
                 this.gameMode.cleanup(this);
 
                 // Increment challenge count and switch mode

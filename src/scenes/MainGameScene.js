@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import { LetterMatchMode } from '../answerModes/LetterMatchMode.js';
 import { DebugMode } from '../answerModes/DebugMode.js';
+import { createInventoryHUD, updateInventoryHUD } from '../inventoryHUD.js';
+import { hasPokeballs, removePokeball, getInventory, POKEBALL_TYPES } from '../inventory.js';
+import { showPokeballSelector } from '../pokeballSelector.js';
 
 export class MainGameScene extends Phaser.Scene {
     constructor() {
@@ -10,8 +13,8 @@ export class MainGameScene extends Phaser.Scene {
         this.attemptsLeft = 3;
         this.isAnimating = false; // Prevent multiple clicks during animation
         this.answerMode = null; // Will be set in create() based on game mode
-        this.pokeballCount = 0;
-        this.pokeballCounterText = null;
+        this.inventoryHUD = null;
+        this.selectedPokeballType = 'pokeball'; // Default to regular pokeball
 
         // Depth constants for layering
         this.DEPTH = {
@@ -38,9 +41,6 @@ export class MainGameScene extends Phaser.Scene {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
 
-        // Load pokeball count from registry
-        this.pokeballCount = this.registry.get('pokeballCount') || 0;
-
         // Initialize answer mode based on registry
         const modeName = this.registry.get('answerMode') || 'letter';
         console.log('Initializing answer mode:', modeName);
@@ -63,35 +63,34 @@ export class MainGameScene extends Phaser.Scene {
         // Background
         this.add.rectangle(0, 0, width, height, 0x87CEEB).setOrigin(0);
 
-        // Pokeball counter (top left)
-        // Pokeball icon
-        this.pokeballIcon = this.add.image(20, 25, 'pokeball_poke-ball');
-        this.pokeballIcon.setOrigin(0, 0);
-        this.pokeballIcon.setScale(1.5);
+        // Create inventory HUD (top left)
+        this.inventoryHUD = createInventoryHUD(this, 150, 20);
 
-        // Count text
-        this.pokeballCounterText = this.add.text(65, 32, `x${this.pokeballCount}`, {
-            font: 'bold 32px Arial',
-            fill: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 4
-        }).setOrigin(0, 0);
+        // Store button (icon sprite)
+        const storeBtn = this.add.image(width - 160, 52, 'store-icon');
+        storeBtn.setOrigin(1, 0.5);
+        storeBtn.setScale(0.5); // 128px * 0.5 = 64px
+        storeBtn.setInteractive({ useHandCursor: true });
 
-        // Pokeball game button (emoji only)
-        const pokeballGameBtn = this.add.text(width - 90, 20, '🎮', {
-            font: '64px Arial',
-            fill: '#ffffff'
-        }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
+        storeBtn.on('pointerdown', () => {
+            window.openStore();
+        });
 
-        pokeballGameBtn.on('pointerdown', () => {
+        // Mini-game button (dice icon sprite)
+        const diceBtn = this.add.image(width - 90, 52, 'dice-icon');
+        diceBtn.setOrigin(1, 0.5);
+        diceBtn.setScale(0.5); // 128px * 0.5 = 64px
+        diceBtn.setInteractive({ useHandCursor: true });
+
+        diceBtn.on('pointerdown', () => {
             this.scene.start('PokeballGameScene');
         });
 
-        // Pokedex button (emoji only)
-        const pokedexBtn = this.add.text(width - 20, 20, '📖', {
-            font: '64px Arial',
-            fill: '#ffffff'
-        }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
+        // Pokedex button (icon sprite)
+        const pokedexBtn = this.add.image(width - 20, 52, 'pokedex-icon');
+        pokedexBtn.setOrigin(1, 0.5);
+        pokedexBtn.setScale(0.5); // 128px * 0.5 = 64px
+        pokedexBtn.setInteractive({ useHandCursor: true });
 
         pokedexBtn.on('pointerdown', () => {
             // Use HTML overlay Pokedex instead of scene
@@ -219,35 +218,11 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     createPokeball(x, y) {
-        // Create a container for the pokeball
-        const pokeball = this.add.container(x, y);
-
-        const radius = 140; // Slightly bigger to fully cover Pokemon
-
-        // Bottom half (white)
-        const bottomHalf = this.add.circle(0, 0, radius, 0xFFFFFF);
-        bottomHalf.setStrokeStyle(9, 0x000000);
-
-        // Top half (red) - using a graphics object to draw a semicircle
-        const topHalf = this.add.graphics();
-        topHalf.fillStyle(0xFF0000, 1);
-        topHalf.lineStyle(9, 0x000000);
-        topHalf.slice(0, 0, radius, Phaser.Math.DegToRad(180), Phaser.Math.DegToRad(360), false);
-        topHalf.fillPath();
-        topHalf.strokePath();
-
-        // Middle black line
-        const middleLine = this.add.rectangle(0, 0, radius * 2, 18, 0x000000);
-
-        // Center circle (white)
-        const centerCircle = this.add.circle(0, 0, 35, 0xFFFFFF);
-        centerCircle.setStrokeStyle(9, 0x000000);
-
-        // Center button (small circle)
-        const centerButton = this.add.circle(0, 0, 18, 0xCCCCCC);
-        centerButton.setStrokeStyle(6, 0x000000);
-
-        pokeball.add([bottomHalf, topHalf, middleLine, centerCircle, centerButton]);
+        // Use sprite for the selected pokeball type
+        const spriteKey = `pokeball_${this.selectedPokeballType}`;
+        const pokeball = this.add.image(x, y, spriteKey);
+        pokeball.setScale(1.2); // 128px * 1.2 = 154px
+        pokeball.setDepth(this.DEPTH.POKEBALL);
 
         return pokeball;
     }
@@ -270,23 +245,34 @@ export class MainGameScene extends Phaser.Scene {
             }
         } else {
             // Correct answer and all letters collected - check if player has pokeballs!
-            if (this.pokeballCount <= 0) {
+            if (!hasPokeballs()) {
                 // No pokeballs! Show message
                 this.showNoPokeballsPopup();
                 return;
             }
 
-            // Deduct pokeball
-            this.pokeballCount--;
-            this.registry.set('pokeballCount', this.pokeballCount);
-            localStorage.setItem('pokeballCount', this.pokeballCount.toString());
+            // Show pokeball selector
+            this.isAnimating = true; // Prevent other actions during selection
+            showPokeballSelector(
+                this,
+                (selectedType) => {
+                    // Player selected a pokeball
+                    this.selectedPokeballType = selectedType;
 
-            // Update counter display
-            this.pokeballCounterText.setText(`x${this.pokeballCount}`);
+                    // Deduct pokeball from inventory
+                    removePokeball(this.selectedPokeballType);
 
-            // Throw pokeball to catch Pokemon!
-            this.isAnimating = true;
-            this.throwPokeball(isCorrect);
+                    // Update HUD display
+                    updateInventoryHUD(this.inventoryHUD);
+
+                    // Throw pokeball to catch Pokemon!
+                    this.throwPokeball(isCorrect);
+                },
+                () => {
+                    // Player cancelled - allow them to continue playing
+                    this.isAnimating = false;
+                }
+            );
         }
     }
 
