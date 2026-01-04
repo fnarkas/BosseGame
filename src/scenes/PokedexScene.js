@@ -181,17 +181,17 @@ export class PokedexScene extends Phaser.Scene {
             // Type icons for ALL Pokemon (from local POKEMON_DATA)
             const types = pokemon.types;
             if (types && types.length > 0) {
-                const typeIconSize = 24;
-                const typeSpacing = 5;
+                const typeIconSize = 30;
+                const typeSpacing = 8;
                 const numTypes = types.length;
                 const totalTypeWidth = numTypes * typeIconSize + (numTypes - 1) * typeSpacing;
                 const typeStartX = x - totalTypeWidth / 2;
-                const typeY = y + 108;
+                const typeY = y + 112; // Positioned below the number label
 
                 types.forEach((typeId, typeIndex) => {
                     const typeX = typeStartX + typeIndex * (typeIconSize + typeSpacing);
                     const typeIcon = this.add.image(typeX, typeY, `type_${typeId}`);
-                    typeIcon.setScale(0.75);
+                    typeIcon.setScale(1.0); // Display at full size since they're now circular and compact
 
                     // Fade uncaught Pokemon type icons
                     if (!isCaught) {

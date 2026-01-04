@@ -8,6 +8,21 @@
 </head>
 <body>
     <div id="game-container"></div>
+
+    <!-- Pokedex HTML Overlay -->
+    <div id="pokedex-overlay" style="display: none;">
+        <div class="pokedex-header">
+            <button id="pokedex-back-btn" class="back-button">← Tillbaka</button>
+            <h1 class="pokedex-title">Min Pokedex</h1>
+            <div id="pokedex-stats" class="pokedex-stats">Fångade: 0 / 100</div>
+        </div>
+        <div id="pokedex-grid-container" class="pokedex-grid-container">
+            <div id="pokedex-grid" class="pokedex-grid">
+                <!-- Pokemon cards will be dynamically generated here -->
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="/src/main.js"></script>
 </body>
 </html>

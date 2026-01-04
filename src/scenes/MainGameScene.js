@@ -94,7 +94,8 @@ export class MainGameScene extends Phaser.Scene {
         }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
 
         pokedexBtn.on('pointerdown', () => {
-            this.scene.start('PokedexScene');
+            // Use HTML overlay Pokedex instead of scene
+            window.showPokedex();
         });
 
         // DEBUG: Press 'P' to test particle effect

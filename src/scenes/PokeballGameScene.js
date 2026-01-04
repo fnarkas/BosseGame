@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { WordEmojiMatchMode } from '../pokeballGameModes/WordEmojiMatchMode.js';
 import { LetterListeningMode } from '../pokeballGameModes/LetterListeningMode.js';
+import { LeftRightMode } from '../pokeballGameModes/LeftRightMode.js';
 
 export class PokeballGameScene extends Phaser.Scene {
     constructor() {
@@ -70,14 +71,31 @@ export class PokeballGameScene extends Phaser.Scene {
     }
 
     selectGameMode() {
-        // Alternate between game modes based on challenge count
-        // Even challenges: Letter Listening, Odd challenges: Word-Emoji Match
-        if (this.challengeCount % 2 === 0) {
+        // Check if a specific mode is forced (for debug paths)
+        const forcedMode = this.registry.get('pokeballGameMode');
+
+        if (forcedMode === 'letter-only') {
+            // Debug path: /letters - only show letter listening
             this.gameMode = new LetterListeningMode();
-            console.log('Selected game mode: Letter Listening');
-        } else {
+            console.log('Selected game mode: Letter Listening (forced)');
+        } else if (forcedMode === 'word-emoji-only') {
+            // Debug path: could add /words - only show word-emoji
             this.gameMode = new WordEmojiMatchMode();
-            console.log('Selected game mode: Word-Emoji Match');
+            console.log('Selected game mode: Word-Emoji Match (forced)');
+        } else if (forcedMode === 'directions-only') {
+            // Debug path: /directions - only show left/right
+            this.gameMode = new LeftRightMode();
+            console.log('Selected game mode: Left/Right Directions (forced)');
+        } else {
+            // Normal mode: Alternate between game modes based on challenge count
+            // Even challenges: Letter Listening, Odd challenges: Word-Emoji Match
+            if (this.challengeCount % 2 === 0) {
+                this.gameMode = new LetterListeningMode();
+                console.log('Selected game mode: Letter Listening');
+            } else {
+                this.gameMode = new WordEmojiMatchMode();
+                console.log('Selected game mode: Word-Emoji Match');
+            }
         }
     }
 

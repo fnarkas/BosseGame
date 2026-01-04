@@ -49,6 +49,9 @@ export class BootScene extends Phaser.Scene {
 
         // Load Swedish letter audio
         this.loadLetterAudio();
+
+        // Load direction audio
+        this.loadDirectionAudio();
     }
 
     loadPokemonImages() {
@@ -85,9 +88,9 @@ export class BootScene extends Phaser.Scene {
     }
 
     loadTypeIcons() {
-        // Load type icons (IDs 1-18)
+        // Load type icons (IDs 1-18) - using circular versions without text
         for (let typeId = 1; typeId <= 18; typeId++) {
-            this.load.image(`type_${typeId}`, `type_icons/${typeId}.png`);
+            this.load.image(`type_${typeId}`, `type_icons_circular/${typeId}.png`);
         }
     }
 
@@ -106,6 +109,16 @@ export class BootScene extends Phaser.Scene {
             const audioKey = `letter_audio_${letter.toLowerCase()}`;
             const audioFilename = `${letter.toLowerCase()}.mp3`;
             this.load.audio(audioKey, `letter_audio/${audioFilename}`);
+        });
+    }
+
+    loadDirectionAudio() {
+        // Load direction audio (höger, vänster)
+        const directions = ['hoger', 'vanster'];
+        directions.forEach(direction => {
+            const audioKey = `direction_audio_${direction}`;
+            const audioFilename = `${direction}.mp3`;
+            this.load.audio(audioKey, `direction_audio/${audioFilename}`);
         });
     }
 

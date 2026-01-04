@@ -19,13 +19,13 @@ SWEDISH_LETTERS = [
 VOICE = "sv-SE-MattiasNeural"  # Male Swedish voice
 
 async def generate_letter_audio(letter):
-    """Generate TTS audio for a single letter"""
+    """Generate TTS audio for a single letter (using letter name)"""
     filename = f"public/letter_audio/{letter.lower()}.mp3"
 
     try:
         print(f"Generating letter '{letter}'...", end=" ")
 
-        # Create TTS
+        # Create TTS with letter name
         tts = edge_tts.Communicate(letter, VOICE)
         await tts.save(filename)
 

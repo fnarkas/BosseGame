@@ -4,18 +4,33 @@ import { BootScene } from './scenes/BootScene.js';
 import { MainGameScene } from './scenes/MainGameScene.js';
 import { PokedexScene } from './scenes/PokedexScene.js';
 import { PokeballGameScene } from './scenes/PokeballGameScene.js';
+import { initPokedex, showPokedex } from './pokedex.js';
 
 // Make POKEMON_DATA globally available
 window.POKEMON_DATA = POKEMON_DATA;
+
+// Make showPokedex globally available for scenes
+window.showPokedex = showPokedex;
 
 // Detect URL path to determine game mode and routing
 const path = window.location.pathname;
 let answerMode;
 let startScene = 'MainGameScene';
+let pokeballGameMode = null; // null = alternate, 'letter' = letter only, 'word-emoji' = word-emoji only
 
 if (path === '/debug' || path === '/debug/') {
     answerMode = 'debug';
     console.log('Running in DEBUG mode');
+} else if (path === '/letters' || path === '/letters/') {
+    answerMode = 'letter'; // default
+    startScene = 'PokeballGameScene';
+    pokeballGameMode = 'letter-only';
+    console.log('Running LETTER LISTENING mode (debug)');
+} else if (path === '/directions' || path === '/directions/') {
+    answerMode = 'letter'; // default
+    startScene = 'PokeballGameScene';
+    pokeballGameMode = 'directions-only';
+    console.log('Running LEFT/RIGHT DIRECTIONS mode (debug)');
 } else if (path === '/pokeballs' || path === '/pokeballs/') {
     answerMode = 'letter'; // default
     startScene = 'PokeballGameScene';
@@ -44,8 +59,12 @@ const config = {
             // Set answer mode in registry before scenes start
             game.registry.set('answerMode', answerMode);
             game.registry.set('startScene', startScene);
+            game.registry.set('pokeballGameMode', pokeballGameMode);
         }
     }
 };
 
 const game = new Phaser.Game(config);
+
+// Initialize Pokedex with game instance for audio access
+initPokedex(game);
