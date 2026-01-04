@@ -466,7 +466,13 @@ export class MainGameScene extends Phaser.Scene {
         this.time.delayedCall(this.ANIMATION.SUCCESS_POPUP_DELAY, () => {
             console.log('Destroying particles and showing popup');
             particles.destroy();
-            this.showPokemonInfoPopup(pokeball);
+            pokeball.destroy();
+
+            // Show HTML popup instead of canvas popup
+            window.showPokemonCaughtPopup(this.currentPokemon.id, () => {
+                this.isAnimating = false;
+                this.startNewEncounter();
+            });
         });
     }
 
@@ -613,9 +619,9 @@ export class MainGameScene extends Phaser.Scene {
         }).setOrigin(0.5);
         nameText.setDepth(this.DEPTH.POPUP_CONTENT);
 
-        // Pokemon types - display type icons
-        const typeIconSize = 80;
-        const typeSpacing = 10;
+        // Pokemon types - display type icons (circular icons are smaller, so scale more)
+        const typeIconSize = 100;
+        const typeSpacing = 15;
         const numTypes = data.types.length;
         const totalTypeWidth = numTypes * typeIconSize + (numTypes - 1) * typeSpacing;
         const startX = (width - totalTypeWidth) / 2 + typeIconSize / 2;
@@ -625,9 +631,9 @@ export class MainGameScene extends Phaser.Scene {
         data.types.forEach((typeId, index) => {
             const x = startX + index * (typeIconSize + typeSpacing);
 
-            // Type icon
+            // Type icon (circular icons need more scaling since they're 60x40 instead of 200x40)
             const typeIcon = this.add.image(x, typeY, `type_${typeId}`);
-            typeIcon.setScale(2.5); // Scale up the icon
+            typeIcon.setScale(3.5); // Increased scale for circular icons
             typeIcon.setDepth(this.DEPTH.POPUP_CONTENT);
             typeIcons.push(typeIcon);
         });

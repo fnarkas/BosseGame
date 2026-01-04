@@ -5,12 +5,16 @@ import { MainGameScene } from './scenes/MainGameScene.js';
 import { PokedexScene } from './scenes/PokedexScene.js';
 import { PokeballGameScene } from './scenes/PokeballGameScene.js';
 import { initPokedex, showPokedex } from './pokedex.js';
+import { initPokemonCaughtPopup, showPokemonCaughtPopup } from './pokemonCaughtPopup.js';
 
 // Make POKEMON_DATA globally available
 window.POKEMON_DATA = POKEMON_DATA;
 
 // Make showPokedex globally available for scenes
 window.showPokedex = showPokedex;
+
+// Make showPokemonCaughtPopup globally available for scenes
+window.showPokemonCaughtPopup = showPokemonCaughtPopup;
 
 // Detect URL path to determine game mode and routing
 const path = window.location.pathname;
@@ -68,3 +72,6 @@ const game = new Phaser.Game(config);
 
 // Initialize Pokedex with game instance for audio access
 initPokedex(game);
+
+// Initialize Pokemon Caught Popup
+initPokemonCaughtPopup();

@@ -183,6 +183,110 @@ canvas {
     opacity: 0.3;
 }
 
+/* Pokemon Caught Popup Modal */
+#pokemon-caught-popup {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    pointer-events: none;
+}
+
+#pokemon-caught-popup[style*="display: flex"],
+#pokemon-caught-popup[style*="display: block"] {
+    pointer-events: all;
+}
+
+.popup-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1;
+}
+
+.popup-card {
+    position: relative;
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    max-width: 450px;
+    width: 90%;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border: 4px solid #000;
+}
+
+.popup-pokemon-image {
+    width: 200px;
+    height: 200px;
+    object-fit: contain;
+    margin-bottom: 15px;
+}
+
+.popup-pokemon-number {
+    font-size: 24px;
+    font-weight: bold;
+    color: #666;
+    margin-bottom: 5px;
+}
+
+.popup-pokemon-name {
+    font-size: 32px;
+    font-weight: bold;
+    color: #000;
+    margin-bottom: 15px;
+    text-transform: uppercase;
+}
+
+.popup-pokemon-types {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.popup-type-icon {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+}
+
+.popup-pokemon-stats {
+    font-size: 18px;
+    color: #666;
+    margin-bottom: 20px;
+}
+
+.popup-continue-btn {
+    background: #4CAF50;
+    color: white;
+    border: 2px solid #000;
+    border-radius: 8px;
+    padding: 12px 30px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.popup-continue-btn:hover {
+    background: #66BB6A;
+}
+
+.popup-continue-btn:active {
+    background: #388E3C;
+}
+
 /* Responsive for smaller screens */
 @media (max-width: 1024px) {
     .pokedex-grid {
@@ -198,5 +302,14 @@ canvas {
 
     .pokedex-title {
         font-size: 36px;
+    }
+
+    .popup-card {
+        padding: 20px;
+    }
+
+    .popup-pokemon-image {
+        width: 150px;
+        height: 150px;
     }
 }
