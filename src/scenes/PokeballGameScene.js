@@ -26,14 +26,6 @@ export class PokeballGameScene extends Phaser.Scene {
         // Background
         this.add.rectangle(0, 0, width, height, 0x87CEEB).setOrigin(0);
 
-        // Title
-        this.add.text(width / 2, 60, 'Pokéball Spel', {
-            font: 'bold 56px Arial',
-            fill: '#FFD700',
-            stroke: '#000000',
-            strokeThickness: 6
-        }).setOrigin(0.5);
-
         // Back button
         const backBtn = this.add.text(20, 20, '← Tillbaka', {
             font: '24px Arial',

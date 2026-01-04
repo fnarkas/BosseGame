@@ -28,14 +28,6 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
 
-        // Visual instruction - just emojis showing drag action
-        const title = scene.add.text(width / 2, 100, '👇 ↔️ 👆', {
-            fontSize: '48px',
-            fontFamily: 'Arial'
-        });
-        title.setOrigin(0.5);
-        this.uiElements.push(title);
-
         // Create uppercase letters (drop zones) at top
         const upperY = 250;
         const spacing = 200;
@@ -61,7 +53,7 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
             const gapLength = 8;
 
             // Draw dashed rectangle
-            this.drawDashedRect(graphics, x - boxSize/2, upperY - boxSize/2, boxSize, boxSize, dashLength, gapLength);
+            this.drawDashedRect(graphics, x - boxSize / 2, upperY - boxSize / 2, boxSize, boxSize, dashLength, gapLength);
 
             dropZone.setData('dashedBorder', graphics);
             this.uiElements.push(graphics);
