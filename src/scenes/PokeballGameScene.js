@@ -86,16 +86,54 @@ export class PokeballGameScene extends Phaser.Scene {
             this.gameMode = new LetterDragMatchMode();
             console.log('Selected game mode: Letter Drag Match (forced)');
         } else {
-            // Normal mode: Alternate between game modes based on challenge count
-            // Even challenges: Letter Listening, Odd challenges: Word-Emoji Match
-            if (this.challengeCount % 2 === 0) {
-                this.gameMode = new LetterListeningMode();
-                console.log('Selected game mode: Letter Listening');
-            } else {
-                this.gameMode = new WordEmojiMatchMode();
-                console.log('Selected game mode: Word-Emoji Match');
-            }
+            // Normal mode: Randomly select from all game modes with configurable probabilities
+            this.gameMode = this.selectRandomGameMode();
         }
+    }
+
+    selectRandomGameMode() {
+        // Configurable weights for each game mode
+        // Higher weight = higher probability of being selected
+        const MODE_WEIGHTS = {
+            letterListening: 25,    // 25% chance
+            wordEmoji: 25,           // 25% chance
+            leftRight: 25,           // 25% chance
+            letterDragMatch: 25      // 25% chance
+        };
+
+        // Calculate total weight
+        const totalWeight = MODE_WEIGHTS.letterListening +
+                          MODE_WEIGHTS.wordEmoji +
+                          MODE_WEIGHTS.leftRight +
+                          MODE_WEIGHTS.letterDragMatch;
+
+        // Generate random number between 0 and total weight
+        const random = Math.random() * totalWeight;
+
+        // Select mode based on weighted random
+        let currentWeight = 0;
+
+        currentWeight += MODE_WEIGHTS.letterListening;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Letter Listening');
+            return new LetterListeningMode();
+        }
+
+        currentWeight += MODE_WEIGHTS.wordEmoji;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Word-Emoji Match');
+            return new WordEmojiMatchMode();
+        }
+
+        currentWeight += MODE_WEIGHTS.leftRight;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Left/Right Directions');
+            return new LeftRightMode();
+        }
+
+        // Default to Letter Drag Match
+        console.log('Selected game mode: Letter Drag Match');
+        return new LetterDragMatchMode();
     }
 
     loadNextChallenge() {

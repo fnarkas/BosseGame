@@ -9,6 +9,9 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
     constructor() {
         super();
         this.usedChallengeIds = new Set();
+        this.hasError = false; // Track if player made an error
+        this.isRevealing = false; // Track if we're showing the answer
+        this.emojiButtons = []; // Store button references
     }
 
     generateChallenge() {
@@ -79,21 +82,35 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
             emojiText.setData('clearOnNewChallenge', true);
             this.uiElements.push(emojiText);
 
+            // Store button reference
+            this.emojiButtons.push({ button, emojiText, emoji, x, y });
+
             // Hover effects
             button.on('pointerover', () => {
-                button.setFillStyle(0xECF0F1);
-                button.setStrokeStyle(6, 0x2980B9);
+                if (!this.isRevealing) {
+                    button.setFillStyle(0xECF0F1);
+                    button.setStrokeStyle(6, 0x2980B9);
+                }
             });
 
             button.on('pointerout', () => {
-                button.setFillStyle(0xFFFFFF);
-                button.setStrokeStyle(4, 0x3498DB);
+                if (!this.isRevealing) {
+                    button.setFillStyle(0xFFFFFF);
+                    button.setStrokeStyle(4, 0x3498DB);
+                }
             });
 
             // Click handler
             button.on('pointerdown', () => {
+                if (this.isRevealing) return; // Don't allow clicks during reveal
+
                 const isCorrect = this.checkAnswer(emoji);
-                if (this.answerCallback) {
+
+                if (!isCorrect) {
+                    // Wrong answer - show error feedback then highlight correct answer
+                    this.showWrongAnswerFeedback(scene, button);
+                } else if (this.answerCallback) {
+                    // Correct answer - proceed as normal
                     this.answerCallback(isCorrect, emoji, x, y);
                 }
             });
@@ -104,6 +121,88 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
         return selectedEmoji === this.challengeData.correctEmoji;
     }
 
+    showWrongAnswerFeedback(scene, wrongButton) {
+        // Red flash on the wrong button
+        wrongButton.setFillStyle(0xFF0000, 0.5); // Red fill
+        wrongButton.setStrokeStyle(6, 0xFF0000); // Red border
+
+        // Shake animation
+        const originalX = wrongButton.x;
+        scene.tweens.add({
+            targets: wrongButton,
+            x: originalX - 10,
+            duration: 50,
+            yoyo: true,
+            repeat: 3,
+            onComplete: () => {
+                // Reset button appearance
+                wrongButton.setFillStyle(0xFFFFFF);
+                wrongButton.setStrokeStyle(4, 0x3498DB);
+                wrongButton.x = originalX;
+
+                // ONE ERROR = GAME OVER
+                // Highlight the correct answer
+                this.hasError = true;
+                this.highlightCorrectAnswer(scene);
+            }
+        });
+    }
+
+    highlightCorrectAnswer(scene) {
+        this.isRevealing = true;
+
+        // Disable all buttons
+        this.emojiButtons.forEach(item => {
+            item.button.disableInteractive();
+        });
+
+        // Find the correct button
+        const correctButton = this.emojiButtons.find(item =>
+            item.emoji === this.challengeData.correctEmoji
+        );
+
+        if (!correctButton) return;
+
+        // Change to gold/attention-grabbing color
+        correctButton.button.setFillStyle(0xFFD700, 0.5); // Gold fill
+        correctButton.button.setStrokeStyle(6, 0xFFD700); // Thick gold border
+
+        // Pulsing scale animation
+        scene.tweens.add({
+            targets: [correctButton.button, correctButton.emojiText],
+            scaleX: 1.2,
+            scaleY: 1.2,
+            duration: 500,
+            yoyo: true,
+            repeat: 3, // Pulse 4 times total (2 seconds)
+            ease: 'Sine.easeInOut'
+        });
+
+        // Pulsing alpha on button
+        scene.tweens.add({
+            targets: correctButton.button,
+            alpha: 0.7,
+            duration: 500,
+            yoyo: true,
+            repeat: 3,
+            ease: 'Sine.easeInOut'
+        });
+
+        // After 2 seconds of pulsing, restart with new challenge
+        scene.time.delayedCall(2000, () => {
+            // Clean up current UI
+            this.cleanup(scene);
+
+            // Reset state
+            this.hasError = false;
+            this.isRevealing = false;
+
+            // Generate new challenge
+            this.generateChallenge();
+            this.createChallengeUI(scene);
+        });
+    }
+
     cleanup(scene) {
         // Destroy all UI elements
         this.uiElements.forEach(element => {
@@ -112,5 +211,6 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
             }
         });
         this.uiElements = [];
+        this.emojiButtons = [];
     }
 }

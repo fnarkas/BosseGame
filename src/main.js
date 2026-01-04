@@ -30,6 +30,7 @@ let answerMode;
 let startScene = 'MainGameScene';
 let pokeballGameMode = null; // null = alternate, 'letter' = letter only, 'word-emoji' = word-emoji only
 let showStoreOnLoad = false;
+let showGamesMenu = false;
 
 if (path === '/debug' || path === '/debug/') {
     answerMode = 'debug';
@@ -58,47 +59,78 @@ if (path === '/debug' || path === '/debug/') {
     startScene = 'MainGameScene';
     showStoreOnLoad = true;
     console.log('Opening STORE');
+} else if (path === '/games' || path === '/games/') {
+    showGamesMenu = true;
+    console.log('Showing GAMES MENU');
 } else {
     answerMode = 'letter'; // default
     console.log('Running in LETTER MATCH mode');
 }
 
-// Main game configuration
-const config = {
-    type: Phaser.AUTO,
-    width: 1024,
-    height: 768,
-    parent: 'game-container',
-    backgroundColor: '#87CEEB',
-    scene: [BootScene, MainGameScene, PokedexScene, PokeballGameScene],
-    physics: {
-        default: 'arcade',
-        arcade: {
-            debug: false
+// Show games menu if /games route
+if (showGamesMenu) {
+    showGamesMenuPage();
+} else {
+    // Main game configuration
+    const config = {
+        type: Phaser.AUTO,
+        width: 1024,
+        height: 768,
+        parent: 'game-container',
+        backgroundColor: '#87CEEB',
+        scene: [BootScene, MainGameScene, PokedexScene, PokeballGameScene],
+        physics: {
+            default: 'arcade',
+            arcade: {
+                debug: false
+            }
+        },
+        callbacks: {
+            preBoot: (game) => {
+                // Set answer mode in registry before scenes start
+                game.registry.set('answerMode', answerMode);
+                game.registry.set('startScene', startScene);
+                game.registry.set('pokeballGameMode', pokeballGameMode);
+            }
         }
-    },
-    callbacks: {
-        preBoot: (game) => {
-            // Set answer mode in registry before scenes start
-            game.registry.set('answerMode', answerMode);
-            game.registry.set('startScene', startScene);
-            game.registry.set('pokeballGameMode', pokeballGameMode);
-        }
+    };
+
+    const game = new Phaser.Game(config);
+
+    // Initialize Pokedex with game instance for audio access
+    initPokedex(game);
+
+    // Initialize Pokemon Caught Popup
+    initPokemonCaughtPopup();
+
+    // Initialize Store
+    initStore();
+
+    // Open store if /store route was accessed
+    if (showStoreOnLoad) {
+        openStore();
     }
-};
+}
 
-const game = new Phaser.Game(config);
+function showGamesMenuPage() {
+    const gameContainer = document.getElementById('game-container');
+    if (gameContainer) {
+        gameContainer.style.display = 'none';
+    }
 
-// Initialize Pokedex with game instance for audio access
-initPokedex(game);
+    const menuHTML = `
+        <div style="font-family: Arial; max-width: 600px; margin: 80px auto; padding: 40px;">
+            <h1 style="text-align: center; margin-bottom: 40px; font-size: 36px;">🎮 Games</h1>
+            <div style="display: grid; gap: 15px;">
+                <a href="/" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🎯 Main Game</a>
+                <a href="/pokeballs" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🎲 Random Mix</a>
+                <a href="/letters" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🔊 Letter Listening</a>
+                <a href="/lettermatch" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🔤 Letter Match</a>
+                <a href="/directions" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">⬅️➡️ Directions</a>
+                <a href="/store" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🛒 Store</a>
+            </div>
+        </div>
+    `;
 
-// Initialize Pokemon Caught Popup
-initPokemonCaughtPopup();
-
-// Initialize Store
-initStore();
-
-// Open store if /store route was accessed
-if (showStoreOnLoad) {
-    openStore();
+    document.body.innerHTML = menuHTML;
 }

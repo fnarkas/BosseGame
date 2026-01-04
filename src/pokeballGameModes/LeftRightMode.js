@@ -10,6 +10,9 @@ export class LeftRightMode extends BasePokeballGameMode {
         this.requiredCorrect = 6;
         this.ballIndicators = [];
         this.currentAudio = null;
+        this.isRevealing = false; // Track if we're showing the answer
+        this.leftZone = null;
+        this.rightZone = null;
     }
 
     generateChallenge() {
@@ -44,22 +47,26 @@ export class LeftRightMode extends BasePokeballGameMode {
         divider.lineBetween(width / 2, 300, width / 2, height - 100);
         this.uiElements.push(divider);
 
-        // Create clickable zones for left and right
-        const leftZone = scene.add.rectangle(width / 4, height / 2 + 50, width / 2 - 20, 300, 0x4A90E2, 0.3)
+        // Create clickable zones for left and right (both same neutral color)
+        this.leftZone = scene.add.rectangle(width / 4, height / 2 + 50, width / 2 - 20, 300, 0xFFFFFF, 0.2)
             .setInteractive({ useHandCursor: true });
 
-        leftZone.on('pointerdown', () => {
-            this.handleAnswer(scene, 'vanster');
+        this.leftZone.on('pointerdown', () => {
+            if (!this.isRevealing) {
+                this.handleAnswer(scene, 'vanster');
+            }
         });
-        this.uiElements.push(leftZone);
+        this.uiElements.push(this.leftZone);
 
-        const rightZone = scene.add.rectangle(3 * width / 4, height / 2 + 50, width / 2 - 20, 300, 0xE74C3C, 0.3)
+        this.rightZone = scene.add.rectangle(3 * width / 4, height / 2 + 50, width / 2 - 20, 300, 0xFFFFFF, 0.2)
             .setInteractive({ useHandCursor: true });
 
-        rightZone.on('pointerdown', () => {
-            this.handleAnswer(scene, 'hoger');
+        this.rightZone.on('pointerdown', () => {
+            if (!this.isRevealing) {
+                this.handleAnswer(scene, 'hoger');
+            }
         });
-        this.uiElements.push(rightZone);
+        this.uiElements.push(this.rightZone);
 
         // Create 6 ball indicators showing progress
         this.createBallIndicators(scene);
@@ -70,7 +77,7 @@ export class LeftRightMode extends BasePokeballGameMode {
 
     createBallIndicators(scene) {
         const width = scene.cameras.main.width;
-        const startX = width / 2 - 150;
+        const startX = width / 2 - 180;
         const y = 500;
         const spacing = 60;
 
@@ -87,6 +94,13 @@ export class LeftRightMode extends BasePokeballGameMode {
             this.ballIndicators.push(circle);
             this.uiElements.push(circle);
         }
+
+        // Add gift emoji at the end to show the goal
+        const giftX = startX + this.requiredCorrect * spacing;
+        const giftEmoji = scene.add.text(giftX, y, '🎁', {
+            fontSize: '48px'
+        }).setOrigin(0.5);
+        this.uiElements.push(giftEmoji);
     }
 
     updateBallIndicators() {
@@ -122,31 +136,25 @@ export class LeftRightMode extends BasePokeballGameMode {
             this.correctInRow++;
             this.updateBallIndicators();
 
+            // Show success particles
+            const correctZone = selectedDirection === 'vanster' ? this.leftZone : this.rightZone;
+            this.showSuccessParticles(scene, correctZone.x, correctZone.y);
+
             // Check if we've reached 6 correct in a row
             if (this.correctInRow >= this.requiredCorrect) {
-                // Success! Award pokeball
-                const x = scene.cameras.main.width / 2;
-                const y = scene.cameras.main.height / 2;
-                this.answerCallback(true, selectedDirection, x, y);
+                // Success! Award coins
+                scene.time.delayedCall(500, () => {
+                    const x = scene.cameras.main.width / 2;
+                    const y = scene.cameras.main.height / 2;
+                    this.answerCallback(true, selectedDirection, x, y);
+                });
             } else {
                 // Correct but need more - just update UI and load next
                 this.loadNextQuestion(scene);
             }
         } else {
-            // Wrong answer - reset streak
-            this.correctInRow = 0;
-            this.updateBallIndicators();
-
-            // Check if we've hit max attempts
-            if (this.totalAttempts >= this.maxAttempts) {
-                // Failed - no pokeball awarded, but show feedback
-                const x = scene.cameras.main.width / 2;
-                const y = scene.cameras.main.height / 2;
-                this.answerCallback(false, selectedDirection, x, y);
-            } else {
-                // Show error feedback briefly then continue
-                this.showErrorFeedback(scene, selectedDirection);
-            }
+            // Wrong answer - simple red flash, then reset streak and continue
+            this.showWrongAnswerFeedback(scene, selectedDirection);
         }
     }
 
@@ -162,19 +170,106 @@ export class LeftRightMode extends BasePokeballGameMode {
         });
     }
 
-    showErrorFeedback(scene, selectedDirection) {
-        // Show brief error message
-        const errorText = scene.add.text(scene.cameras.main.width / 2, 600,
-            'Fel! Försök igen', {
-            font: 'bold 32px Arial',
-            fill: '#E74C3C',
-            stroke: '#FFFFFF',
-            strokeThickness: 4
-        }).setOrigin(0.5);
+    showWrongAnswerFeedback(scene, selectedDirection) {
+        this.isRevealing = true;
 
-        scene.time.delayedCall(800, () => {
-            errorText.destroy();
-            this.loadNextQuestion(scene);
+        // Determine which zone was clicked wrong
+        const wrongZone = selectedDirection === 'vanster' ? this.leftZone : this.rightZone;
+
+        // Flash red on wrong zone
+        wrongZone.setFillStyle(0xFF0000, 0.6);
+
+        // Shake animation on wrong zone
+        const originalX = wrongZone.x;
+        scene.tweens.add({
+            targets: wrongZone,
+            x: originalX - 10,
+            duration: 50,
+            yoyo: true,
+            repeat: 3,
+            onComplete: () => {
+                // Reset wrong zone
+                wrongZone.setFillStyle(0xFFFFFF, 0.2);
+                wrongZone.x = originalX;
+
+                // Show sad emoji when streak is reset
+                const sadEmoji = scene.add.text(scene.cameras.main.width / 2, 500, '😢', {
+                    fontSize: '120px'
+                }).setOrigin(0.5).setDepth(1000);
+
+                // Fade out sad emoji
+                scene.tweens.add({
+                    targets: sadEmoji,
+                    alpha: 0,
+                    scale: 1.5,
+                    duration: 2000,
+                    ease: 'Cubic.easeOut',
+                    onComplete: () => {
+                        sadEmoji.destroy();
+                    }
+                });
+
+                // Reset streak to 0
+                this.correctInRow = 0;
+                this.updateBallIndicators();
+
+                // Allow interaction again
+                this.isRevealing = false;
+
+                // Load next question
+                this.loadNextQuestion(scene);
+            }
+        });
+    }
+
+    showSuccessParticles(scene, x, y) {
+        // Create star-shaped particle texture if it doesn't exist
+        if (!scene.textures.exists('star')) {
+            const particleGraphics = scene.add.graphics();
+            particleGraphics.fillStyle(0xFFFF00, 1);
+            particleGraphics.lineStyle(2, 0xFFD700);
+
+            // Draw a star shape
+            const outerRadius = 12;
+            const innerRadius = 5;
+            const points = 5;
+
+            particleGraphics.beginPath();
+            for (let i = 0; i < points * 2; i++) {
+                const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                const angle = (i * Math.PI) / points;
+                const px = 12 + radius * Math.sin(angle);
+                const py = 12 - radius * Math.cos(angle);
+                if (i === 0) {
+                    particleGraphics.moveTo(px, py);
+                } else {
+                    particleGraphics.lineTo(px, py);
+                }
+            }
+            particleGraphics.closePath();
+            particleGraphics.fillPath();
+            particleGraphics.strokePath();
+
+            particleGraphics.generateTexture('star', 24, 24);
+            particleGraphics.destroy();
+        }
+
+        // Create particles
+        const particles = scene.add.particles(x, y, 'star', {
+            speed: { min: 100, max: 200 },
+            angle: { min: 0, max: 360 },
+            scale: { start: 2, end: 0 },
+            lifespan: 600,
+            gravityY: 150,
+            tint: [0xFFFF00, 0xFFD700, 0xFFA500],
+            quantity: 15
+        });
+        particles.setDepth(100);
+        particles.explode();
+
+        // Clean up
+        scene.time.delayedCall(700, () => {
+            particles.destroy();
         });
     }
 
@@ -187,6 +282,10 @@ export class LeftRightMode extends BasePokeballGameMode {
 
         // Clear ball indicators
         this.ballIndicators = [];
+
+        // Clear zone references
+        this.leftZone = null;
+        this.rightZone = null;
 
         // Destroy all UI elements
         this.uiElements.forEach(element => {
