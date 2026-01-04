@@ -12,6 +12,8 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         this.draggableLetters = [];
         this.draggableBoxes = []; // Store boxes for draggable letters
         this.currentHoverZone = null; // Track which zone is being hovered
+        this.hasError = false; // Track if player made an error
+        this.isRevealing = false; // Track if we're showing the answer
     }
 
     generateChallenge() {
@@ -173,6 +175,9 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
     }
 
     handleDrop(scene, draggedLetter, pointer) {
+        // Don't allow drops during reveal animation
+        if (this.isRevealing) return;
+
         const letter = draggedLetter.getData('letter');
         const box = draggedLetter.getData('box');
         let matched = false;
@@ -301,9 +306,75 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
                     x: draggedLetter.getData('startX'),
                     y: draggedLetter.getData('startY'),
                     duration: 300,
-                    ease: 'Back.easeOut'
+                    ease: 'Back.easeOut',
+                    onComplete: () => {
+                        // ONE ERROR = GAME OVER
+                        // Highlight the correct zone for this letter
+                        this.hasError = true;
+                        const letter = draggedLetter.getData('letter');
+                        this.highlightCorrectZone(scene, letter);
+                    }
                 });
             }
+        });
+    }
+
+    highlightCorrectZone(scene, letter) {
+        this.isRevealing = true;
+
+        // Disable all dragging
+        this.draggableLetters.forEach(l => {
+            l.disableInteractive();
+        });
+
+        // Find the correct drop zone for this letter
+        const correctZone = this.dropZones.find(zone => zone.getData('letter') === letter);
+        if (!correctZone) return;
+
+        // Change to gold/attention-grabbing color
+        correctZone.setFillStyle(0xFFD700, 0.5); // Gold fill
+
+        // Replace dashed border with solid pulsing border
+        const dashedBorder = correctZone.getData('dashedBorder');
+        if (dashedBorder) {
+            dashedBorder.destroy();
+        }
+        correctZone.setStrokeStyle(6, 0xFFD700); // Thick gold border
+
+        // Pulsing scale animation
+        scene.tweens.add({
+            targets: correctZone,
+            scaleX: 1.15,
+            scaleY: 1.15,
+            duration: 500,
+            yoyo: true,
+            repeat: 3, // Pulse 4 times total (2 seconds)
+            ease: 'Sine.easeInOut'
+        });
+
+        // Pulsing alpha on fill
+        scene.tweens.add({
+            targets: correctZone,
+            alpha: 0.7,
+            duration: 500,
+            yoyo: true,
+            repeat: 3,
+            ease: 'Sine.easeInOut'
+        });
+
+        // After 2 seconds of pulsing, restart with new letters
+        scene.time.delayedCall(2000, () => {
+            // Clean up current UI
+            this.cleanup(scene);
+
+            // Reset state
+            this.hasError = false;
+            this.isRevealing = false;
+            this.correctMatches = 0;
+
+            // Generate new challenge with different letters
+            this.generateChallenge();
+            this.createChallengeUI(scene);
         });
     }
 
@@ -320,5 +391,6 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         this.draggableBoxes = [];
         this.correctMatches = 0;
         this.currentHoverZone = null;
+        // Note: Don't reset hasError or isRevealing here - they're managed by revealCorrectAnswers
     }
 }
