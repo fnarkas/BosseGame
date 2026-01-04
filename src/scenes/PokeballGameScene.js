@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { WordEmojiMatchMode } from '../pokeballGameModes/WordEmojiMatchMode.js';
 import { LetterListeningMode } from '../pokeballGameModes/LetterListeningMode.js';
 import { LeftRightMode } from '../pokeballGameModes/LeftRightMode.js';
+import { LetterDragMatchMode } from '../pokeballGameModes/LetterDragMatchMode.js';
 import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
 
@@ -88,6 +89,10 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /directions - only show left/right
             this.gameMode = new LeftRightMode();
             console.log('Selected game mode: Left/Right Directions (forced)');
+        } else if (forcedMode === 'lettermatch-only') {
+            // Debug path: /lettermatch - only show letter drag match
+            this.gameMode = new LetterDragMatchMode();
+            console.log('Selected game mode: Letter Drag Match (forced)');
         } else {
             // Normal mode: Alternate between game modes based on challenge count
             // Even challenges: Letter Listening, Odd challenges: Word-Emoji Match

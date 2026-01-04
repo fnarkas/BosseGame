@@ -48,6 +48,11 @@ if (path === '/debug' || path === '/debug/') {
     answerMode = 'letter'; // default
     startScene = 'PokeballGameScene';
     console.log('Running POKEBALL GAME mode');
+} else if (path === '/lettermatch' || path === '/lettermatch/') {
+    answerMode = 'letter'; // default
+    startScene = 'PokeballGameScene';
+    pokeballGameMode = 'lettermatch-only';
+    console.log('Running LETTER DRAG MATCH mode (debug)');
 } else if (path === '/store' || path === '/store/') {
     answerMode = 'letter'; // default
     startScene = 'MainGameScene';
