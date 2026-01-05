@@ -62,6 +62,9 @@ if (path === '/debug' || path === '/debug/') {
 } else if (path === '/games' || path === '/games/') {
     showGamesMenu = true;
     console.log('Showing GAMES MENU');
+} else if (path === '/reset' || path === '/reset/') {
+    // Reset all progress
+    resetAllProgress();
 } else {
     answerMode = 'letter'; // default
     console.log('Running in LETTER MATCH mode');
@@ -110,6 +113,29 @@ if (showGamesMenu) {
     if (showStoreOnLoad) {
         openStore();
     }
+}
+
+function resetAllProgress() {
+    // Clear all localStorage data
+    localStorage.clear();
+
+    console.log('All progress has been reset!');
+
+    const gameContainer = document.getElementById('game-container');
+    if (gameContainer) {
+        gameContainer.style.display = 'none';
+    }
+
+    const resetHTML = `
+        <div style="font-family: Arial; max-width: 600px; margin: 80px auto; padding: 40px; text-align: center;">
+            <h1 style="font-size: 80px; margin-bottom: 20px;">✅</h1>
+            <h2 style="font-size: 36px; margin-bottom: 20px;">Progress Reset!</h2>
+            <p style="font-size: 20px; color: #666; margin-bottom: 40px;">All Pokemon, pokeballs, and coins have been cleared.</p>
+            <a href="/" style="display: inline-block; padding: 20px 40px; background: #4CAF50; color: white; border-radius: 10px; text-decoration: none; font-size: 24px;">Start Fresh</a>
+        </div>
+    `;
+
+    document.body.innerHTML = resetHTML;
 }
 
 function showGamesMenuPage() {
