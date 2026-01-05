@@ -141,12 +141,61 @@ export class BootScene extends Phaser.Scene {
     }
 
     create() {
+        // Generate dice face textures
+        this.generateDiceFaces();
+
+        // Load placeholder game mode icons (using pokeball sprites as placeholders)
+        // These will be replaced with actual game mode icons later
+        this.textures.addImage('game-mode-letter', this.textures.get('pokeball_poke-ball').getSourceImage());
+        this.textures.addImage('game-mode-word', this.textures.get('pokeball_great-ball').getSourceImage());
+        this.textures.addImage('game-mode-directions', this.textures.get('pokeball_ultra-ball').getSourceImage());
+        this.textures.addImage('game-mode-lettermatch', this.textures.get('pokeball_poke-ball').getSourceImage());
+
         // Store game data globally
         this.registry.set('caughtPokemon', this.loadCaughtPokemon());
 
         // Start the appropriate scene based on URL routing
         const startScene = this.registry.get('startScene') || 'MainGameScene';
         this.scene.start(startScene);
+    }
+
+    generateDiceFaces() {
+        // Create 4 dice faces with different colored dots representing each game mode
+        const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3]; // Red, Cyan, Yellow, Mint
+        const dotPatterns = [
+            [{ x: 0.5, y: 0.5 }], // 1 dot (center)
+            [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.7 }], // 2 dots (diagonal)
+            [{ x: 0.3, y: 0.3 }, { x: 0.5, y: 0.5 }, { x: 0.7, y: 0.7 }], // 3 dots
+            [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.3, y: 0.7 }, { x: 0.7, y: 0.7 }] // 4 dots
+        ];
+
+        for (let i = 0; i < 4; i++) {
+            const graphics = this.add.graphics();
+
+            // Draw white rounded rectangle background
+            graphics.fillStyle(0xFFFFFF, 1);
+            graphics.fillRoundedRect(0, 0, 100, 100, 10);
+
+            // Draw border
+            graphics.lineStyle(4, 0x000000, 1);
+            graphics.strokeRoundedRect(0, 0, 100, 100, 10);
+
+            // Draw dots
+            graphics.fillStyle(colors[i], 1);
+            dotPatterns[i].forEach(dot => {
+                const x = dot.x * 100;
+                const y = dot.y * 100;
+                graphics.fillCircle(x, y, 12);
+
+                // Border on dots
+                graphics.lineStyle(2, 0x000000, 1);
+                graphics.strokeCircle(x, y, 12);
+            });
+
+            // Generate texture
+            graphics.generateTexture(`dice-face-${i + 1}`, 100, 100);
+            graphics.destroy();
+        }
     }
 
     loadCaughtPokemon() {

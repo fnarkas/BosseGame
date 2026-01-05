@@ -61,8 +61,15 @@ export class PokeballGameScene extends Phaser.Scene {
             this.handleAnswer(isCorrect, answer, x, y);
         });
 
-        // Start first challenge
-        this.loadNextChallenge();
+        // Check if we should show the dice animation (not for forced/debug modes)
+        const forcedMode = this.registry.get('pokeballGameMode');
+        if (!forcedMode) {
+            // Show dice rolling animation before starting the game
+            this.showDiceRollAnimation();
+        } else {
+            // Start first challenge immediately for debug modes
+            this.loadNextChallenge();
+        }
     }
 
     selectGameMode() {
@@ -136,6 +143,151 @@ export class PokeballGameScene extends Phaser.Scene {
         return new LetterDragMatchMode();
     }
 
+    showDiceRollAnimation() {
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+
+        // Create semi-transparent overlay
+        const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
+        overlay.setDepth(1000);
+
+        // Map game mode to dice face and icon
+        const gameModeMap = {
+            'LetterListeningMode': { face: 1, icon: 'game-mode-letter' },
+            'WordEmojiMatchMode': { face: 2, icon: 'game-mode-word' },
+            'LeftRightMode': { face: 3, icon: 'game-mode-directions' },
+            'LetterDragMatchMode': { face: 4, icon: 'game-mode-lettermatch' }
+        };
+
+        const selectedMode = gameModeMap[this.gameMode.constructor.name];
+        const selectedFace = selectedMode.face;
+
+        // Create dice sprite in center
+        const diceSprite = this.add.image(width / 2, height / 2 - 150, `dice-face-1`);
+        diceSprite.setScale(2);
+        diceSprite.setDepth(1001);
+        diceSprite.setInteractive({ useHandCursor: true });
+
+        // Add pulsing animation to dice to show it's interactive
+        this.tweens.add({
+            targets: diceSprite,
+            scale: 2.1,
+            duration: 800,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        // Create 4 game mode icons in a single row below the dice
+        const iconSize = 100;
+        const spacing = 80; // Increased from 50
+        const totalWidth = (iconSize * 4) + (spacing * 3);
+        const startX = (width - totalWidth) / 2 + iconSize / 2;
+        const iconY = height / 2 + 120; // Moved down more from dice
+
+        const gameIcons = [];
+        const gameDiceFaces = [];
+        const iconKeys = ['game-mode-letter', 'game-mode-word', 'game-mode-directions', 'game-mode-lettermatch'];
+
+        iconKeys.forEach((key, index) => {
+            const x = startX + index * (iconSize + spacing);
+
+            // Game mode icon
+            const icon = this.add.image(x, iconY, key);
+            icon.setScale(0.6);
+            icon.setAlpha(0.3); // Start faded
+            icon.setDepth(1001);
+            gameIcons.push(icon);
+
+            // Small dice face above the icon showing what number it corresponds to
+            const diceFace = this.add.image(x, iconY - 100, `dice-face-${index + 1}`); // Increased gap from 80 to 100
+            diceFace.setScale(0.6);
+            diceFace.setAlpha(0.3); // Start faded
+            diceFace.setDepth(1001);
+            gameDiceFaces.push(diceFace);
+        });
+
+        // Wait for player to click the dice to start rolling
+        diceSprite.once('pointerdown', () => {
+            // Stop pulsing animation on dice
+            this.tweens.killTweensOf(diceSprite);
+            diceSprite.setScale(2);
+
+            // Start the rolling animation
+            this.startDiceRoll(diceSprite, selectedFace, gameIcons, gameDiceFaces, overlay);
+        });
+    }
+
+    startDiceRoll(diceSprite, selectedFace, gameIcons, gameDiceFaces, overlay) {
+        // Rolling animation - cycle through faces (shorter)
+        let rollCount = 0;
+        const maxRolls = 12; // Reduced from 20
+        const rollTimer = this.time.addEvent({
+            delay: 80, // Start faster (was 100ms)
+            callback: () => {
+                rollCount++;
+
+                // Show random face
+                const randomFace = Phaser.Math.Between(1, 4);
+                diceSprite.setTexture(`dice-face-${randomFace}`);
+
+                // Shake effect
+                diceSprite.setScale(2.2);
+                this.tweens.add({
+                    targets: diceSprite,
+                    scale: 2,
+                    duration: 50
+                });
+
+                // Slow down over time
+                if (rollCount < maxRolls) {
+                    rollTimer.delay = Math.min(rollTimer.delay + 25, 350); // Faster progression
+                } else {
+                    // Final roll - land on selected face
+                    rollTimer.destroy();
+
+                    diceSprite.setTexture(`dice-face-${selectedFace}`);
+
+                    // Highlight the selected game icon and its dice face
+                    const selectedIconIndex = selectedFace - 1;
+                    const selectedIcon = gameIcons[selectedIconIndex];
+                    const selectedDiceFace = gameDiceFaces[selectedIconIndex];
+
+                    this.tweens.add({
+                        targets: [selectedIcon, selectedDiceFace],
+                        alpha: 1,
+                        scale: 0.9,
+                        duration: 500,
+                        ease: 'Back.easeOut'
+                    });
+
+                    // Pulse animation on selected icon
+                    this.tweens.add({
+                        targets: selectedIcon,
+                        scaleX: 1.0,
+                        scaleY: 1.0,
+                        duration: 400,
+                        yoyo: true,
+                        repeat: 2
+                    });
+
+                    // Wait then transition to game (shorter wait)
+                    this.time.delayedCall(1500, () => { // Reduced from 2000
+                        // Clean up
+                        overlay.destroy();
+                        diceSprite.destroy();
+                        gameIcons.forEach(icon => icon.destroy());
+                        gameDiceFaces.forEach(face => face.destroy());
+
+                        // Start the actual game
+                        this.loadNextChallenge();
+                    });
+                }
+            },
+            loop: true
+        });
+    }
+
     loadNextChallenge() {
         this.isProcessingAnswer = false;
 
@@ -173,7 +325,15 @@ export class PokeballGameScene extends Phaser.Scene {
                     this.handleAnswer(isCorrect, answer, x, y);
                 });
 
-                this.loadNextChallenge();
+                // Check if we should show dice animation (not for forced/debug modes)
+                const forcedMode = this.registry.get('pokeballGameMode');
+                if (!forcedMode) {
+                    // Show dice rolling animation before next challenge
+                    this.showDiceRollAnimation();
+                } else {
+                    // Debug mode - go straight to next challenge
+                    this.loadNextChallenge();
+                }
             });
         } else {
             // Show error feedback
