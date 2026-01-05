@@ -201,26 +201,43 @@ export class MainGameScene extends Phaser.Scene {
     spawnPokemon() {
         const width = this.cameras.main.width;
 
-        // Pick a random Pokemon from all 100
-        const randomPokemon = Phaser.Utils.Array.GetRandom(POKEMON_DATA);
+        // Tutorial system: First 3 encounters are always Onix, Zubat, Seel (100% catch rate)
+        const caughtList = this.registry.get('caughtPokemon') || [];
+        const tutorialPokemonIds = [95, 41, 86]; // Onix, Zubat, Seel - names with similar upper/lowercase letters
+
+        let selectedPokemon;
+        if (caughtList.length < 3) {
+            // Tutorial mode: spawn specific Pokemon in order
+            const tutorialIndex = caughtList.length;
+            const tutorialId = tutorialPokemonIds[tutorialIndex];
+            selectedPokemon = POKEMON_DATA.find(p => p.id === tutorialId);
+            this.isTutorialCatch = true;
+            console.log(`Tutorial mode: Spawning ${selectedPokemon.name} (${tutorialIndex + 1}/3)`);
+        } else {
+            // Normal mode: random Pokemon
+            selectedPokemon = Phaser.Utils.Array.GetRandom(POKEMON_DATA);
+            this.isTutorialCatch = false;
+        }
 
         this.currentPokemon = {
-            id: randomPokemon.id,
-            name: randomPokemon.name
+            id: selectedPokemon.id,
+            name: selectedPokemon.name
         };
 
         // Create Pokemon sprite
-        this.currentPokemonSprite = this.add.image(width / 2, 250, `pokemon_${randomPokemon.id}`);
+        this.currentPokemonSprite = this.add.image(width / 2, 250, `pokemon_${selectedPokemon.id}`);
         this.currentPokemonSprite.setScale(0.5);
         this.currentPokemonSprite.setData('clearOnNewEncounter', true);
 
-        // Show rarity indicator
-        const rarityInfo = getRarityInfo(randomPokemon);
-        if (rarityInfo.icon) {
-            this.rarityIndicator = this.add.text(width / 2, 150, rarityInfo.icon, {
-                fontSize: '48px'
-            }).setOrigin(0.5);
-            this.rarityIndicator.setData('clearOnNewEncounter', true);
+        // Show rarity indicator (skip for tutorial Pokemon to keep it simple)
+        if (!this.isTutorialCatch) {
+            const rarityInfo = getRarityInfo(selectedPokemon);
+            if (rarityInfo.icon) {
+                this.rarityIndicator = this.add.text(width / 2, 150, rarityInfo.icon, {
+                    fontSize: '48px'
+                }).setOrigin(0.5);
+                this.rarityIndicator.setData('clearOnNewEncounter', true);
+            }
         }
 
         // Bounce animation
@@ -235,8 +252,14 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     createPokeball(x, y) {
-        // Use sprite for the selected pokeball type
-        const spriteKey = `pokeball_${this.selectedPokeballType}`;
+        // Map pokeball type names to sprite keys
+        const spriteMap = {
+            'pokeball': 'pokeball_poke-ball',
+            'greatball': 'pokeball_great-ball',
+            'ultraball': 'pokeball_ultra-ball'
+        };
+
+        const spriteKey = spriteMap[this.selectedPokeballType] || 'pokeball_poke-ball';
         const pokeball = this.add.image(x, y, spriteKey);
         pokeball.setScale(1.2); // 128px * 1.2 = 154px
         pokeball.setDepth(this.DEPTH.POKEBALL);
@@ -316,7 +339,7 @@ export class MainGameScene extends Phaser.Scene {
                 // Determine catch success based on probability
                 const currentPokemon = POKEMON_DATA.find(p => p.id === this.currentPokemon.id);
                 const pokeballData = POKEBALL_TYPES[this.selectedPokeballType];
-                const catchSucceeded = attemptCatch(currentPokemon, pokeballData.catchRate);
+                const catchSucceeded = attemptCatch(currentPokemon, pokeballData.catchRate, this.isTutorialCatch);
 
                 // Start wiggle animation
                 this.wigglePokeball(pokeball, catchSucceeded);
@@ -664,27 +687,121 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     catchFailed(pokeball) {
-        // Pokeball opens, Pokemon escapes
+        // DRAMATIC BREAK-FREE ANIMATION
+
+        // Step 1: Violent shaking (much more intense than wiggle)
+        let shakeCount = 0;
+        const maxShakes = 4;
+
+        const violentShake = () => {
+            // Flash red to show Pokemon is breaking free
+            pokeball.setTint(0xFF0000);
+
+            // Violent shake with large angle
+            this.tweens.add({
+                targets: pokeball,
+                angle: `+=${30 * (shakeCount % 2 === 0 ? 1 : -1)}`,
+                scale: 1.3,
+                duration: 80,
+                yoyo: true,
+                repeat: 1,
+                onComplete: () => {
+                    pokeball.clearTint();
+                    shakeCount++;
+
+                    if (shakeCount < maxShakes) {
+                        this.time.delayedCall(50, violentShake);
+                    } else {
+                        // Step 2: POKEBALL BREAKS OPEN!
+                        this.pokeballBreakOpen(pokeball);
+                    }
+                }
+            });
+        };
+
+        violentShake();
+    }
+
+    pokeballBreakOpen(pokeball) {
+        const pokeballX = pokeball.x;
+        const pokeballY = pokeball.y;
+
+        // Create explosion particle burst
+        const explosionParticles = this.add.particles(pokeballX, pokeballY, 'star', {
+            speed: { min: 200, max: 400 },
+            angle: { min: 0, max: 360 },
+            scale: { start: 2, end: 0 },
+            lifespan: 600,
+            tint: [0xFF6B6B, 0xFF8E53, 0xFFD93D],
+            quantity: 40
+        });
+        explosionParticles.setDepth(100);
+        explosionParticles.explode();
+
+        // Make pokeball "explode" apart
         this.tweens.add({
             targets: pokeball,
+            scale: 1.8,
             alpha: 0,
             duration: 300,
+            ease: 'Cubic.easeOut',
             onComplete: () => {
                 pokeball.destroy();
+                explosionParticles.destroy();
 
-                // Show Pokemon again
-                this.currentPokemonSprite.setVisible(true);
+                // Step 3: Pokemon dramatic re-entry
+                this.pokemonDramaticReturn(pokeballX, pokeballY);
+            }
+        });
+    }
 
-                // Scale animation for Pokemon appearing
-                this.currentPokemonSprite.setScale(0);
+    pokemonDramaticReturn(x, y) {
+        // Flash of light at pokeball position
+        const flash = this.add.circle(x, y, 100, 0xFFFFFF, 0.8);
+        flash.setDepth(99);
+
+        this.tweens.add({
+            targets: flash,
+            scale: 3,
+            alpha: 0,
+            duration: 400,
+            onComplete: () => flash.destroy()
+        });
+
+        // Show Pokemon with dramatic entrance
+        this.currentPokemonSprite.setVisible(true);
+        this.currentPokemonSprite.setScale(0);
+        this.currentPokemonSprite.setAlpha(1);
+
+        // Scale up with elastic bounce
+        this.tweens.add({
+            targets: this.currentPokemonSprite,
+            scale: 0.6, // Slightly bigger for impact
+            duration: 500,
+            ease: 'Elastic.easeOut',
+            onComplete: () => {
+                // Settle to normal size
                 this.tweens.add({
                     targets: this.currentPokemonSprite,
                     scale: 0.5,
-                    duration: 400,
-                    ease: 'Back.easeOut',
+                    duration: 200,
+                    ease: 'Quad.easeOut',
                     onComplete: () => {
-                        // Pokemon broke free! Reset the letter challenge and let them try again
-                        // Clean up current UI
+                        // Triumphant particle burst around Pokemon
+                        const triumphParticles = this.add.particles(this.currentPokemonSprite.x, this.currentPokemonSprite.y, 'star', {
+                            speed: { min: 100, max: 200 },
+                            angle: { min: 0, max: 360 },
+                            scale: { start: 1.5, end: 0 },
+                            lifespan: 800,
+                            tint: [0xFFFF00, 0xFFD700, 0xFFA500],
+                            quantity: 25
+                        });
+                        triumphParticles.setDepth(100);
+                        triumphParticles.explode();
+
+                        this.time.delayedCall(600, () => triumphParticles.destroy());
+
+                        // Pokemon broke free! Reset the letter challenge
                         this.answerMode.cleanup(this);
 
                         // Reset attempts

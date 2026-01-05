@@ -81,9 +81,16 @@ export function calculateCatchProbability(pokemon, pokeballMultiplier) {
  * Attempt to catch a Pokemon
  * @param {Object} pokemon - Pokemon data object
  * @param {number} pokeballMultiplier - Pokeball catch rate multiplier
+ * @param {boolean} isTutorial - If true, always succeed (for tutorial Pokemon)
  * @returns {boolean} True if catch succeeded, false if failed
  */
-export function attemptCatch(pokemon, pokeballMultiplier) {
+export function attemptCatch(pokemon, pokeballMultiplier, isTutorial = false) {
+  // Tutorial mode: always succeed
+  if (isTutorial) {
+    console.log(`Tutorial catch: ${pokemon.name} - GUARANTEED SUCCESS`);
+    return true;
+  }
+
   const catchProbability = calculateCatchProbability(pokemon, pokeballMultiplier);
   const roll = Math.random();
 

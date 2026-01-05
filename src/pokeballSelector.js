@@ -49,15 +49,15 @@ export function showPokeballSelector(scene, onSelect, onCancel) {
         'ultraball': 'pokeball_ultra-ball'
     };
 
-    const ballSize = 150;
-    const spacing = 200;
+    const ballSize = 128; // Size of pokeball sprites
+    const spacing = 160; // Space between balls
     const totalWidth = (ballSize * 3) + (spacing * 2);
-    const startX = (width - totalWidth) / 2 + ballSize / 2;
+    const startX = (width - totalWidth) / 2 + (ballSize / 2);
     const ballY = height / 2;
 
     pokeballTypes.forEach((type, index) => {
         const count = inventory[type] || 0;
-        const x = startX + index * spacing;
+        const x = startX + (index * (ballSize + spacing));
 
         // Pokeball sprite
         const ballSprite = scene.add.image(x, ballY, spriteMap[type]);
@@ -103,33 +103,6 @@ export function showPokeballSelector(scene, onSelect, onCancel) {
         selectorUI.cards.push({
             ballSprite, countBadge
         });
-    });
-
-    // Cancel button (X in top right)
-    const cancelBtn = scene.add.text(width / 2, height - 100, '✖️ Avbryt', {
-        fontSize: '32px',
-        fontFamily: 'Arial',
-        color: '#FF6B6B',
-        backgroundColor: '#ffffff',
-        padding: { x: 20, y: 10 }
-    });
-    cancelBtn.setOrigin(0.5);
-    cancelBtn.setDepth(502);
-    cancelBtn.setInteractive({ useHandCursor: true });
-
-    cancelBtn.on('pointerover', () => {
-        cancelBtn.setScale(1.1);
-    });
-    cancelBtn.on('pointerout', () => {
-        cancelBtn.setScale(1);
-    });
-    cancelBtn.on('pointerdown', () => {
-        selectorUI.cleanup();
-        title.destroy();
-        cancelBtn.destroy();
-        if (onCancel) {
-            onCancel();
-        }
     });
 
     return selectorUI;
