@@ -4,6 +4,7 @@ import { DebugMode } from '../answerModes/DebugMode.js';
 import { createInventoryHUD, updateInventoryHUD } from '../inventoryHUD.js';
 import { hasPokeballs, removePokeball, getInventory, POKEBALL_TYPES } from '../inventory.js';
 import { showPokeballSelector } from '../pokeballSelector.js';
+import { getRarityInfo, attemptCatch } from '../pokemonRarity.js';
 
 export class MainGameScene extends Phaser.Scene {
     constructor() {
@@ -213,6 +214,15 @@ export class MainGameScene extends Phaser.Scene {
         this.currentPokemonSprite.setScale(0.5);
         this.currentPokemonSprite.setData('clearOnNewEncounter', true);
 
+        // Show rarity indicator
+        const rarityInfo = getRarityInfo(randomPokemon);
+        if (rarityInfo.icon) {
+            this.rarityIndicator = this.add.text(width / 2, 150, rarityInfo.icon, {
+                fontSize: '48px'
+            }).setOrigin(0.5);
+            this.rarityIndicator.setData('clearOnNewEncounter', true);
+        }
+
         // Bounce animation
         this.tweens.add({
             targets: this.currentPokemonSprite,
@@ -302,8 +312,14 @@ export class MainGameScene extends Phaser.Scene {
             onComplete: () => {
                 // Hide Pokemon once pokeball reaches it
                 this.currentPokemonSprite.setVisible(false);
+
+                // Determine catch success based on probability
+                const currentPokemon = POKEMON_DATA.find(p => p.id === this.currentPokemon.id);
+                const pokeballData = POKEBALL_TYPES[this.selectedPokeballType];
+                const catchSucceeded = attemptCatch(currentPokemon, pokeballData.catchRate);
+
                 // Start wiggle animation
-                this.wigglePokeball(pokeball, isCorrect);
+                this.wigglePokeball(pokeball, catchSucceeded);
             }
         });
 
@@ -667,24 +683,28 @@ export class MainGameScene extends Phaser.Scene {
                     duration: 400,
                     ease: 'Back.easeOut',
                     onComplete: () => {
-                        if (this.attemptsLeft <= 0) {
-                            // Pokemon runs away with smoke
-                            this.pokemonRunsAway();
-                        } else {
-                            // Resume bounce animation
-                            this.tweens.add({
-                                targets: this.currentPokemonSprite,
-                                y: 270,
-                                duration: 1000,
-                                yoyo: true,
-                                repeat: -1,
-                                ease: 'Sine.easeInOut'
-                            });
+                        // Pokemon broke free! Reset the letter challenge and let them try again
+                        // Clean up current UI
+                        this.answerMode.cleanup(this);
 
-                            // Update UI using answer mode
-                            this.answerMode.updateUI(this, this.attemptsLeft, this.answerMode.getUsedData());
-                            this.isAnimating = false;
-                        }
+                        // Reset attempts
+                        this.attemptsLeft = this.MAX_ATTEMPTS;
+
+                        // Resume bounce animation
+                        this.tweens.add({
+                            targets: this.currentPokemonSprite,
+                            y: 270,
+                            duration: 1000,
+                            yoyo: true,
+                            repeat: -1,
+                            ease: 'Sine.easeInOut'
+                        });
+
+                        // Generate new challenge for same Pokemon
+                        this.answerMode.generateChallenge(this.currentPokemon);
+                        this.answerMode.createChallengeUI(this, this.attemptsLeft);
+
+                        this.isAnimating = false;
                     }
                 });
             }

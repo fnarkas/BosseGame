@@ -41,17 +41,6 @@ export function showPokeballSelector(scene, onSelect, onCancel) {
     selectorUI.overlay.setDepth(500);
     selectorUI.overlay.setInteractive();
 
-    // Title text
-    const title = scene.add.text(width / 2, 150, 'Välj Pokéball', {
-        fontSize: '48px',
-        fontFamily: 'Arial',
-        color: '#FFD700',
-        stroke: '#000000',
-        strokeThickness: 6
-    });
-    title.setOrigin(0.5);
-    title.setDepth(501);
-
     const inventory = getInventory();
     const pokeballTypes = ['pokeball', 'greatball', 'ultraball'];
     const spriteMap = {
@@ -59,80 +48,60 @@ export function showPokeballSelector(scene, onSelect, onCancel) {
         'greatball': 'pokeball_great-ball',
         'ultraball': 'pokeball_ultra-ball'
     };
-    const cardWidth = 200;
-    const cardSpacing = 250;
-    const startX = width / 2 - cardSpacing;
-    const cardY = height / 2;
+
+    const ballSize = 150;
+    const spacing = 200;
+    const totalWidth = (ballSize * 3) + (spacing * 2);
+    const startX = (width - totalWidth) / 2 + ballSize / 2;
+    const ballY = height / 2;
 
     pokeballTypes.forEach((type, index) => {
-        const data = POKEBALL_TYPES[type];
         const count = inventory[type] || 0;
-        const x = startX + index * cardSpacing;
-
-        // Card background
-        const card = scene.add.rectangle(x, cardY, cardWidth, 280, 0xffffff);
-        card.setStrokeStyle(4, 0x000000);
-        card.setDepth(501);
+        const x = startX + index * spacing;
 
         // Pokeball sprite
-        const ballSprite = scene.add.image(x, cardY - 60, spriteMap[type]);
+        const ballSprite = scene.add.image(x, ballY, spriteMap[type]);
         ballSprite.setOrigin(0.5);
         ballSprite.setDepth(502);
-        ballSprite.setScale(0.7); // 128px * 0.7 = 90px
+        ballSprite.setScale(1.2); // Make balls nice and big
 
-        // Name
-        const name = scene.add.text(x, cardY + 10, data.name, {
-            fontSize: '20px',
+        // Show count badge (small number in corner)
+        const countBadge = scene.add.text(x + 50, ballY - 50, count.toString(), {
+            fontSize: '32px',
             fontFamily: 'Arial',
-            color: '#000000',
+            color: '#FFFFFF',
+            stroke: '#000000',
+            strokeThickness: 4,
             fontStyle: 'bold'
         });
-        name.setOrigin(0.5);
-        name.setDepth(502);
+        countBadge.setOrigin(0.5);
+        countBadge.setDepth(503);
 
-        // Catch rate info
-        const catchInfo = scene.add.text(x, cardY + 40, `+${Math.round((data.catchRate - 1) * 100)}%`, {
-            fontSize: '16px',
-            fontFamily: 'Arial',
-            color: '#4CAF50',
-            fontStyle: 'bold'
-        });
-        catchInfo.setOrigin(0.5);
-        catchInfo.setDepth(502);
-
-        // Count
-        const countText = scene.add.text(x, cardY + 70, `Äger: ${count}`, {
-            fontSize: '18px',
-            fontFamily: 'Arial',
-            color: count > 0 ? '#000000' : '#999999'
-        });
-        countText.setOrigin(0.5);
-        countText.setDepth(502);
-
-        // Make card interactive if player has pokeballs
+        // Make ball interactive if player has pokeballs
         if (count > 0) {
-            card.setInteractive({ useHandCursor: true });
-            card.on('pointerover', () => {
-                card.setFillStyle(0xf0f0f0);
+            ballSprite.setInteractive({ useHandCursor: true });
+
+            // Hover effect - scale up
+            ballSprite.on('pointerover', () => {
+                ballSprite.setScale(1.3);
             });
-            card.on('pointerout', () => {
-                card.setFillStyle(0xffffff);
+            ballSprite.on('pointerout', () => {
+                ballSprite.setScale(1.2);
             });
-            card.on('pointerdown', () => {
+
+            // Click to select
+            ballSprite.on('pointerdown', () => {
                 selectorUI.cleanup();
-                title.destroy();
                 onSelect(type);
             });
         } else {
-            card.setAlpha(0.5);
-            ballSprite.setAlpha(0.5);
-            name.setAlpha(0.5);
-            catchInfo.setAlpha(0.5);
-            countText.setAlpha(0.5);
+            // No pokeballs of this type - gray out
+            ballSprite.setAlpha(0.3);
+            countBadge.setAlpha(0.5);
         }
 
         selectorUI.cards.push({
-            card, ballSprite, name, catchInfo, countText
+            ballSprite, countBadge
         });
     });
 

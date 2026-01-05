@@ -63,6 +63,12 @@ export class BootScene extends Phaser.Scene {
 
         // Load direction audio
         this.loadDirectionAudio();
+
+        // Load minigame icons (256x256 JPEG)
+        this.load.image('game-mode-letter', 'minigame_icons/letter_listening.jpeg');
+        this.load.image('game-mode-word', 'minigame_icons/word_emoji_match.jpeg');
+        this.load.image('game-mode-directions', 'minigame_icons/left_right.jpeg');
+        this.load.image('game-mode-lettermatch', 'minigame_icons/letter_drag_match.jpeg');
     }
 
     loadPokemonImages() {
@@ -143,13 +149,6 @@ export class BootScene extends Phaser.Scene {
     create() {
         // Generate dice face textures
         this.generateDiceFaces();
-
-        // Load placeholder game mode icons (using pokeball sprites as placeholders)
-        // These will be replaced with actual game mode icons later
-        this.textures.addImage('game-mode-letter', this.textures.get('pokeball_poke-ball').getSourceImage());
-        this.textures.addImage('game-mode-word', this.textures.get('pokeball_great-ball').getSourceImage());
-        this.textures.addImage('game-mode-directions', this.textures.get('pokeball_ultra-ball').getSourceImage());
-        this.textures.addImage('game-mode-lettermatch', this.textures.get('pokeball_poke-ball').getSourceImage());
 
         // Store game data globally
         this.registry.set('caughtPokemon', this.loadCaughtPokemon());

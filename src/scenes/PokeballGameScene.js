@@ -183,7 +183,7 @@ export class PokeballGameScene extends Phaser.Scene {
         const spacing = 80; // Increased from 50
         const totalWidth = (iconSize * 4) + (spacing * 3);
         const startX = (width - totalWidth) / 2 + iconSize / 2;
-        const iconY = height / 2 + 120; // Moved down more from dice
+        const iconY = height / 2 + 200; // Increased spacing from dice
 
         const gameIcons = [];
         const gameDiceFaces = [];
@@ -200,7 +200,7 @@ export class PokeballGameScene extends Phaser.Scene {
             gameIcons.push(icon);
 
             // Small dice face above the icon showing what number it corresponds to
-            const diceFace = this.add.image(x, iconY - 100, `dice-face-${index + 1}`); // Increased gap from 80 to 100
+            const diceFace = this.add.image(x, iconY - 140, `dice-face-${index + 1}`); // Increased gap for better spacing
             diceFace.setScale(0.6);
             diceFace.setAlpha(0.3); // Start faded
             diceFace.setDepth(1001);

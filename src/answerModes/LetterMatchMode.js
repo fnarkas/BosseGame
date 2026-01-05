@@ -219,6 +219,33 @@ export class LetterMatchMode extends BaseAnswerMode {
 
         // Re-render Pokemon name with updated state
         this.displayPokemonName(this.scene);
+
+        // Also recreate letter buttons to reflect cleared usedLetters
+        this.recreateLetterButtons();
+    }
+
+    recreateLetterButtons() {
+        // Remove all letter button elements
+        const buttonsToRemove = [];
+        this.uiElements.forEach(element => {
+            if (element.getData && element.getData('letter')) {
+                buttonsToRemove.push(element);
+                if (element.getData('textObj')) {
+                    buttonsToRemove.push(element.getData('textObj'));
+                }
+            }
+        });
+
+        buttonsToRemove.forEach(element => {
+            const index = this.uiElements.indexOf(element);
+            if (index > -1) {
+                this.uiElements.splice(index, 1);
+            }
+            element.destroy();
+        });
+
+        // Recreate buttons with current usedLetters state
+        this.createLetterButtons(this.scene);
     }
 
     showCorrectLetterEffect() {
@@ -418,26 +445,8 @@ export class LetterMatchMode extends BaseAnswerMode {
         // Update Pokemon name display to show collected letters
         this.updateLetterDisplay();
 
-        // Recreate letter buttons with updated used letters
-        const buttonsToRemove = [];
-        this.uiElements.forEach(element => {
-            if (element.getData && element.getData('letter')) {
-                buttonsToRemove.push(element);
-                if (element.getData('textObj')) {
-                    buttonsToRemove.push(element.getData('textObj'));
-                }
-            }
-        });
-
-        buttonsToRemove.forEach(element => {
-            const index = this.uiElements.indexOf(element);
-            if (index > -1) {
-                this.uiElements.splice(index, 1);
-            }
-            element.destroy();
-        });
-
-        this.createLetterButtons(scene);
+        // Note: updateLetterDisplay() now calls recreateLetterButtons() internally
+        // No need to recreate buttons here separately
     }
 
     checkAnswer(selectedLetter) {
@@ -466,6 +475,9 @@ export class LetterMatchMode extends BaseAnswerMode {
                 this.challengeData.highlightIndex = nextIndex;
                 this.challengeData.correctAnswer = this.currentLetter;
 
+                // Clear used letters for the new letter challenge
+                this.usedLetters = [];
+
                 // Return null to indicate "correct but not done" - don't trigger callback
                 return null;
             }
@@ -485,6 +497,11 @@ export class LetterMatchMode extends BaseAnswerMode {
         });
         this.uiElements = [];
         this.attemptsDisplay = null;
+
+        // Reset state variables to prevent grayed-out letters from persisting
+        this.usedLetters = [];
+        this.collectedIndices = new Set();
+        this.currentLetterPosition = 0;
     }
 
     getUsedData() {
