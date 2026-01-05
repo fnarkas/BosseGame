@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { SWEDISH_LETTERS } from '../letterData.js';
+import { trackWrongAnswer } from '../wrongAnswers.js';
 
 export class LetterDragMatchMode extends BasePokeballGameMode {
     constructor() {
@@ -182,6 +183,7 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         const box = draggedLetter.getData('box');
         let matched = false;
         let droppedOnWrongZone = false;
+        let wrongZoneLetter = null;
 
         // Check if dropped on correct zone OR wrong zone
         this.dropZones.forEach(zone => {
@@ -251,6 +253,7 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
                 } else if (!alreadyMatched) {
                     // Wrong zone! (letter doesn't match)
                     droppedOnWrongZone = true;
+                    wrongZoneLetter = zoneLetter.toLowerCase();
                 }
             }
         });
@@ -258,6 +261,13 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         // Handle wrong drop or no drop
         if (!matched) {
             if (droppedOnWrongZone) {
+                // Track wrong answer - player confused letter with wrongZoneLetter
+                trackWrongAnswer(
+                    'LetterDragMatchMode',
+                    letter, // Correct letter (lowercase)
+                    wrongZoneLetter // Wrong zone letter (lowercase)
+                );
+
                 // Wrong zone - show error feedback
                 this.showWrongDropFeedback(scene, draggedLetter, box);
             } else {

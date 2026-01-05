@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
+import { trackWrongAnswer } from '../wrongAnswers.js';
 
 export class LeftRightMode extends BasePokeballGameMode {
     constructor() {
@@ -171,6 +172,13 @@ export class LeftRightMode extends BasePokeballGameMode {
     }
 
     showWrongAnswerFeedback(scene, selectedDirection) {
+        // Track wrong answer
+        trackWrongAnswer(
+            'LeftRightMode',
+            this.challengeData.correctDirection,
+            selectedDirection
+        );
+
         this.isRevealing = true;
 
         // Determine which zone was clicked wrong

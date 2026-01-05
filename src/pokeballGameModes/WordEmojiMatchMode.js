@@ -1,5 +1,6 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { WORD_EMOJI_CHALLENGES } from '../wordEmojiData.js';
+import { trackWrongAnswer } from '../wrongAnswers.js';
 
 /**
  * Word-Emoji matching game mode
@@ -122,6 +123,15 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
     }
 
     showWrongAnswerFeedback(scene, wrongButton) {
+        // Track wrong answer
+        const wrongEmoji = wrongButton.getData('emoji');
+        trackWrongAnswer(
+            'WordEmojiMatchMode',
+            this.challengeData.correctEmoji,
+            wrongEmoji,
+            { word: this.challengeData.word }
+        );
+
         // Red flash on the wrong button
         wrongButton.setFillStyle(0xFF0000, 0.5); // Red fill
         wrongButton.setStrokeStyle(6, 0xFF0000); // Red border
