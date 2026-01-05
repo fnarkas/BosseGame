@@ -41,8 +41,8 @@ export class BootScene extends Phaser.Scene {
         // Load pokeball sprites
         this.loadPokeballSprites();
 
-        // Load coin sprite (optimized 128x128 version)
-        this.load.image('coin', 'coin-small.png');
+        // Load coin sprite
+        this.load.image('coin', 'coin.png');
 
         // Load tiny coin sprite for inventory (64x64)
         this.load.image('coin-tiny', 'coin-tiny.png');
@@ -143,7 +143,6 @@ export class BootScene extends Phaser.Scene {
     create() {
         // Store game data globally
         this.registry.set('caughtPokemon', this.loadCaughtPokemon());
-        this.registry.set('pokeballCount', this.loadPokeballCount());
 
         // Start the appropriate scene based on URL routing
         const startScene = this.registry.get('startScene') || 'MainGameScene';
@@ -153,16 +152,5 @@ export class BootScene extends Phaser.Scene {
     loadCaughtPokemon() {
         const saved = localStorage.getItem('pokemonCaughtList');
         return saved ? JSON.parse(saved) : [];
-    }
-
-    loadPokeballCount() {
-        const saved = localStorage.getItem('pokeballCount');
-        if (saved !== null) {
-            return parseInt(saved, 10);
-        }
-        // Give 5 starter pokeballs for new players
-        const starterBalls = 5;
-        localStorage.setItem('pokeballCount', starterBalls.toString());
-        return starterBalls;
     }
 }

@@ -180,6 +180,13 @@ export class MainGameScene extends Phaser.Scene {
             }
         });
 
+        // Check if player has pokeballs before starting encounter
+        if (!hasPokeballs()) {
+            // No pokeballs! Show message immediately
+            this.showNoPokeballsPopup();
+            return;
+        }
+
         // Spawn random Pokemon
         this.spawnPokemon();
 
@@ -472,92 +479,63 @@ export class MainGameScene extends Phaser.Scene {
         overlay.setDepth(this.DEPTH.POPUP_OVERLAY);
 
         // Create popup background
-        const popupWidth = 500;
-        const popupHeight = 300;
+        const popupWidth = 400;
+        const popupHeight = 400;
         const popup = this.add.rectangle(width / 2, height / 2, popupWidth, popupHeight, 0xFFFFFF);
         popup.setStrokeStyle(4, 0x000000);
         popup.setDepth(this.DEPTH.POPUP_BACKGROUND);
 
-        // Title text
-        const titleText = this.add.text(width / 2, height / 2 - 80, 'Inga Pokébollar!', {
-            font: 'bold 42px Arial',
+        // Warning triangle at top
+        const warningEmoji = this.add.text(width / 2, height / 2 - 120, '⚠️', {
+            fontSize: '80px'
+        }).setOrigin(0.5);
+        warningEmoji.setDepth(this.DEPTH.POPUP_CONTENT);
+
+        // Show pokeball sprite and 0 side by side
+        const pokeballSprite = this.add.image(width / 2 - 80, height / 2 - 10, 'pokeball_poke-ball');
+        pokeballSprite.setScale(0.5);
+        pokeballSprite.setDepth(this.DEPTH.POPUP_CONTENT);
+
+        // Big red 0 next to pokeball
+        const zeroText = this.add.text(width / 2 + 40, height / 2 - 10, '0', {
+            font: 'bold 120px Arial',
             fill: '#E74C3C'
         }).setOrigin(0.5);
-        titleText.setDepth(this.DEPTH.POPUP_CONTENT);
+        zeroText.setDepth(this.DEPTH.POPUP_CONTENT);
 
-        // Message text
-        const messageText = this.add.text(width / 2, height / 2 - 20, 'Du behöver Pokébollar för att fånga Pokemon!\nSpela Pokéball-spelet för att tjäna fler!', {
-            font: '20px Arial',
-            fill: '#000000',
-            align: 'center'
-        }).setOrigin(0.5);
-        messageText.setDepth(this.DEPTH.POPUP_CONTENT);
-
-        // Go to Pokeball Game button
-        const gameBtn = this.add.rectangle(width / 2 - 90, height / 2 + 80, 160, 50, 0x4CAF50);
-        gameBtn.setStrokeStyle(3, 0x000000);
+        // Dice button (only option - centered)
+        const gameBtn = this.add.rectangle(width / 2, height / 2 + 150, 200, 80, 0x4CAF50);
+        gameBtn.setStrokeStyle(4, 0x000000);
         gameBtn.setInteractive({ useHandCursor: true });
         gameBtn.setDepth(this.DEPTH.POPUP_CONTENT);
 
-        const gameBtnText = this.add.text(width / 2 - 90, height / 2 + 80, 'Spela Spel', {
-            font: 'bold 20px Arial',
-            fill: '#FFFFFF'
-        }).setOrigin(0.5);
-        gameBtnText.setDepth(this.DEPTH.POPUP_BUTTON_TEXT);
+        // Use dice icon sprite instead of emoji
+        const diceIcon = this.add.image(width / 2, height / 2 + 150, 'dice-icon');
+        diceIcon.setScale(0.4); // Scale down the 128px icon
+        diceIcon.setDepth(this.DEPTH.POPUP_BUTTON_TEXT);
 
         gameBtn.on('pointerover', () => {
             gameBtn.setFillStyle(0x66BB6A);
+            gameBtn.setScale(1.05);
         });
 
         gameBtn.on('pointerout', () => {
             gameBtn.setFillStyle(0x4CAF50);
+            gameBtn.setScale(1.0);
         });
 
         gameBtn.on('pointerdown', () => {
             // Clean up popup
             overlay.destroy();
             popup.destroy();
-            titleText.destroy();
-            messageText.destroy();
+            warningEmoji.destroy();
+            pokeballSprite.destroy();
+            zeroText.destroy();
             gameBtn.destroy();
-            gameBtnText.destroy();
-            cancelBtn.destroy();
-            cancelBtnText.destroy();
+            diceIcon.destroy();
 
             // Go to pokeball game
             this.scene.start('PokeballGameScene');
-        });
-
-        // Cancel button
-        const cancelBtn = this.add.rectangle(width / 2 + 90, height / 2 + 80, 160, 50, 0xE74C3C);
-        cancelBtn.setStrokeStyle(3, 0x000000);
-        cancelBtn.setInteractive({ useHandCursor: true });
-        cancelBtn.setDepth(this.DEPTH.POPUP_CONTENT);
-
-        const cancelBtnText = this.add.text(width / 2 + 90, height / 2 + 80, 'Avbryt', {
-            font: 'bold 20px Arial',
-            fill: '#FFFFFF'
-        }).setOrigin(0.5);
-        cancelBtnText.setDepth(this.DEPTH.POPUP_BUTTON_TEXT);
-
-        cancelBtn.on('pointerover', () => {
-            cancelBtn.setFillStyle(0xC0392B);
-        });
-
-        cancelBtn.on('pointerout', () => {
-            cancelBtn.setFillStyle(0xE74C3C);
-        });
-
-        cancelBtn.on('pointerdown', () => {
-            // Clean up popup
-            overlay.destroy();
-            popup.destroy();
-            titleText.destroy();
-            messageText.destroy();
-            gameBtn.destroy();
-            gameBtnText.destroy();
-            cancelBtn.destroy();
-            cancelBtnText.destroy();
         });
     }
 
