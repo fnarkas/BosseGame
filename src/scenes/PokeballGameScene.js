@@ -39,6 +39,16 @@ export class PokeballGameScene extends Phaser.Scene {
             this.scene.start('MainGameScene');
         });
 
+        // Store button (top right, before coin counter)
+        const storeBtn = this.add.image(width - 160, 52, 'store-icon');
+        storeBtn.setOrigin(1, 0.5);
+        storeBtn.setScale(0.5); // 128px * 0.5 = 64px
+        storeBtn.setInteractive({ useHandCursor: true });
+
+        storeBtn.on('pointerdown', () => {
+            window.openStore();
+        });
+
         // Coin counter (top right)
         // Coin sprite (using tiny version for better quality)
         const coinIcon = this.add.image(width - 110, 40, 'coin-tiny');

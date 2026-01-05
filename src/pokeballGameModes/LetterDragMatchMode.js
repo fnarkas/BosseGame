@@ -81,13 +81,17 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         shuffledLetters.forEach((letter, index) => {
             const x = startX + index * spacing;
 
-            // Solid box for draggable letter
+            // Solid box for draggable letter - make THIS draggable, not the text
             const box = scene.add.rectangle(x, lowerY, 150, 150, 0xFFFFFF, 0.3);
             box.setStrokeStyle(4, 0x4A90E2); // Solid blue border
+            box.setInteractive({ useHandCursor: true, draggable: true }); // Make box draggable
+            box.setData('letter', letter);
+            box.setData('startX', x);
+            box.setData('startY', lowerY);
             this.draggableBoxes.push(box);
             this.uiElements.push(box);
 
-            // Draggable lowercase letter
+            // Lowercase letter (NOT interactive - moves with box)
             const lowerText = scene.add.text(x, lowerY, letter.toLowerCase(), {
                 fontSize: '96px',
                 fontFamily: 'Arial',
@@ -95,33 +99,30 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
                 fontStyle: 'bold'
             });
             lowerText.setOrigin(0.5);
-            lowerText.setInteractive({ useHandCursor: true, draggable: true });
-            lowerText.setData('letter', letter);
-            lowerText.setData('startX', x);
-            lowerText.setData('startY', lowerY);
-            lowerText.setData('box', box); // Store reference to box
+            // Store reference to text in box
+            box.setData('letterText', lowerText);
 
             this.draggableLetters.push(lowerText);
             this.uiElements.push(lowerText);
 
-            // Set up drag events
-            lowerText.on('drag', (pointer, dragX, dragY) => {
-                lowerText.x = dragX;
-                lowerText.y = dragY;
+            // Set up drag events on the BOX
+            box.on('drag', (pointer, dragX, dragY) => {
                 box.x = dragX;
                 box.y = dragY;
+                lowerText.x = dragX;
+                lowerText.y = dragY;
 
                 // Check hover over drop zones
                 this.checkHoverOverZones(scene, pointer);
             });
 
-            lowerText.on('dragend', (pointer) => {
-                this.handleDrop(scene, lowerText, pointer);
+            box.on('dragend', (pointer) => {
+                this.handleDrop(scene, box, pointer);
             });
         });
 
-        // Enable drag and drop
-        scene.input.setDraggable(this.draggableLetters);
+        // Enable drag and drop on boxes
+        scene.input.setDraggable(this.draggableBoxes);
     }
 
     drawDashedRect(graphics, x, y, width, height, dashLength, gapLength) {
@@ -175,12 +176,12 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         }
     }
 
-    handleDrop(scene, draggedLetter, pointer) {
+    handleDrop(scene, draggedBox, pointer) {
         // Don't allow drops during reveal animation
         if (this.isRevealing) return;
 
-        const letter = draggedLetter.getData('letter');
-        const box = draggedLetter.getData('box');
+        const letter = draggedBox.getData('letter');
+        const letterText = draggedBox.getData('letterText');
         let matched = false;
         let droppedOnWrongZone = false;
         let wrongZoneLetter = null;
@@ -199,15 +200,15 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
                     zone.setData('matched', true);
 
                     // Snap to zone position
-                    draggedLetter.x = zone.x;
-                    draggedLetter.y = zone.y;
-                    box.x = zone.x;
-                    box.y = zone.y;
+                    draggedBox.x = zone.x;
+                    draggedBox.y = zone.y;
+                    letterText.x = zone.x;
+                    letterText.y = zone.y;
 
-                    draggedLetter.setTint(0x27AE60); // Green tint
-                    box.setStrokeStyle(4, 0x27AE60); // Green border
-                    box.setFillStyle(0x27AE60, 0.2); // Light green fill
-                    draggedLetter.disableInteractive(); // Can't drag anymore
+                    letterText.setTint(0x27AE60); // Green tint
+                    draggedBox.setStrokeStyle(4, 0x27AE60); // Green border
+                    draggedBox.setFillStyle(0x27AE60, 0.2); // Light green fill
+                    draggedBox.disableInteractive(); // Can't drag anymore
 
                     // Reset zone appearance and change to solid green border
                     zone.setFillStyle(0x27AE60, 0.2); // Light green fill
@@ -219,14 +220,14 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
 
                     // Visual feedback animation
                     scene.tweens.add({
-                        targets: [draggedLetter, box],
+                        targets: [draggedBox, letterText],
                         scale: 1.2,
                         duration: 200,
                         yoyo: true,
                         onComplete: () => {
                             // After animation, hide the dragged letter and box
-                            draggedLetter.setVisible(false);
-                            box.setVisible(false);
+                            draggedBox.setVisible(false);
+                            letterText.setVisible(false);
 
                             // Update the drop zone text to show both uppercase and lowercase
                             const upperText = zone.getData('upperText');
@@ -269,13 +270,13 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
                 );
 
                 // Wrong zone - show error feedback
-                this.showWrongDropFeedback(scene, draggedLetter, box);
+                this.showWrongDropFeedback(scene, draggedBox, letterText);
             } else {
                 // Dropped outside all zones - just return to start
                 scene.tweens.add({
-                    targets: [draggedLetter, box],
-                    x: draggedLetter.getData('startX'),
-                    y: draggedLetter.getData('startY'),
+                    targets: [draggedBox, letterText],
+                    x: draggedBox.getData('startX'),
+                    y: draggedBox.getData('startY'),
                     duration: 300,
                     ease: 'Back.easeOut'
                 });
@@ -290,38 +291,38 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         }
     }
 
-    showWrongDropFeedback(scene, draggedLetter, box) {
+    showWrongDropFeedback(scene, draggedBox, letterText) {
         // Red flash on the box and letter
-        draggedLetter.setTint(0xFF0000); // Red tint
-        box.setStrokeStyle(4, 0xFF0000); // Red border
-        box.setFillStyle(0xFF0000, 0.3); // Red fill
+        letterText.setTint(0xFF0000); // Red tint
+        draggedBox.setStrokeStyle(4, 0xFF0000); // Red border
+        draggedBox.setFillStyle(0xFF0000, 0.3); // Red fill
 
         // Shake animation
-        const originalX = draggedLetter.x;
+        const originalX = draggedBox.x;
         scene.tweens.add({
-            targets: [draggedLetter, box],
+            targets: [draggedBox, letterText],
             x: originalX - 10,
             duration: 50,
             yoyo: true,
             repeat: 3,
             onComplete: () => {
                 // Clear red tint
-                draggedLetter.clearTint();
-                box.setStrokeStyle(4, 0x4A90E2); // Back to blue border
-                box.setFillStyle(0xFFFFFF, 0.3); // Back to white fill
+                letterText.clearTint();
+                draggedBox.setStrokeStyle(4, 0x4A90E2); // Back to blue border
+                draggedBox.setFillStyle(0xFFFFFF, 0.3); // Back to white fill
 
                 // Return to start position
                 scene.tweens.add({
-                    targets: [draggedLetter, box],
-                    x: draggedLetter.getData('startX'),
-                    y: draggedLetter.getData('startY'),
+                    targets: [draggedBox, letterText],
+                    x: draggedBox.getData('startX'),
+                    y: draggedBox.getData('startY'),
                     duration: 300,
                     ease: 'Back.easeOut',
                     onComplete: () => {
                         // ONE ERROR = GAME OVER
                         // Highlight the correct zone for this letter
                         this.hasError = true;
-                        const letter = draggedLetter.getData('letter');
+                        const letter = draggedBox.getData('letter');
                         this.highlightCorrectZone(scene, letter);
                     }
                 });
