@@ -125,6 +125,12 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         scene.input.setDraggable(this.draggableBoxes);
     }
 
+    playLetterAudio(scene, letter) {
+        const audioKey = `letter_audio_${letter.toLowerCase()}`;
+        console.log('🔊 Playing audio:', audioKey);
+        scene.sound.play(audioKey);
+    }
+
     drawDashedRect(graphics, x, y, width, height, dashLength, gapLength) {
         const perimeter = [
             { x1: x, y1: y, x2: x + width, y2: y }, // Top
@@ -198,6 +204,9 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
                     // Correct match!
                     matched = true;
                     zone.setData('matched', true);
+
+                    // Play the letter audio
+                    this.playLetterAudio(scene, letter);
 
                     // Snap to zone position
                     draggedBox.x = zone.x;
