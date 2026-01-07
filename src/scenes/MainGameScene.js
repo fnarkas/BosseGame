@@ -512,23 +512,29 @@ export class MainGameScene extends Phaser.Scene {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
 
+        // Store popup elements so we can check and remove them later
+        this.noPokeballsPopupElements = [];
+
         // Create popup background
         const popupWidth = 400;
         const popupHeight = 400;
         const popup = this.add.rectangle(width / 2, height / 2, popupWidth, popupHeight, 0xFFFFFF);
         popup.setStrokeStyle(4, 0x000000);
         popup.setDepth(this.DEPTH.POPUP_BACKGROUND);
+        this.noPokeballsPopupElements.push(popup);
 
         // Warning triangle at top
         const warningEmoji = this.add.text(width / 2, height / 2 - 120, '⚠️', {
             fontSize: '80px'
         }).setOrigin(0.5);
         warningEmoji.setDepth(this.DEPTH.POPUP_CONTENT);
+        this.noPokeballsPopupElements.push(warningEmoji);
 
         // Show pokeball sprite and 0 side by side
         const pokeballSprite = this.add.image(width / 2 - 80, height / 2 - 10, 'pokeball_poke-ball');
         pokeballSprite.setScale(0.5);
         pokeballSprite.setDepth(this.DEPTH.POPUP_CONTENT);
+        this.noPokeballsPopupElements.push(pokeballSprite);
 
         // Big red 0 next to pokeball
         const zeroText = this.add.text(width / 2 + 40, height / 2 - 10, '0', {
@@ -536,17 +542,20 @@ export class MainGameScene extends Phaser.Scene {
             fill: '#E74C3C'
         }).setOrigin(0.5);
         zeroText.setDepth(this.DEPTH.POPUP_CONTENT);
+        this.noPokeballsPopupElements.push(zeroText);
 
         // Dice button (only option - centered)
         const gameBtn = this.add.rectangle(width / 2, height / 2 + 150, 200, 80, 0x4CAF50);
         gameBtn.setStrokeStyle(4, 0x000000);
         gameBtn.setInteractive({ useHandCursor: true });
         gameBtn.setDepth(this.DEPTH.POPUP_CONTENT);
+        this.noPokeballsPopupElements.push(gameBtn);
 
         // Use dice icon sprite instead of emoji
         const diceIcon = this.add.image(width / 2, height / 2 + 150, 'dice-icon');
         diceIcon.setScale(0.4); // Scale down the 128px icon
         diceIcon.setDepth(this.DEPTH.POPUP_BUTTON_TEXT);
+        this.noPokeballsPopupElements.push(diceIcon);
 
         gameBtn.on('pointerover', () => {
             gameBtn.setFillStyle(0x66BB6A);
@@ -560,16 +569,31 @@ export class MainGameScene extends Phaser.Scene {
 
         gameBtn.on('pointerdown', () => {
             // Clean up popup
-            popup.destroy();
-            warningEmoji.destroy();
-            pokeballSprite.destroy();
-            zeroText.destroy();
-            gameBtn.destroy();
-            diceIcon.destroy();
+            this.noPokeballsPopupElements.forEach(el => el.destroy());
+            this.noPokeballsPopupElements = null;
 
             // Go to pokeball game
             this.scene.start('PokeballGameScene');
         });
+    }
+
+    update() {
+        // Check if the "no pokeballs" popup is showing
+        if (this.noPokeballsPopupElements && this.noPokeballsPopupElements.length > 0) {
+            // Check if player now has pokeballs (they bought some from the store)
+            if (hasPokeballs()) {
+                // Clean up popup
+                this.noPokeballsPopupElements.forEach(el => {
+                    if (el && el.destroy) {
+                        el.destroy();
+                    }
+                });
+                this.noPokeballsPopupElements = null;
+
+                // Start a new encounter since they now have pokeballs
+                this.startNewEncounter();
+            }
+        }
     }
 
     showPokemonInfoPopup(pokeball) {
