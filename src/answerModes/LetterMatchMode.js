@@ -248,6 +248,27 @@ export class LetterMatchMode extends BaseAnswerMode {
         this.createLetterButtons(this.scene);
     }
 
+    playLetterAudio(letter) {
+        console.log('🔊 playLetterAudio called with letter:', letter);
+
+        if (!this.scene) {
+            console.warn('❌ No scene available');
+            return;
+        }
+
+        const audioKey = `letter_audio_${letter.toLowerCase()}`;
+        console.log('🔊 Looking for audio key:', audioKey);
+
+        // Check if audio exists and play it
+        if (this.scene.sound.get(audioKey)) {
+            console.log('✅ Audio found, playing:', audioKey);
+            this.scene.sound.play(audioKey);
+        } else {
+            console.warn(`❌ Audio not found for letter: ${letter}, key: ${audioKey}`);
+            console.log('Available sounds:', Object.keys(this.scene.cache.audio.entries.entries));
+        }
+    }
+
     showCorrectLetterEffect() {
         if (!this.currentHighlightX || !this.currentHighlightY || !this.scene) {
             return;
@@ -396,7 +417,10 @@ export class LetterMatchMode extends BaseAnswerMode {
                     // true = all letters collected (trigger catch)
                     // false = wrong answer (lose life)
                     if (result === null) {
-                        // Correct letter but more remain - show particle effect
+                        // Correct letter but more remain - play correct letter sound
+                        this.playLetterAudio(letter);
+
+                        // Show particle effect
                         this.showCorrectLetterEffect();
 
                         // Delay UI update so particle effect is fully visible before redraw
@@ -404,7 +428,13 @@ export class LetterMatchMode extends BaseAnswerMode {
                             this.updateLetterDisplay();
                         });
                     } else if (result === false) {
-                        // Wrong answer - show shake/red effect
+                        // Wrong answer - play correct letter THEN wrong letter
+                        this.playLetterAudio(this.currentLetter);
+                        this.scene.time.delayedCall(600, () => {
+                            this.playLetterAudio(letter);
+                        });
+
+                        // Show shake/red effect
                         this.showIncorrectLetterEffect();
 
                         // Delay callback until shake animation completes (400ms)
@@ -414,7 +444,10 @@ export class LetterMatchMode extends BaseAnswerMode {
                             }
                         });
                     } else if (result === true) {
-                        // All letters collected - turn green immediately, THEN show particle effect
+                        // All letters collected - play final correct letter sound
+                        this.playLetterAudio(letter);
+
+                        // Turn green immediately, THEN show particle effect
 
                         // First, update display to show the final letter as green (removes yellow highlight)
                         this.updateLetterDisplay();
