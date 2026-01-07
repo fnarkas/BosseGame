@@ -62,6 +62,15 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         micEmoji.setOrigin(0.5);
         this.uiElements.push(micEmoji);
 
+        // Status text (below button)
+        this.statusText = scene.add.text(width / 2, 580, 'Tryck för att prata', {
+            fontSize: '24px',
+            fontFamily: 'Arial',
+            color: '#95A5A6'
+        });
+        this.statusText.setOrigin(0.5);
+        this.uiElements.push(this.statusText);
+
         // Progress indicators (balls)
         this.createBallIndicators(scene);
 
@@ -123,7 +132,9 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
 
         if (!SpeechRecognition) {
             console.error('Web Speech API not supported in this browser');
-            this.statusText.setText('Mikrofon stöds ej i denna webbläsare');
+            if (this.statusText) {
+                this.statusText.setText('Mikrofon stöds ej i denna webbläsare');
+            }
             this.micButton.disableInteractive();
             return;
         }
@@ -152,12 +163,14 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
             this.isListening = false;
             this.micButton.setFillStyle(0xFF6B6B);
 
-            if (event.error === 'no-speech') {
-                this.statusText.setText('Ingen röst hördes. Försök igen!');
-            } else if (event.error === 'not-allowed') {
-                this.statusText.setText('Mikrofon ej tillåten');
-            } else {
-                this.statusText.setText('Fel uppstod. Försök igen!');
+            if (this.statusText) {
+                if (event.error === 'no-speech') {
+                    this.statusText.setText('Ingen röst hördes. Försök igen!');
+                } else if (event.error === 'not-allowed') {
+                    this.statusText.setText('Mikrofon ej tillåten');
+                } else {
+                    this.statusText.setText('Fel uppstod. Försök igen!');
+                }
             }
         };
 
@@ -175,7 +188,9 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
 
         this.isListening = true;
         this.micButton.setFillStyle(0x27AE60); // Green = listening
-        this.statusText.setText('Lyssnar...');
+        if (this.statusText) {
+            this.statusText.setText('Lyssnar...');
+        }
 
         try {
             this.recognition.start();
@@ -183,7 +198,9 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
             console.error('Failed to start recognition:', e);
             this.isListening = false;
             this.micButton.setFillStyle(0xFF6B6B);
-            this.statusText.setText('Fel! Försök igen');
+            if (this.statusText) {
+                this.statusText.setText('Fel! Försök igen');
+            }
         }
     }
 
@@ -224,8 +241,10 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
     }
 
     handleCorrectAnswer(scene) {
-        this.statusText.setText('✅ Rätt!');
-        this.statusText.setColor('#27AE60');
+        if (this.statusText) {
+            this.statusText.setText('✅ Rätt!');
+            this.statusText.setColor('#27AE60');
+        }
 
         this.correctCount++;
         this.updateBallIndicators();
@@ -256,20 +275,26 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
             transcript
         );
 
-        this.statusText.setText(`❌ Du sa: "${transcript}"`);
-        this.statusText.setColor('#E74C3C');
+        if (this.statusText) {
+            this.statusText.setText(`❌ Du sa: "${transcript}"`);
+            this.statusText.setColor('#E74C3C');
 
-        // Allow retry
-        scene.time.delayedCall(2000, () => {
-            this.statusText.setText('Tryck för att försöka igen');
-            this.statusText.setColor('#95A5A6');
-        });
+            // Allow retry
+            scene.time.delayedCall(2000, () => {
+                if (this.statusText) {
+                    this.statusText.setText('Tryck för att försöka igen');
+                    this.statusText.setColor('#95A5A6');
+                }
+            });
+        }
     }
 
     loadNextWord(scene) {
         // Clean up current UI
-        this.statusText.setText('');
-        this.statusText.setColor('#95A5A6');
+        if (this.statusText) {
+            this.statusText.setText('');
+            this.statusText.setColor('#95A5A6');
+        }
 
         // Generate new word
         this.generateChallenge();
@@ -280,7 +305,9 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
             wordText.setText(this.challengeData.word.toUpperCase());
         }
 
-        this.statusText.setText('Tryck för att prata');
+        if (this.statusText) {
+            this.statusText.setText('Tryck för att prata');
+        }
     }
 
     showSuccessParticles(scene, x, y) {
