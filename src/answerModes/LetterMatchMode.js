@@ -444,8 +444,9 @@ export class LetterMatchMode extends BaseAnswerMode {
                             }
                         });
                     } else if (result === true) {
-                        // All letters collected - play final correct letter sound
-                        this.playLetterAudio(letter);
+                        // All letters collected - play Pokemon name audio
+                        const pokemonId = this.challengeData.pokemon.id;
+                        const audioKey = `pokemon_audio_${pokemonId}`;
 
                         // Turn green immediately, THEN show particle effect
 
@@ -457,11 +458,19 @@ export class LetterMatchMode extends BaseAnswerMode {
                             this.showCorrectLetterEffect();
                         });
 
-                        // Delay callback to allow particle effect to complete
-                        this.scene.time.delayedCall(900, () => {
+                        // Play Pokemon name audio
+                        const pokemonAudio = this.scene.sound.add(audioKey);
+
+                        // Wait for audio to complete before showing pokeball selector
+                        pokemonAudio.once('complete', () => {
                             if (this.answerCallback) {
                                 this.answerCallback(result);
                             }
+                        });
+
+                        // Start playing the audio after particles show
+                        this.scene.time.delayedCall(100, () => {
+                            pokemonAudio.play();
                         });
                     }
                 });

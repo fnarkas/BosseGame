@@ -634,11 +634,39 @@ export class MainGameScene extends Phaser.Scene {
         numberText.setDepth(this.DEPTH.POPUP_CONTENT);
 
         // Pokemon name
-        const nameText = this.add.text(width / 2, height / 2 + 45, data.name.toUpperCase(), {
+        const nameText = this.add.text(width / 2 - 30, height / 2 + 45, data.name.toUpperCase(), {
             font: 'bold 32px Arial',
             fill: '#000000'
         }).setOrigin(0.5);
         nameText.setDepth(this.DEPTH.POPUP_CONTENT);
+
+        // Speaker button to play Pokemon name audio
+        const speakerBtn = this.add.text(width / 2 + 80, height / 2 + 45, '🔊', {
+            font: '36px Arial',
+            padding: { y: 7 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        speakerBtn.setDepth(this.DEPTH.POPUP_CONTENT);
+
+        // Hover effects for speaker
+        speakerBtn.on('pointerover', () => {
+            speakerBtn.setScale(1.2);
+        });
+
+        speakerBtn.on('pointerout', () => {
+            speakerBtn.setScale(1.0);
+        });
+
+        // Play audio on click
+        speakerBtn.on('pointerdown', () => {
+            speakerBtn.setScale(0.9);
+            this.time.delayedCall(100, () => {
+                speakerBtn.setScale(1.0);
+            });
+
+            // Play Pokemon name audio
+            const audioKey = `pokemon_audio_${data.id}`;
+            this.sound.play(audioKey);
+        });
 
         // Pokemon types - display type icons (circular icons are smaller, so scale more)
         const typeIconSize = 100;
@@ -693,6 +721,7 @@ export class MainGameScene extends Phaser.Scene {
             pokemonImage.destroy();
             numberText.destroy();
             nameText.destroy();
+            speakerBtn.destroy();
             typeIcons.forEach(icon => icon.destroy());
             statsText.destroy();
             continueBtn.destroy();

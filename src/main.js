@@ -40,6 +40,11 @@ if (path === '/debug' || path === '/debug/') {
     startScene = 'PokeballGameScene';
     pokeballGameMode = 'letter-only';
     console.log('Running LETTER LISTENING mode (debug)');
+} else if (path === '/words' || path === '/words/') {
+    answerMode = 'letter'; // default
+    startScene = 'PokeballGameScene';
+    pokeballGameMode = 'word-emoji-only';
+    console.log('Running WORD-EMOJI MATCH mode (debug)');
 } else if (path === '/directions' || path === '/directions/') {
     answerMode = 'letter'; // default
     startScene = 'PokeballGameScene';
@@ -64,6 +69,11 @@ if (path === '/debug' || path === '/debug/') {
     startScene = 'PokeballGameScene';
     pokeballGameMode = 'numbers-only';
     console.log('Running NUMBER LISTENING mode (debug)');
+} else if (path === '/emojiword' || path === '/emojiword/') {
+    answerMode = 'letter'; // default
+    startScene = 'PokeballGameScene';
+    pokeballGameMode = 'emojiword-only';
+    console.log('Running EMOJI-WORD MATCH mode (debug)');
 } else if (path === '/store' || path === '/store/') {
     answerMode = 'letter'; // default
     startScene = 'MainGameScene';
@@ -161,6 +171,8 @@ function showGamesMenuPage() {
                 <a href="/" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🎯 Main Game</a>
                 <a href="/pokeballs" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🎲 Random Mix</a>
                 <a href="/letters" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🔊 Letter Listening</a>
+                <a href="/words" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">📝 Word-Emoji Match</a>
+                <a href="/emojiword" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">📖 Emoji-Word Match</a>
                 <a href="/lettermatch" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🔤 Letter Match</a>
                 <a href="/directions" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">⬅️➡️ Directions</a>
                 <a href="/speech" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🎤 Speech Reading</a>

@@ -70,6 +70,7 @@ export class BootScene extends Phaser.Scene {
         // Load minigame icons (256x256 JPEG)
         this.load.image('game-mode-letter', 'minigame_icons/letter_listening.jpeg');
         this.load.image('game-mode-word', 'minigame_icons/word_emoji_match.jpeg');
+        this.load.image('game-mode-emojiword', 'minigame_icons/emoji_word_match.jpeg');
         this.load.image('game-mode-directions', 'minigame_icons/left_right.jpeg');
         this.load.image('game-mode-numbers', 'minigame_icons/number_listening.jpeg');
         this.load.image('game-mode-lettermatch', 'minigame_icons/letter_drag_match.jpeg');
@@ -173,18 +174,19 @@ export class BootScene extends Phaser.Scene {
     }
 
     generateDiceFaces() {
-        // Create 6 dice faces with different colored dots representing each game mode
-        const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xA78BFA, 0xFF8C42]; // Red, Cyan, Yellow, Mint, Purple, Orange
+        // Create 7 dice faces with different colored dots representing each game mode
+        const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xA78BFA, 0xFF8C42, 0x26A69A]; // Red, Cyan, Yellow, Mint, Purple, Orange, Teal
         const dotPatterns = [
             [{ x: 0.5, y: 0.5 }], // 1 dot (center)
             [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.7 }], // 2 dots (diagonal)
             [{ x: 0.3, y: 0.3 }, { x: 0.5, y: 0.5 }, { x: 0.7, y: 0.7 }], // 3 dots
             [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.3, y: 0.7 }, { x: 0.7, y: 0.7 }], // 4 dots
             [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.5, y: 0.5 }, { x: 0.3, y: 0.7 }, { x: 0.7, y: 0.7 }], // 5 dots
-            [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.3, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.3, y: 0.7 }, { x: 0.7, y: 0.7 }] // 6 dots
+            [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.3, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.3, y: 0.7 }, { x: 0.7, y: 0.7 }], // 6 dots
+            [{ x: 0.2, y: 0.2 }, { x: 0.5, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.5, y: 0.5 }, { x: 0.2, y: 0.8 }, { x: 0.5, y: 0.8 }, { x: 0.8, y: 0.8 }] // 7 dots
         ];
 
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 7; i++) {
             const graphics = this.add.graphics();
 
             // Draw white rounded rectangle background

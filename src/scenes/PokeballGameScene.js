@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { WordEmojiMatchMode } from '../pokeballGameModes/WordEmojiMatchMode.js';
+import { EmojiWordMatchMode } from '../pokeballGameModes/EmojiWordMatchMode.js';
 import { LetterListeningMode } from '../pokeballGameModes/LetterListeningMode.js';
 import { LeftRightMode } from '../pokeballGameModes/LeftRightMode.js';
 import { LetterDragMatchMode } from '../pokeballGameModes/LetterDragMatchMode.js';
@@ -102,6 +103,10 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /numbers - only show number listening
             this.gameMode = new NumberListeningMode();
             console.log('Selected game mode: Number Listening (forced)');
+        } else if (forcedMode === 'emojiword-only') {
+            // Debug path: /emojiword - only show emoji-word match
+            this.gameMode = new EmojiWordMatchMode();
+            console.log('Selected game mode: Emoji-Word Match (forced)');
         } else {
             // Normal mode: Randomly select from all game modes with configurable probabilities
             this.gameMode = this.selectRandomGameMode();
@@ -112,17 +117,19 @@ export class PokeballGameScene extends Phaser.Scene {
         // Configurable weights for each game mode
         // Higher weight = higher probability of being selected
         const MODE_WEIGHTS = {
-            letterListening: 16,     // ~16.7% chance
-            wordEmoji: 16,           // ~16.7% chance
-            leftRight: 16,           // ~16.7% chance
-            letterDragMatch: 16,     // ~16.7% chance
-            speechRecognition: 16,   // ~16.7% chance
-            numberListening: 16      // ~16.7% chance
+            letterListening: 14,     // ~14.3% chance
+            wordEmoji: 14,           // ~14.3% chance
+            emojiWord: 14,           // ~14.3% chance
+            leftRight: 14,           // ~14.3% chance
+            letterDragMatch: 14,     // ~14.3% chance
+            speechRecognition: 14,   // ~14.3% chance
+            numberListening: 14      // ~14.3% chance
         };
 
         // Calculate total weight
         const totalWeight = MODE_WEIGHTS.letterListening +
                           MODE_WEIGHTS.wordEmoji +
+                          MODE_WEIGHTS.emojiWord +
                           MODE_WEIGHTS.leftRight +
                           MODE_WEIGHTS.letterDragMatch +
                           MODE_WEIGHTS.speechRecognition +
@@ -144,6 +151,12 @@ export class PokeballGameScene extends Phaser.Scene {
         if (random < currentWeight) {
             console.log('Selected game mode: Word-Emoji Match');
             return new WordEmojiMatchMode();
+        }
+
+        currentWeight += MODE_WEIGHTS.emojiWord;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Emoji-Word Match');
+            return new EmojiWordMatchMode();
         }
 
         currentWeight += MODE_WEIGHTS.leftRight;
@@ -200,10 +213,11 @@ export class PokeballGameScene extends Phaser.Scene {
         const gameModeMap = {
             'LetterListeningMode': { face: 1, icon: 'game-mode-letter' },
             'WordEmojiMatchMode': { face: 2, icon: 'game-mode-word' },
-            'LeftRightMode': { face: 3, icon: 'game-mode-directions' },
-            'LetterDragMatchMode': { face: 4, icon: 'game-mode-lettermatch' },
-            'SpeechRecognitionMode': { face: 5, icon: 'game-mode-speech' },
-            'NumberListeningMode': { face: 6, icon: 'game-mode-numbers' }
+            'EmojiWordMatchMode': { face: 3, icon: 'game-mode-emojiword' },
+            'LeftRightMode': { face: 4, icon: 'game-mode-directions' },
+            'LetterDragMatchMode': { face: 5, icon: 'game-mode-lettermatch' },
+            'SpeechRecognitionMode': { face: 6, icon: 'game-mode-speech' },
+            'NumberListeningMode': { face: 7, icon: 'game-mode-numbers' }
         };
 
         const selectedMode = gameModeMap[this.gameMode.constructor.name];
@@ -225,30 +239,30 @@ export class PokeballGameScene extends Phaser.Scene {
             ease: 'Sine.easeInOut'
         });
 
-        // Create 6 game mode icons in a single row below the dice
-        const iconSize = 100;
-        const spacing = 60; // Adjusted for 6 icons
-        const totalWidth = (iconSize * 6) + (spacing * 5);
+        // Create 7 game mode icons in a single row below the dice
+        const iconSize = 60;
+        const spacing = 60; // Adjusted for 7 icons
+        const totalWidth = (iconSize * 7) + (spacing * 6);
         const startX = (width - totalWidth) / 2 + iconSize / 2;
         const iconY = height / 2 + 200; // Increased spacing from dice
 
         const gameIcons = [];
         const gameDiceFaces = [];
-        const iconKeys = ['game-mode-letter', 'game-mode-word', 'game-mode-directions', 'game-mode-lettermatch', 'game-mode-speech', 'game-mode-numbers'];
+        const iconKeys = ['game-mode-letter', 'game-mode-word', 'game-mode-emojiword', 'game-mode-directions', 'game-mode-lettermatch', 'game-mode-speech', 'game-mode-numbers'];
 
         iconKeys.forEach((key, index) => {
             const x = startX + index * (iconSize + spacing);
 
             // Game mode icon
             const icon = this.add.image(x, iconY, key);
-            icon.setScale(0.6);
+            icon.setScale(0.4);
             icon.setAlpha(0.3); // Start faded
             icon.setDepth(1001);
             gameIcons.push(icon);
 
             // Small dice face above the icon showing what number it corresponds to
-            const diceFace = this.add.image(x, iconY - 140, `dice-face-${index + 1}`); // Increased gap for better spacing
-            diceFace.setScale(0.6);
+            const diceFace = this.add.image(x, iconY - 100, `dice-face-${index + 1}`); // Reduced gap for smaller icons
+            diceFace.setScale(0.4);
             diceFace.setAlpha(0.3); // Start faded
             diceFace.setDepth(1001);
             gameDiceFaces.push(diceFace);
