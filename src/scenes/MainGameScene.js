@@ -512,11 +512,6 @@ export class MainGameScene extends Phaser.Scene {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
 
-        // Create semi-transparent background overlay
-        const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
-        overlay.setInteractive();
-        overlay.setDepth(this.DEPTH.POPUP_OVERLAY);
-
         // Create popup background
         const popupWidth = 400;
         const popupHeight = 400;
@@ -565,7 +560,6 @@ export class MainGameScene extends Phaser.Scene {
 
         gameBtn.on('pointerdown', () => {
             // Clean up popup
-            overlay.destroy();
             popup.destroy();
             warningEmoji.destroy();
             pokeballSprite.destroy();
