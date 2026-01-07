@@ -202,32 +202,31 @@ export class LeftRightMode extends BasePokeballGameMode {
                 wrongZone.setFillStyle(0xFFFFFF, 0.2);
                 wrongZone.x = originalX;
 
-                // Show sad emoji when streak is reset
+                // Show sad emoji - GAME OVER
                 const sadEmoji = scene.add.text(scene.cameras.main.width / 2, 500, '😢', {
                     fontSize: '120px'
                 }).setOrigin(0.5).setDepth(1000);
 
-                // Fade out sad emoji
+                // Fade out sad emoji and then return to dice scene
                 scene.tweens.add({
                     targets: sadEmoji,
                     alpha: 0,
                     scale: 1.5,
-                    duration: 2000,
+                    duration: 1500,
                     ease: 'Cubic.easeOut',
                     onComplete: () => {
                         sadEmoji.destroy();
+
+                        // GAME OVER - clean up and reload the scene to show dice again
+                        this.cleanup(scene);
+
+                        // Reset game state
+                        this.correctInRow = 0;
+
+                        // Restart the scene (will show dice animation since no coins earned)
+                        scene.scene.restart();
                     }
                 });
-
-                // Reset streak to 0
-                this.correctInRow = 0;
-                this.updateBallIndicators();
-
-                // Allow interaction again
-                this.isRevealing = false;
-
-                // Load next question
-                this.loadNextQuestion(scene);
             }
         });
     }

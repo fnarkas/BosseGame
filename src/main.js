@@ -59,6 +59,11 @@ if (path === '/debug' || path === '/debug/') {
     startScene = 'PokeballGameScene';
     pokeballGameMode = 'speech-only';
     console.log('Running SPEECH RECOGNITION mode (debug)');
+} else if (path === '/numbers' || path === '/numbers/') {
+    answerMode = 'letter'; // default
+    startScene = 'PokeballGameScene';
+    pokeballGameMode = 'numbers-only';
+    console.log('Running NUMBER LISTENING mode (debug)');
 } else if (path === '/store' || path === '/store/') {
     answerMode = 'letter'; // default
     startScene = 'MainGameScene';
@@ -159,6 +164,7 @@ function showGamesMenuPage() {
                 <a href="/lettermatch" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🔤 Letter Match</a>
                 <a href="/directions" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">⬅️➡️ Directions</a>
                 <a href="/speech" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🎤 Speech Reading</a>
+                <a href="/numbers" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🔢 Number Listening</a>
                 <a href="/store" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🛒 Store</a>
             </div>
         </div>
