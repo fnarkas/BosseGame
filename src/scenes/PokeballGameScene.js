@@ -27,24 +27,12 @@ export class PokeballGameScene extends Phaser.Scene {
         // Background
         this.add.rectangle(0, 0, width, height, 0x87CEEB).setOrigin(0);
 
-        // Back button
-        const backBtn = this.add.text(20, 20, '← Tillbaka', {
-            font: '24px Arial',
-            fill: '#ffffff',
-            backgroundColor: '#FF6B6B',
-            padding: { x: 15, y: 10 }
-        }).setInteractive({ useHandCursor: true });
-
-        backBtn.on('pointerdown', () => {
-            this.gameMode.cleanup(this);
-            this.scene.start('MainGameScene');
-        });
-
         // Store button (top right, before coin counter)
         const storeBtn = this.add.image(width - 160, 52, 'store-icon');
         storeBtn.setOrigin(1, 0.5);
         storeBtn.setScale(0.5); // 128px * 0.5 = 64px
         storeBtn.setInteractive({ useHandCursor: true });
+        storeBtn.setDepth(1002); // Above overlay
 
         storeBtn.on('pointerdown', () => {
             window.openStore();
@@ -55,6 +43,7 @@ export class PokeballGameScene extends Phaser.Scene {
         const coinIcon = this.add.image(width - 110, 40, 'coin-tiny');
         coinIcon.setOrigin(0, 0.5);
         coinIcon.setScale(1.25); // 64px * 1.25 = 80px
+        coinIcon.setDepth(1002); // Above overlay
 
         // Count text
         this.coinCounterText = this.add.text(width - 20, 32, `${this.coinCount}`, {
@@ -63,6 +52,7 @@ export class PokeballGameScene extends Phaser.Scene {
             stroke: '#000000',
             strokeThickness: 4
         }).setOrigin(1, 0);
+        this.coinCounterText.setDepth(1002); // Above overlay
 
         // Initialize game mode - alternate between modes
         this.selectGameMode();
@@ -174,6 +164,25 @@ export class PokeballGameScene extends Phaser.Scene {
         const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
         overlay.setDepth(1000);
 
+        // Pokemon catching button (top left) - exit back to catching Pokemon
+        const pokeballBtn = this.add.image(70, 50, 'pokeball_poke-ball');
+        pokeballBtn.setScale(0.8); // 64px * 0.8 = ~51px
+        pokeballBtn.setDepth(1002);
+        pokeballBtn.setInteractive({ useHandCursor: true });
+
+        pokeballBtn.on('pointerdown', () => {
+            // Clean up dice animation
+            overlay.destroy();
+            diceSprite.destroy();
+            gameIcons.forEach(icon => icon.destroy());
+            gameDiceFaces.forEach(face => face.destroy());
+            pokeballBtn.destroy();
+
+            // Clean up game mode and return to Pokemon catching
+            this.gameMode.cleanup(this);
+            this.scene.start('MainGameScene');
+        });
+
         // Map game mode to dice face and icon
         const gameModeMap = {
             'LetterListeningMode': { face: 1, icon: 'game-mode-letter' },
@@ -236,6 +245,9 @@ export class PokeballGameScene extends Phaser.Scene {
             // Stop pulsing animation on dice
             this.tweens.killTweensOf(diceSprite);
             diceSprite.setScale(2);
+
+            // Hide pokeball button when dice starts rolling
+            pokeballBtn.destroy();
 
             // Start the rolling animation
             this.startDiceRoll(diceSprite, selectedFace, gameIcons, gameDiceFaces, overlay);
