@@ -414,10 +414,22 @@ export class LetterMatchMode extends BaseAnswerMode {
                             }
                         });
                     } else if (result === true) {
-                        // All letters collected - trigger pokeball catch
-                        if (this.answerCallback) {
-                            this.answerCallback(result);
-                        }
+                        // All letters collected - turn green immediately, THEN show particle effect
+
+                        // First, update display to show the final letter as green (removes yellow highlight)
+                        this.updateLetterDisplay();
+
+                        // Small delay to let the green letter render, then show particle effect
+                        this.scene.time.delayedCall(50, () => {
+                            this.showCorrectLetterEffect();
+                        });
+
+                        // Delay callback to allow particle effect to complete
+                        this.scene.time.delayedCall(900, () => {
+                            if (this.answerCallback) {
+                                this.answerCallback(result);
+                            }
+                        });
                     }
                 });
 
