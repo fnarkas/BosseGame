@@ -3,6 +3,7 @@ import { WordEmojiMatchMode } from '../pokeballGameModes/WordEmojiMatchMode.js';
 import { LetterListeningMode } from '../pokeballGameModes/LetterListeningMode.js';
 import { LeftRightMode } from '../pokeballGameModes/LeftRightMode.js';
 import { LetterDragMatchMode } from '../pokeballGameModes/LetterDragMatchMode.js';
+import { SpeechRecognitionMode } from '../pokeballGameModes/SpeechRecognitionMode.js';
 import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
 
@@ -102,6 +103,10 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /lettermatch - only show letter drag match
             this.gameMode = new LetterDragMatchMode();
             console.log('Selected game mode: Letter Drag Match (forced)');
+        } else if (forcedMode === 'speech-only') {
+            // Debug path: /speech - only show speech recognition
+            this.gameMode = new SpeechRecognitionMode();
+            console.log('Selected game mode: Speech Recognition (forced)');
         } else {
             // Normal mode: Randomly select from all game modes with configurable probabilities
             this.gameMode = this.selectRandomGameMode();
@@ -112,17 +117,19 @@ export class PokeballGameScene extends Phaser.Scene {
         // Configurable weights for each game mode
         // Higher weight = higher probability of being selected
         const MODE_WEIGHTS = {
-            letterListening: 25,    // 25% chance
-            wordEmoji: 25,           // 25% chance
-            leftRight: 25,           // 25% chance
-            letterDragMatch: 25      // 25% chance
+            letterListening: 20,    // 20% chance
+            wordEmoji: 20,           // 20% chance
+            leftRight: 20,           // 20% chance
+            letterDragMatch: 20,     // 20% chance
+            speechRecognition: 20    // 20% chance
         };
 
         // Calculate total weight
         const totalWeight = MODE_WEIGHTS.letterListening +
                           MODE_WEIGHTS.wordEmoji +
                           MODE_WEIGHTS.leftRight +
-                          MODE_WEIGHTS.letterDragMatch;
+                          MODE_WEIGHTS.letterDragMatch +
+                          MODE_WEIGHTS.speechRecognition;
 
         // Generate random number between 0 and total weight
         const random = Math.random() * totalWeight;
@@ -148,9 +155,15 @@ export class PokeballGameScene extends Phaser.Scene {
             return new LeftRightMode();
         }
 
-        // Default to Letter Drag Match
-        console.log('Selected game mode: Letter Drag Match');
-        return new LetterDragMatchMode();
+        currentWeight += MODE_WEIGHTS.letterDragMatch;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Letter Drag Match');
+            return new LetterDragMatchMode();
+        }
+
+        // Default to Speech Recognition
+        console.log('Selected game mode: Speech Recognition');
+        return new SpeechRecognitionMode();
     }
 
     showDiceRollAnimation() {
@@ -166,7 +179,8 @@ export class PokeballGameScene extends Phaser.Scene {
             'LetterListeningMode': { face: 1, icon: 'game-mode-letter' },
             'WordEmojiMatchMode': { face: 2, icon: 'game-mode-word' },
             'LeftRightMode': { face: 3, icon: 'game-mode-directions' },
-            'LetterDragMatchMode': { face: 4, icon: 'game-mode-lettermatch' }
+            'LetterDragMatchMode': { face: 4, icon: 'game-mode-lettermatch' },
+            'SpeechRecognitionMode': { face: 5, icon: 'game-mode-speech' }
         };
 
         const selectedMode = gameModeMap[this.gameMode.constructor.name];
@@ -188,16 +202,16 @@ export class PokeballGameScene extends Phaser.Scene {
             ease: 'Sine.easeInOut'
         });
 
-        // Create 4 game mode icons in a single row below the dice
+        // Create 5 game mode icons in a single row below the dice
         const iconSize = 100;
-        const spacing = 80; // Increased from 50
-        const totalWidth = (iconSize * 4) + (spacing * 3);
+        const spacing = 70; // Adjusted for 5 icons
+        const totalWidth = (iconSize * 5) + (spacing * 4);
         const startX = (width - totalWidth) / 2 + iconSize / 2;
         const iconY = height / 2 + 200; // Increased spacing from dice
 
         const gameIcons = [];
         const gameDiceFaces = [];
-        const iconKeys = ['game-mode-letter', 'game-mode-word', 'game-mode-directions', 'game-mode-lettermatch'];
+        const iconKeys = ['game-mode-letter', 'game-mode-word', 'game-mode-directions', 'game-mode-lettermatch', 'game-mode-speech'];
 
         iconKeys.forEach((key, index) => {
             const x = startX + index * (iconSize + spacing);
@@ -238,7 +252,7 @@ export class PokeballGameScene extends Phaser.Scene {
                 rollCount++;
 
                 // Show random face
-                const randomFace = Phaser.Math.Between(1, 4);
+                const randomFace = Phaser.Math.Between(1, 5);
                 diceSprite.setTexture(`dice-face-${randomFace}`);
 
                 // Shake effect

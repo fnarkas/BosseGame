@@ -69,6 +69,7 @@ export class BootScene extends Phaser.Scene {
         this.load.image('game-mode-word', 'minigame_icons/word_emoji_match.jpeg');
         this.load.image('game-mode-directions', 'minigame_icons/left_right.jpeg');
         this.load.image('game-mode-lettermatch', 'minigame_icons/letter_drag_match.jpeg');
+        this.load.image('game-mode-speech', 'minigame_icons/speech_recognition.jpeg');
     }
 
     loadPokemonImages() {
@@ -159,16 +160,17 @@ export class BootScene extends Phaser.Scene {
     }
 
     generateDiceFaces() {
-        // Create 4 dice faces with different colored dots representing each game mode
-        const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3]; // Red, Cyan, Yellow, Mint
+        // Create 5 dice faces with different colored dots representing each game mode
+        const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xA78BFA]; // Red, Cyan, Yellow, Mint, Purple
         const dotPatterns = [
             [{ x: 0.5, y: 0.5 }], // 1 dot (center)
             [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.7 }], // 2 dots (diagonal)
             [{ x: 0.3, y: 0.3 }, { x: 0.5, y: 0.5 }, { x: 0.7, y: 0.7 }], // 3 dots
-            [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.3, y: 0.7 }, { x: 0.7, y: 0.7 }] // 4 dots
+            [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.3, y: 0.7 }, { x: 0.7, y: 0.7 }], // 4 dots
+            [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.5, y: 0.5 }, { x: 0.3, y: 0.7 }, { x: 0.7, y: 0.7 }] // 5 dots
         ];
 
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < 5; i++) {
             const graphics = this.add.graphics();
 
             // Draw white rounded rectangle background
