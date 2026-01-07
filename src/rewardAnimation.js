@@ -27,7 +27,8 @@ export function showGiftBoxReward(scene, coinAmount, onComplete) {
   // Create gift box emoji text
   const giftBox = scene.add.text(centerX, centerY, '🎁', {
     fontSize: '120px',
-    align: 'center'
+    align: 'center',
+    padding: { y: 30 }
   });
   giftBox.setOrigin(0.5);
   giftBox.setDepth(1001);
@@ -208,7 +209,7 @@ function addSparkles(scene, x, y) {
       x + Math.cos(angle) * distance,
       y + Math.sin(angle) * distance,
       '✨',
-      { fontSize: '24px' }
+      { fontSize: '24px', padding: { y: 5 } }
     );
     sparkle.setOrigin(0.5);
     sparkle.setDepth(1001);

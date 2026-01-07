@@ -66,7 +66,8 @@ export class LetterListeningMode extends BasePokeballGameMode {
 
         // Speaker button to replay audio (larger, centered)
         const speakerBtn = scene.add.text(width / 2, 270, '🔊', {
-            font: '80px Arial'
+            font: '80px Arial',
+            padding: { y: 20 }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
         speakerBtn.setData('clearOnNewChallenge', true);
         this.uiElements.push(speakerBtn);

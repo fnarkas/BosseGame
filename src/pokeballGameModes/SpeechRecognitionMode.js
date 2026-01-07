@@ -57,7 +57,8 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
 
         // Microphone emoji
         const micEmoji = scene.add.text(width / 2, 450, '🎤', {
-            fontSize: '80px'
+            fontSize: '80px',
+            padding: { y: 20 }
         });
         micEmoji.setOrigin(0.5);
         this.uiElements.push(micEmoji);
@@ -111,7 +112,8 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         // Add gift emoji at the end
         const giftX = startX + this.requiredCorrect * spacing;
         const giftEmoji = scene.add.text(giftX, y, '🎁', {
-            fontSize: '48px'
+            fontSize: '48px',
+            padding: { y: 10 }
         }).setOrigin(0.5);
         this.uiElements.push(giftEmoji);
     }

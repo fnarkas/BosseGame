@@ -34,7 +34,8 @@ export class LeftRightMode extends BasePokeballGameMode {
 
         // Speaker button to replay audio (centered at top)
         const speakerBtn = scene.add.text(width / 2, 200, '🔊', {
-            font: '80px Arial'
+            font: '80px Arial',
+            padding: { y: 20 }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
         speakerBtn.on('pointerdown', () => {
@@ -99,7 +100,8 @@ export class LeftRightMode extends BasePokeballGameMode {
         // Add gift emoji at the end to show the goal
         const giftX = startX + this.requiredCorrect * spacing;
         const giftEmoji = scene.add.text(giftX, y, '🎁', {
-            fontSize: '48px'
+            fontSize: '48px',
+            padding: { y: 10 }
         }).setOrigin(0.5);
         this.uiElements.push(giftEmoji);
     }

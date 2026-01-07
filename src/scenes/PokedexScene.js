@@ -151,7 +151,8 @@ export class PokedexScene extends Phaser.Scene {
 
                 // Speaker button to play Pokemon name audio
                 const speakerBtn = this.add.text(x + 75, y + 70, '🔊', {
-                    font: '28px Arial'
+                    font: '28px Arial',
+                    padding: { y: 7 }
                 }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
                 // Hover effect
