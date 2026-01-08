@@ -20,6 +20,9 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         this.correctCount = 0;
         this.requiredCorrect = REQUIRED_CORRECT_WORDS; // Configurable requirement
         this.ballIndicators = [];
+        this.permissionGranted = false;
+        this.networkTested = false;
+        this.hasNetworkConnection = false;
     }
 
     generateChallenge() {
@@ -48,10 +51,9 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         wordText.setOrigin(0.5);
         this.uiElements.push(wordText);
 
-        // Microphone button (large, centered)
+        // Microphone button (large, centered) - start disabled
         const micBtnSize = 150;
-        this.micButton = scene.add.circle(width / 2, 450, micBtnSize / 2, 0xFF6B6B, 1);
-        this.micButton.setInteractive({ useHandCursor: true });
+        this.micButton = scene.add.circle(width / 2, 450, micBtnSize / 2, 0x95A5A6, 1); // Gray = disabled
         this.micButton.setStrokeStyle(6, 0xFFFFFF);
         this.uiElements.push(this.micButton);
 
@@ -64,7 +66,7 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         this.uiElements.push(micEmoji);
 
         // Status text (below button)
-        this.statusText = scene.add.text(width / 2, 580, 'Tryck för att prata', {
+        this.statusText = scene.add.text(width / 2, 580, 'Väntar på mikrofon...', {
             fontSize: '24px',
             fontFamily: 'Arial',
             color: '#95A5A6'
@@ -75,14 +77,7 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         // Progress indicators (balls)
         this.createBallIndicators(scene);
 
-        // Set up microphone button events
-        this.micButton.on('pointerdown', () => {
-            if (!this.isListening) {
-                this.startListening(scene);
-            }
-        });
-
-        // Initialize Web Speech API
+        // Initialize Web Speech API and request permission
         this.initializeSpeechRecognition(scene);
     }
 
@@ -137,9 +132,19 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
             if (this.statusText) {
                 this.statusText.setText('Mikrofon stöds ej i denna webbläsare');
             }
-            this.micButton.disableInteractive();
             return;
         }
+
+        // Check for HTTPS (required for production)
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+            console.warn('⚠️ Speech recognition requires HTTPS or localhost');
+        }
+
+        console.log('🎤 Initializing Speech Recognition:', {
+            protocol: location.protocol,
+            hostname: location.hostname,
+            browser: navigator.userAgent.split(' ').pop()
+        });
 
         // Create recognition instance
         this.recognition = new SpeechRecognition();
@@ -161,47 +166,207 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
 
         // Handle errors
         this.recognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
+            console.error('Speech recognition error:', event.error, {
+                message: event.message,
+                error: event.error,
+                type: event.type,
+                timestamp: new Date().toISOString()
+            });
             this.isListening = false;
-            this.micButton.setFillStyle(0xFF6B6B);
+
+            if (this.micButton && this.permissionGranted) {
+                this.micButton.setFillStyle(0xFF6B6B);
+            }
 
             if (this.statusText) {
                 if (event.error === 'no-speech') {
                     this.statusText.setText('Ingen röst hördes. Försök igen!');
+                    this.statusText.setColor('#95A5A6');
                 } else if (event.error === 'not-allowed') {
-                    this.statusText.setText('Mikrofon ej tillåten');
+                    this.statusText.setText('Mikrofon ej tillåten - tryck på knappen igen');
+                    this.statusText.setColor('#E74C3C');
+                    this.permissionGranted = false;
+                } else if (event.error === 'network') {
+                    console.error('🔴 Network error details:', {
+                        protocol: location.protocol,
+                        isSecure: location.protocol === 'https:',
+                        isLocalhost: location.hostname === 'localhost',
+                        online: navigator.onLine,
+                        hasConnection: this.hasNetworkConnection
+                    });
+
+                    this.statusText.setText('⚠️ Kan inte nå röstigenkänning');
+                    this.statusText.setColor('#FFA500');
+                    this.hasNetworkConnection = false;
+
+                    // Wait longer before retrying (5 seconds)
+                    scene.time.delayedCall(5000, () => {
+                        if (this.statusText && this.permissionGranted) {
+                            this.statusText.setText('Tryck för att försöka igen');
+                            this.statusText.setColor('#95A5A6');
+                        }
+                    });
+                } else if (event.error === 'aborted') {
+                    this.statusText.setText('Avbruten. Tryck igen!');
+                    this.statusText.setColor('#95A5A6');
+                } else if (event.error === 'audio-capture') {
+                    this.statusText.setText('Mikrofonfel. Kolla inställningar');
+                    this.statusText.setColor('#E74C3C');
+                } else if (event.error === 'service-not-allowed') {
+                    this.statusText.setText('Röstigenkänning inte tillåten');
+                    this.statusText.setColor('#E74C3C');
                 } else {
-                    this.statusText.setText('Fel uppstod. Försök igen!');
+                    this.statusText.setText(`Fel (${event.error}). Försök igen!`);
+                    this.statusText.setColor('#E74C3C');
                 }
             }
         };
 
+        // Handle start
+        this.recognition.onstart = () => {
+            console.log('🎤 Recognition session started');
+        };
+
         // Handle end of recognition
         this.recognition.onend = () => {
+            console.log('🎤 Recognition session ended');
             this.isListening = false;
-            if (this.micButton) {
+            if (this.micButton && this.permissionGranted) {
                 this.micButton.setFillStyle(0xFF6B6B);
             }
         };
+
+        // Request microphone permission early
+        this.requestMicrophonePermission(scene);
+    }
+
+    async requestMicrophonePermission(scene) {
+        // Use getUserMedia to request microphone permission (doesn't require internet)
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            console.error('getUserMedia not supported');
+            if (this.statusText) {
+                this.statusText.setText('Mikrofon stöds ej');
+            }
+            return;
+        }
+
+        if (this.statusText) {
+            this.statusText.setText('Klicka "Tillåt" för mikrofonen');
+        }
+
+        try {
+            // Request microphone access (this works offline)
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            // Permission granted! Stop the stream immediately
+            stream.getTracks().forEach(track => track.stop());
+
+            console.log('Microphone permission granted');
+            this.permissionGranted = true;
+
+            // Enable the microphone button
+            if (this.micButton) {
+                this.micButton.setFillStyle(0xFF6B6B); // Red = ready
+                this.micButton.setInteractive({ useHandCursor: true });
+
+                // Set up click handler
+                this.micButton.on('pointerdown', () => {
+                    if (!this.isListening && this.permissionGranted) {
+                        this.startListening(scene);
+                    }
+                });
+            }
+
+            // Test network connection to speech API
+            this.testNetworkConnection(scene);
+
+        } catch (error) {
+            console.error('Microphone permission denied:', error);
+            if (this.statusText) {
+                this.statusText.setText('Mikrofon ej tillåten');
+            }
+        }
+    }
+
+    async testNetworkConnection(scene) {
+        // Test actual connectivity by making a simple request
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
+            await fetch('https://www.google.com/favicon.ico', {
+                mode: 'no-cors',
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            // Connection successful
+            this.hasNetworkConnection = true;
+            this.networkTested = true;
+
+            if (this.statusText && this.permissionGranted) {
+                this.statusText.setText('Tryck för att prata');
+                this.statusText.setColor('#95A5A6');
+            }
+
+            console.log('Network connection test: SUCCESS');
+
+        } catch (error) {
+            // No connection
+            this.hasNetworkConnection = false;
+            this.networkTested = true;
+
+            if (this.statusText) {
+                this.statusText.setText('⚠️ Ingen internet - behövs för röstigenkänning');
+                this.statusText.setColor('#FFA500');
+            }
+
+            console.log('Network connection test: FAILED', error.message);
+
+            // Retry after 5 seconds
+            scene.time.delayedCall(5000, () => {
+                if (this.statusText && !this.hasNetworkConnection) {
+                    this.testNetworkConnection(scene);
+                }
+            });
+        }
     }
 
     startListening(scene) {
-        if (!this.recognition || this.isListening) return;
+        if (!this.recognition || this.isListening || !this.permissionGranted) {
+            console.log('Cannot start listening:', {
+                hasRecognition: !!this.recognition,
+                isListening: this.isListening,
+                permissionGranted: this.permissionGranted
+            });
+            return;
+        }
 
+        // Allow retry even without network test passing
+        // (network test might fail but speech API might still work)
+
+        console.log('🎙️ Starting speech recognition...');
         this.isListening = true;
         this.micButton.setFillStyle(0x27AE60); // Green = listening
         if (this.statusText) {
             this.statusText.setText('Lyssnar...');
+            this.statusText.setColor('#95A5A6');
         }
 
         try {
             this.recognition.start();
+            console.log('✅ Recognition started successfully');
         } catch (e) {
-            console.error('Failed to start recognition:', e);
+            console.error('❌ Failed to start recognition:', e);
             this.isListening = false;
             this.micButton.setFillStyle(0xFF6B6B);
             if (this.statusText) {
-                this.statusText.setText('Fel! Försök igen');
+                if (e.message.includes('already started')) {
+                    this.statusText.setText('Redan igång - vänta lite');
+                } else {
+                    this.statusText.setText('Fel! Försök igen');
+                }
             }
         }
     }

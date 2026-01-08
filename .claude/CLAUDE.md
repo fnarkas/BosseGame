@@ -22,22 +22,22 @@
 **Target Audience: 5-year-old children who cannot read**
 
 ### Critical Rules:
-1. ❌ **NO TEXT LABELS** - Children cannot read text instructions
-2. ✅ Use audio, emojis, colors, and visual cues instead of text
+1. ❌ **NO INSTRUCTIONAL TEXT** - No instructions, labels, or UI text
+2. ✅ **Learning content CAN use text** - Words for reading practice are OK
 3. ✅ All game instructions must be audio-based
 4. ✅ UI should be purely visual and intuitive
 
 ### Examples:
-- ❌ Bad: "Tryck på rätt sida" text label
+- ❌ Bad: "Tryck på rätt sida" instruction label
 - ✅ Good: Speaker emoji 🔊 + audio instructions
 - ❌ Bad: "Försök: 3/25" progress text
 - ✅ Good: Visual progress indicators (colored balls, hearts, etc.)
-- ❌ Bad: "Vänster" and "Höger" text labels
-- ✅ Good: Color-coded zones + audio saying the direction
+- ✅ Good: Word buttons "äpple, banan, päron" (learning content)
+- ❌ Bad: "Välj rätt ord" (instructional text)
 
 ### Remember:
-- If you can't play the game without reading, it's wrong
-- Audio + visuals only
+- No instructional or informative text (use audio instead)
+- Learning content text is allowed (letters, words, numbers)
 - Keep it simple and intuitive for young children
 
 ## Adding New Minigames to Pokeball Game Scene
