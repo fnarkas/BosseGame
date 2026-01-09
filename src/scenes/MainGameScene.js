@@ -339,7 +339,7 @@ export class MainGameScene extends Phaser.Scene {
                 // Determine catch success based on probability
                 const currentPokemon = POKEMON_DATA.find(p => p.id === this.currentPokemon.id);
                 const pokeballData = POKEBALL_TYPES[this.selectedPokeballType];
-                const catchSucceeded = attemptCatch(currentPokemon, pokeballData.catchRate, this.isTutorialCatch);
+                const catchSucceeded = attemptCatch(currentPokemon, pokeballData.catchRate, this.isTutorialCatch, this.selectedPokeballType);
 
                 // Start wiggle animation
                 this.wigglePokeball(pokeball, catchSucceeded);

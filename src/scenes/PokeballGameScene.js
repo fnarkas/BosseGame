@@ -8,6 +8,8 @@ import { SpeechRecognitionMode } from '../pokeballGameModes/SpeechRecognitionMod
 import { NumberListeningMode } from '../pokeballGameModes/NumberListeningMode.js';
 import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
+import { getStreak, incrementStreak, resetStreak, getMultiplier } from '../streak.js';
+import { createBoosterBar, updateBoosterBar, destroyBoosterBar } from '../boosterBar.js';
 
 export class PokeballGameScene extends Phaser.Scene {
     constructor() {
@@ -17,6 +19,7 @@ export class PokeballGameScene extends Phaser.Scene {
         this.coinCounterText = null;
         this.isProcessingAnswer = false;
         this.challengeCount = 0; // Track number of challenges completed
+        this.boosterBarElements = null; // Booster bar UI elements
     }
 
     create() {
@@ -55,6 +58,11 @@ export class PokeballGameScene extends Phaser.Scene {
             strokeThickness: 4
         }).setOrigin(1, 0);
         this.coinCounterText.setDepth(1002); // Above overlay
+
+        // Create booster bar at top center
+        this.boosterBarElements = createBoosterBar(this, width / 2, 60, 1002);
+        const currentStreak = getStreak();
+        updateBoosterBar(this.boosterBarElements, currentStreak, this);
 
         // Initialize game mode - alternate between modes
         this.selectGameMode();
@@ -117,13 +125,13 @@ export class PokeballGameScene extends Phaser.Scene {
         // Configurable weights for each game mode
         // Higher weight = higher probability of being selected
         const MODE_WEIGHTS = {
-            letterListening: 14,     // ~14.3% chance
-            wordEmoji: 14,           // ~14.3% chance
-            emojiWord: 14,           // ~14.3% chance
-            leftRight: 14,           // ~14.3% chance
-            letterDragMatch: 14,     // ~14.3% chance
-            speechRecognition: 14,   // ~14.3% chance
-            numberListening: 14      // ~14.3% chance
+            letterListening: 14,     // ~16.7% chance
+            wordEmoji: 14,           // ~16.7% chance
+            emojiWord: 14,           // ~16.7% chance
+            leftRight: 14,           // ~16.7% chance
+            letterDragMatch: 14,     // ~16.7% chance
+            speechRecognition: 0,    // DISABLED - network issues
+            numberListening: 14      // ~16.7% chance
         };
 
         // Calculate total weight
@@ -190,6 +198,11 @@ export class PokeballGameScene extends Phaser.Scene {
         const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
         overlay.setDepth(1000);
 
+        // Create booster bar for dice scene (above overlay)
+        const diceBoosterBar = createBoosterBar(this, width / 2, 60, 1002);
+        const currentStreak = getStreak();
+        updateBoosterBar(diceBoosterBar, currentStreak, this);
+
         // Pokemon catching button (top left) - exit back to catching Pokemon
         const pokeballBtn = this.add.image(70, 50, 'pokeball_poke-ball');
         pokeballBtn.setScale(0.8); // 64px * 0.8 = ~51px
@@ -203,6 +216,7 @@ export class PokeballGameScene extends Phaser.Scene {
             gameIcons.forEach(icon => icon.destroy());
             gameDiceFaces.forEach(face => face.destroy());
             pokeballBtn.destroy();
+            destroyBoosterBar(diceBoosterBar);
 
             // Clean up game mode and return to Pokemon catching
             this.gameMode.cleanup(this);
@@ -278,11 +292,11 @@ export class PokeballGameScene extends Phaser.Scene {
             pokeballBtn.destroy();
 
             // Start the rolling animation
-            this.startDiceRoll(diceSprite, selectedFace, gameIcons, gameDiceFaces, overlay);
+            this.startDiceRoll(diceSprite, selectedFace, gameIcons, gameDiceFaces, overlay, diceBoosterBar);
         });
     }
 
-    startDiceRoll(diceSprite, selectedFace, gameIcons, gameDiceFaces, overlay) {
+    startDiceRoll(diceSprite, selectedFace, gameIcons, gameDiceFaces, overlay, diceBoosterBar) {
         // Rolling animation - cycle through faces (shorter)
         let rollCount = 0;
         const maxRolls = 12; // Reduced from 20
@@ -342,6 +356,7 @@ export class PokeballGameScene extends Phaser.Scene {
                         diceSprite.destroy();
                         gameIcons.forEach(icon => icon.destroy());
                         gameDiceFaces.forEach(face => face.destroy());
+                        destroyBoosterBar(diceBoosterBar);
 
                         // Start the actual game
                         this.loadNextChallenge();
@@ -365,16 +380,24 @@ export class PokeballGameScene extends Phaser.Scene {
         this.isProcessingAnswer = true;
 
         if (isCorrect) {
+            // Increment streak and get multiplier
+            const newStreak = incrementStreak();
+            const multiplier = getMultiplier();
+
+            // Update booster bar
+            updateBoosterBar(this.boosterBarElements, newStreak, this);
+
             // Show success feedback particles
             this.showSuccessFeedback(x, y);
 
             // Generate random coin reward (1-3)
-            const coinReward = getRandomCoinReward();
+            const baseCoinReward = getRandomCoinReward();
+            const finalCoinReward = baseCoinReward * multiplier;
 
-            // Show gift box reward animation
-            showGiftBoxReward(this, coinReward, () => {
+            // Show gift box reward animation with multiplier
+            showGiftBoxReward(this, finalCoinReward, multiplier, () => {
                 // Animation complete - update coin count
-                this.coinCount = addCoins(coinReward);
+                this.coinCount = addCoins(finalCoinReward);
                 this.coinCounterText.setText(`${this.coinCount}`);
 
                 // Clean up and load next challenge
@@ -400,6 +423,10 @@ export class PokeballGameScene extends Phaser.Scene {
                 }
             });
         } else {
+            // Reset streak on wrong answer
+            const newStreak = resetStreak();
+            updateBoosterBar(this.boosterBarElements, newStreak, this);
+
             // Show error feedback
             this.showErrorFeedback(x, y);
 

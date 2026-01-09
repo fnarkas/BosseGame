@@ -1,6 +1,8 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { WORD_EMOJI_CHALLENGES } from '../wordEmojiData.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { resetStreak } from '../streak.js';
+import { updateBoosterBar } from '../boosterBar.js';
 
 /**
  * Word-Emoji matching game mode
@@ -206,6 +208,14 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
             // Reset state
             this.hasError = false;
             this.isRevealing = false;
+
+            // Reset streak since player made an error
+            resetStreak();
+
+            // Update booster bar visual immediately
+            if (scene.boosterBarElements) {
+                updateBoosterBar(scene.boosterBarElements, 0, scene);
+            }
 
             // Generate new challenge
             this.generateChallenge();

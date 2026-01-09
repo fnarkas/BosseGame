@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { SWEDISH_LETTERS } from '../letterData.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { resetStreak } from '../streak.js';
+import { updateBoosterBar } from '../boosterBar.js';
 
 export class LetterDragMatchMode extends BasePokeballGameMode {
     constructor() {
@@ -391,6 +393,14 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
             this.hasError = false;
             this.isRevealing = false;
             this.correctMatches = 0;
+
+            // Reset streak since player made an error
+            resetStreak();
+
+            // Update booster bar visual immediately
+            if (scene.boosterBarElements) {
+                updateBoosterBar(scene.boosterBarElements, 0, scene);
+            }
 
             // Generate new challenge with different letters
             this.generateChallenge();

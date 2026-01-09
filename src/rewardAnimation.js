@@ -6,10 +6,11 @@
 /**
  * Create and show gift box reward animation
  * @param {Phaser.Scene} scene - The Phaser scene to add the animation to
- * @param {number} coinAmount - Amount of coins to show (1-3)
+ * @param {number} coinAmount - Amount of coins to show (already multiplied)
+ * @param {number} multiplier - Streak multiplier (1-5)
  * @param {Function} onComplete - Callback when animation completes
  */
-export function showGiftBoxReward(scene, coinAmount, onComplete) {
+export function showGiftBoxReward(scene, coinAmount, multiplier, onComplete) {
   const centerX = scene.cameras.main.width / 2;
   const centerY = scene.cameras.main.height / 2;
 
@@ -44,7 +45,7 @@ export function showGiftBoxReward(scene, coinAmount, onComplete) {
       // Start jiggle animation
       jiggleGiftBox(scene, giftBox, () => {
         // Explosion and reveal coins
-        explodeAndReveal(scene, giftBox, coinAmount, () => {
+        explodeAndReveal(scene, giftBox, coinAmount, multiplier, () => {
           // Clean up overlay
           overlay.destroy();
           if (onComplete) {
@@ -91,7 +92,7 @@ function jiggleGiftBox(scene, giftBox, onComplete) {
 /**
  * Create explosion particle effect and reveal coins
  */
-function explodeAndReveal(scene, giftBox, coinAmount, onComplete) {
+function explodeAndReveal(scene, giftBox, coinAmount, multiplier, onComplete) {
   const centerX = giftBox.x;
   const centerY = giftBox.y;
 
@@ -136,8 +137,8 @@ function explodeAndReveal(scene, giftBox, coinAmount, onComplete) {
     onComplete: () => {
       giftBox.destroy();
 
-      // Show coin reward
-      showCoinReveal(scene, centerX, centerY, coinAmount, onComplete);
+      // Show coin reward (with multiplier if > 1)
+      showCoinReveal(scene, centerX, centerY, coinAmount, multiplier, onComplete);
     }
   });
 }
@@ -145,7 +146,120 @@ function explodeAndReveal(scene, giftBox, coinAmount, onComplete) {
 /**
  * Show the coin amount reveal
  */
-function showCoinReveal(scene, x, y, coinAmount, onComplete) {
+function showCoinReveal(scene, x, y, coinAmount, multiplier, onComplete) {
+  // If multiplier > 1, show multiplier first
+  if (multiplier > 1) {
+    showMultiplierAnimation(scene, x, y, multiplier, () => {
+      // Then show coins
+      showCoinAmountAnimation(scene, x, y, coinAmount, onComplete);
+    });
+  } else {
+    // No multiplier, show coins directly
+    showCoinAmountAnimation(scene, x, y, coinAmount, onComplete);
+  }
+}
+
+/**
+ * Show multiplier animation (only if > 1)
+ */
+function showMultiplierAnimation(scene, x, y, multiplier, onComplete) {
+  // Create multiplier text
+  const multiplierText = scene.add.text(x, y, `x${multiplier}`, {
+    fontSize: '80px',
+    fontFamily: 'Arial',
+    color: '#FFD700',
+    fontStyle: 'bold',
+    stroke: '#FF6B6B',
+    strokeThickness: 6,
+    align: 'center'
+  });
+  multiplierText.setOrigin(0.5);
+  multiplierText.setDepth(1001);
+  multiplierText.setScale(0);
+
+  // Animate multiplier appearing
+  scene.tweens.add({
+    targets: multiplierText,
+    scale: 2,
+    duration: 400,
+    ease: 'Back.easeOut',
+    onComplete: () => {
+      // Pulse effect
+      scene.tweens.add({
+        targets: multiplierText,
+        scale: 2.2,
+        duration: 300,
+        yoyo: true,
+        repeat: 1,
+        onComplete: () => {
+          // Fade out multiplier
+          scene.tweens.add({
+            targets: multiplierText,
+            alpha: 0,
+            scale: 3,
+            duration: 400,
+            ease: 'Cubic.easeIn',
+            onComplete: () => {
+              multiplierText.destroy();
+              if (onComplete) {
+                onComplete();
+              }
+            }
+          });
+        }
+      });
+    }
+  });
+
+  // Add glow particles around multiplier
+  addMultiplierGlow(scene, x, y);
+}
+
+/**
+ * Add glow effect around multiplier
+ */
+function addMultiplierGlow(scene, x, y) {
+  const glowCount = 12;
+  const radius = 100;
+
+  for (let i = 0; i < glowCount; i++) {
+    const angle = (Math.PI * 2 * i) / glowCount;
+
+    const glow = scene.add.text(
+      x + Math.cos(angle) * radius,
+      y + Math.sin(angle) * radius,
+      '✨',
+      { fontSize: '32px', padding: { y: 8 } }
+    );
+    glow.setOrigin(0.5);
+    glow.setDepth(1000);
+    glow.setAlpha(0);
+
+    scene.tweens.add({
+      targets: glow,
+      alpha: 1,
+      x: x + Math.cos(angle) * (radius + 30),
+      y: y + Math.sin(angle) * (radius + 30),
+      duration: 600,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        scene.tweens.add({
+          targets: glow,
+          alpha: 0,
+          duration: 200,
+          onComplete: () => {
+            glow.destroy();
+          }
+        });
+      }
+    });
+  }
+}
+
+/**
+ * Show coin amount animation
+ */
+function showCoinAmountAnimation(scene, x, y, coinAmount, onComplete) {
   // Create coin sprite (using tiny version for better quality)
   const coinSprite = scene.add.image(x, y - 30, 'coin-tiny');
   coinSprite.setOrigin(0.5);

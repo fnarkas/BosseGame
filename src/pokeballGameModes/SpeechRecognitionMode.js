@@ -23,6 +23,7 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         this.permissionGranted = false;
         this.networkTested = false;
         this.hasNetworkConnection = false;
+        this.recognitionTimeout = null; // Timeout for Safari/iOS
     }
 
     generateChallenge() {
@@ -155,6 +156,12 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
 
         // Handle results
         this.recognition.onresult = (event) => {
+            // Clear timeout since we got a result
+            if (this.recognitionTimeout) {
+                this.recognitionTimeout.remove();
+                this.recognitionTimeout = null;
+            }
+
             const results = event.results[0];
             const transcript = results[0].transcript.toLowerCase().trim();
 
@@ -166,6 +173,12 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
 
         // Handle errors
         this.recognition.onerror = (event) => {
+            // Clear timeout since we got an error
+            if (this.recognitionTimeout) {
+                this.recognitionTimeout.remove();
+                this.recognitionTimeout = null;
+            }
+
             console.error('Speech recognition error:', event.error, {
                 message: event.message,
                 error: event.error,
@@ -357,6 +370,27 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         try {
             this.recognition.start();
             console.log('✅ Recognition started successfully');
+
+            // Safari/iOS workaround: Set timeout to stop recognition after 10 seconds
+            // This prevents infinite listening state
+            this.recognitionTimeout = scene.time.delayedCall(10000, () => {
+                console.log('⏱️ Recognition timeout - stopping');
+                if (this.recognition && this.isListening) {
+                    try {
+                        this.recognition.stop();
+                    } catch (e) {
+                        console.error('Error stopping recognition:', e);
+                    }
+                    this.isListening = false;
+                    if (this.micButton) {
+                        this.micButton.setFillStyle(0xFF6B6B);
+                    }
+                    if (this.statusText) {
+                        this.statusText.setText('Ingen röst hördes. Försök igen!');
+                        this.statusText.setColor('#FFA500');
+                    }
+                }
+            });
         } catch (e) {
             console.error('❌ Failed to start recognition:', e);
             this.isListening = false;
@@ -524,6 +558,12 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
     }
 
     cleanup(scene) {
+        // Clear timeout if active
+        if (this.recognitionTimeout) {
+            this.recognitionTimeout.remove();
+            this.recognitionTimeout = null;
+        }
+
         // Stop recognition if active
         if (this.recognition && this.isListening) {
             this.recognition.stop();

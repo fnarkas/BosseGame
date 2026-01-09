@@ -1,6 +1,8 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { SWEDISH_LETTERS } from '../letterData.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { resetStreak } from '../streak.js';
+import { updateBoosterBar } from '../boosterBar.js';
 
 /**
  * Letter Listening game mode
@@ -250,6 +252,14 @@ export class LetterListeningMode extends BasePokeballGameMode {
             // Reset state
             this.hasError = false;
             this.isRevealing = false;
+
+            // Reset streak since player made an error
+            resetStreak();
+
+            // Update booster bar visual immediately
+            if (scene.boosterBarElements) {
+                updateBoosterBar(scene.boosterBarElements, 0, scene);
+            }
 
             // Generate new challenge
             this.generateChallenge();

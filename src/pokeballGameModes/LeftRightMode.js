@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { resetStreak } from '../streak.js';
+import { updateBoosterBar } from '../boosterBar.js';
 
 export class LeftRightMode extends BasePokeballGameMode {
     constructor() {
@@ -222,6 +224,14 @@ export class LeftRightMode extends BasePokeballGameMode {
 
                         // Reset game state
                         this.correctInRow = 0;
+
+                        // Reset streak since this minigame was failed
+                        resetStreak();
+
+                        // Update booster bar visual immediately
+                        if (scene.boosterBarElements) {
+                            updateBoosterBar(scene.boosterBarElements, 0, scene);
+                        }
 
                         // Restart the scene (will show dice animation since no coins earned)
                         scene.scene.restart();

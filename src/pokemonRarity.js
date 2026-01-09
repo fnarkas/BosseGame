@@ -69,9 +69,24 @@ export function getBaseCatchRate(pokemon) {
  * Calculate final catch probability
  * @param {Object} pokemon - Pokemon data object
  * @param {number} pokeballMultiplier - Pokeball catch rate multiplier (from POKEBALL_TYPES)
+ * @param {string} ballType - Type of pokeball being used ('pokeball', 'greatball', 'ultraball')
  * @returns {number} Final catch probability (0.0 to 1.0, capped at 1.0)
  */
-export function calculateCatchProbability(pokemon, pokeballMultiplier) {
+export function calculateCatchProbability(pokemon, pokeballMultiplier, ballType = 'pokeball') {
+  const rarity = getPokemonRarity(pokemon);
+  const rarityInfo = RARITY_TIERS[rarity];
+
+  // Guaranteed catches:
+  // Great Ball always catches 1-star (uncommon) Pokemon
+  if (ballType === 'greatball' && rarityInfo.stars === 1) {
+    return 1.0;
+  }
+
+  // Ultra Ball always catches 2-star (rare) Pokemon
+  if (ballType === 'ultraball' && rarityInfo.stars === 2) {
+    return 1.0;
+  }
+
   const baseCatchRate = getBaseCatchRate(pokemon);
   const finalRate = baseCatchRate * pokeballMultiplier;
   return Math.min(finalRate, 1.0); // Cap at 100%
@@ -82,16 +97,17 @@ export function calculateCatchProbability(pokemon, pokeballMultiplier) {
  * @param {Object} pokemon - Pokemon data object
  * @param {number} pokeballMultiplier - Pokeball catch rate multiplier
  * @param {boolean} isTutorial - If true, always succeed (for tutorial Pokemon)
+ * @param {string} ballType - Type of pokeball being used ('pokeball', 'greatball', 'ultraball')
  * @returns {boolean} True if catch succeeded, false if failed
  */
-export function attemptCatch(pokemon, pokeballMultiplier, isTutorial = false) {
+export function attemptCatch(pokemon, pokeballMultiplier, isTutorial = false, ballType = 'pokeball') {
   // Tutorial mode: always succeed
   if (isTutorial) {
     console.log(`Tutorial catch: ${pokemon.name} - GUARANTEED SUCCESS`);
     return true;
   }
 
-  const catchProbability = calculateCatchProbability(pokemon, pokeballMultiplier);
+  const catchProbability = calculateCatchProbability(pokemon, pokeballMultiplier, ballType);
   const roll = Math.random();
 
   const success = roll < catchProbability;
