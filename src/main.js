@@ -31,6 +31,7 @@ let startScene = 'MainGameScene';
 let pokeballGameMode = null; // null = alternate, 'letter' = letter only, 'word-emoji' = word-emoji only
 let showStoreOnLoad = false;
 let showGamesMenu = false;
+let showAdmin = false;
 
 if (path === '/debug' || path === '/debug/') {
     answerMode = 'debug';
@@ -87,6 +88,9 @@ if (path === '/debug' || path === '/debug/') {
 } else if (path === '/games' || path === '/games/') {
     showGamesMenu = true;
     console.log('Showing GAMES MENU');
+} else if (path === '/admin' || path === '/admin/') {
+    showAdmin = true;
+    console.log('Showing ADMIN PANEL');
 } else if (path === '/reset' || path === '/reset/') {
     // Reset all progress
     resetAllProgress();
@@ -98,6 +102,8 @@ if (path === '/debug' || path === '/debug/') {
 // Show games menu if /games route
 if (showGamesMenu) {
     showGamesMenuPage();
+} else if (showAdmin) {
+    showAdminPage();
 } else {
     // Main game configuration
     const config = {
@@ -189,4 +195,107 @@ function showGamesMenuPage() {
     `;
 
     document.body.innerHTML = menuHTML;
+}
+
+function showAdminPage() {
+    const gameContainer = document.getElementById('game-container');
+    if (gameContainer) {
+        gameContainer.style.display = 'none';
+    }
+
+    // Load current caught Pokemon
+    const caughtPokemon = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
+
+    // Generate Pokemon grid
+    const pokemonGrid = POKEMON_DATA.map(pokemon => {
+        const isCaught = caughtPokemon.includes(pokemon.id);
+        return `
+            <div style="display: flex; align-items: center; padding: 10px; background: ${isCaught ? '#e8f5e9' : '#fff'}; border-radius: 8px; border: 1px solid ${isCaught ? '#4CAF50' : '#ddd'};">
+                <input type="checkbox"
+                       id="pokemon-${pokemon.id}"
+                       ${isCaught ? 'checked' : ''}
+                       onchange="togglePokemon(${pokemon.id})"
+                       style="width: 20px; height: 20px; margin-right: 15px; cursor: pointer;">
+                <img src="pokemon_images/${pokemon.filename}"
+                     alt="${pokemon.name}"
+                     style="width: 60px; height: 60px; margin-right: 15px; object-fit: contain;">
+                <div style="flex: 1;">
+                    <div style="font-weight: bold; font-size: 16px;">#${pokemon.id} ${pokemon.name}</div>
+                    <div style="color: #666; font-size: 14px;">${isCaught ? '✓ Caught' : 'Not caught'}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const adminHTML = `
+        <div style="font-family: Arial; max-width: 1200px; margin: 40px auto; padding: 40px; height: calc(100vh - 80px); display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                <h1 style="font-size: 36px; margin: 0;">⚙️ Admin Panel</h1>
+                <a href="/" style="padding: 12px 24px; background: #2196F3; color: white; border-radius: 8px; text-decoration: none; font-size: 16px;">← Back to Game</a>
+            </div>
+
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 10px; margin-bottom: 30px; flex-shrink: 0;">
+                <h2 style="margin-top: 0;">Pokemon Manager</h2>
+                <p style="color: #666;">Total caught: <strong id="caught-count">${caughtPokemon.length}</strong> / ${POKEMON_DATA.length}</p>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="catchAll()" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">✓ Catch All</button>
+                    <button onclick="releaseAll()" style="padding: 12px 24px; background: #f44336; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">✗ Release All</button>
+                </div>
+            </div>
+
+            <div style="flex: 1; overflow-y: auto; padding-right: 10px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 15px;">
+                    ${pokemonGrid}
+                </div>
+            </div>
+        </div>
+
+        <script>
+            function togglePokemon(id) {
+                const caughtList = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
+                const index = caughtList.indexOf(id);
+
+                if (index > -1) {
+                    caughtList.splice(index, 1);
+                } else {
+                    caughtList.push(id);
+                }
+
+                localStorage.setItem('pokemonCaughtList', JSON.stringify(caughtList));
+                updateUI();
+            }
+
+            function catchAll() {
+                const allIds = ${JSON.stringify(POKEMON_DATA.map(p => p.id))};
+                localStorage.setItem('pokemonCaughtList', JSON.stringify(allIds));
+                location.reload();
+            }
+
+            function releaseAll() {
+                localStorage.setItem('pokemonCaughtList', JSON.stringify([]));
+                location.reload();
+            }
+
+            function updateUI() {
+                const caughtList = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
+                document.getElementById('caught-count').textContent = caughtList.length;
+
+                // Update checkbox backgrounds
+                ${POKEMON_DATA.map(p => `
+                    const elem${p.id} = document.getElementById('pokemon-${p.id}').parentElement;
+                    if (caughtList.includes(${p.id})) {
+                        elem${p.id}.style.background = '#e8f5e9';
+                        elem${p.id}.style.borderColor = '#4CAF50';
+                        elem${p.id}.querySelector('div div:last-child').textContent = '✓ Caught';
+                    } else {
+                        elem${p.id}.style.background = '#fff';
+                        elem${p.id}.style.borderColor = '#ddd';
+                        elem${p.id}.querySelector('div div:last-child').textContent = 'Not caught';
+                    }
+                `).join('')}
+            }
+        </script>
+    `;
+
+    document.body.innerHTML = adminHTML;
 }

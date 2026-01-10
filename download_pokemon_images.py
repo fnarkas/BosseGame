@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Download images of the first 100 Pokémon from PokéAPI.
+Download images of the first 151 Gen 1 Pokémon from PokéAPI.
 """
 import requests
 import os
 from pathlib import Path
 
 
-def download_pokemon_images(num_pokemon=100, output_dir="pokemon_images"):
+def download_pokemon_images(num_pokemon=151, output_dir="pokemon_images"):
     """
     Download images of the first num_pokemon Pokémon.
 
     Args:
-        num_pokemon: Number of Pokémon to download (default: 100)
+        num_pokemon: Number of Pokémon to download (default: 151)
         output_dir: Directory to save images (default: "pokemon_images")
     """
     # Create output directory if it doesn't exist
@@ -58,4 +58,4 @@ def download_pokemon_images(num_pokemon=100, output_dir="pokemon_images"):
 
 
 if __name__ == "__main__":
-    download_pokemon_images(num_pokemon=100)
+    download_pokemon_images(num_pokemon=151)

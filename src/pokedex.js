@@ -34,7 +34,7 @@ export function hidePokedex() {
 }
 
 /**
- * Render the Pokemon grid with all 100 Pokemon
+ * Render the Pokemon grid with all Pokemon
  */
 function renderPokedexGrid() {
     const grid = document.getElementById('pokedex-grid');
@@ -45,7 +45,7 @@ function renderPokedexGrid() {
     const caughtIds = new Set(caughtPokemon.map(p => p.id));
 
     // Update stats
-    statsDiv.textContent = `Fångade: ${caughtPokemon.length} / 100`;
+    statsDiv.textContent = `Fångade: ${caughtPokemon.length} / ${POKEMON_DATA.length}`;
 
     // Clear existing grid
     grid.innerHTML = '';
@@ -59,7 +59,7 @@ function renderPokedexGrid() {
     placeholderCard.appendChild(placeholderNumber);
     grid.appendChild(placeholderCard);
 
-    // Generate all 100 Pokemon cards
+    // Generate all Pokemon cards
     POKEMON_DATA.forEach((pokemon) => {
         const isCaught = caughtIds.has(pokemon.id);
 

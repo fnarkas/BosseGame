@@ -1,10 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(sed:*)",
-      "Bash(curl:*)",
-      "Bash(for file in *.png)",
-      "Bash(do magick \"$file\" -resize 64x64 -gravity center -extent 64x64 -quality 100 \"$file%.png_fixed.png\")"
+      "Bash(magick:*)",
+      "Bash(npm install:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []

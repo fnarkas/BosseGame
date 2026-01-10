@@ -93,7 +93,7 @@ export class BootScene extends Phaser.Scene {
     }
 
     loadPokemonImages() {
-        // Load all 100 Pokemon images using POKEMON_DATA
+        // Load all Pokemon images using POKEMON_DATA
         POKEMON_DATA.forEach(pokemon => {
             this.load.image(`pokemon_${pokemon.id}`, `pokemon_images/${pokemon.filename}`);
         });
@@ -140,7 +140,7 @@ export class BootScene extends Phaser.Scene {
     }
 
     loadPokemonAudio() {
-        // Load Pokemon name audio for all 100 Pokemon
+        // Load Pokemon name audio for all Pokemon
         POKEMON_DATA.forEach(pokemon => {
             const audioFilename = `${pokemon.id.toString().padStart(3, '0')}_${pokemon.name.toLowerCase().replace('-', '')}.mp3`;
             const audioKey = `pokemon_audio_${pokemon.id}`;
