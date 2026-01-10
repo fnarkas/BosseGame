@@ -6,6 +6,7 @@ import { LeftRightMode } from '../pokeballGameModes/LeftRightMode.js';
 import { LetterDragMatchMode } from '../pokeballGameModes/LetterDragMatchMode.js';
 import { SpeechRecognitionMode } from '../pokeballGameModes/SpeechRecognitionMode.js';
 import { NumberListeningMode } from '../pokeballGameModes/NumberListeningMode.js';
+import { WordSpellingMode } from '../pokeballGameModes/WordSpellingMode.js';
 import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier } from '../streak.js';
@@ -115,6 +116,10 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /emojiword - only show emoji-word match
             this.gameMode = new EmojiWordMatchMode();
             console.log('Selected game mode: Emoji-Word Match (forced)');
+        } else if (forcedMode === 'wordspelling-only') {
+            // Debug path: /wordspelling - only show word spelling
+            this.gameMode = new WordSpellingMode();
+            console.log('Selected game mode: Word Spelling (forced)');
         } else {
             // Normal mode: Randomly select from all game modes with configurable probabilities
             this.gameMode = this.selectRandomGameMode();
@@ -125,13 +130,14 @@ export class PokeballGameScene extends Phaser.Scene {
         // Configurable weights for each game mode
         // Higher weight = higher probability of being selected
         const MODE_WEIGHTS = {
-            letterListening: 14,     // ~16.7% chance
-            wordEmoji: 14,           // ~16.7% chance
-            emojiWord: 14,           // ~16.7% chance
-            leftRight: 14,           // ~16.7% chance
-            letterDragMatch: 14,     // ~16.7% chance
-            speechRecognition: 0,    // DISABLED - network issues
-            numberListening: 14      // ~16.7% chance
+            letterListening: 10,     // ~9% chance
+            wordEmoji: 10,           // ~9% chance
+            emojiWord: 10,           // ~9% chance
+            leftRight: 10,           // ~9% chance
+            letterDragMatch: 10,     // ~9% chance
+            speechRecognition: 10,   // ~9% chance
+            numberListening: 10,     // ~9% chance
+            wordSpelling: 40         // ~36% chance
         };
 
         // Calculate total weight
@@ -141,7 +147,8 @@ export class PokeballGameScene extends Phaser.Scene {
                           MODE_WEIGHTS.leftRight +
                           MODE_WEIGHTS.letterDragMatch +
                           MODE_WEIGHTS.speechRecognition +
-                          MODE_WEIGHTS.numberListening;
+                          MODE_WEIGHTS.numberListening +
+                          MODE_WEIGHTS.wordSpelling;
 
         // Generate random number between 0 and total weight
         const random = Math.random() * totalWeight;
@@ -185,9 +192,15 @@ export class PokeballGameScene extends Phaser.Scene {
             return new SpeechRecognitionMode();
         }
 
-        // Default to Number Listening
-        console.log('Selected game mode: Number Listening');
-        return new NumberListeningMode();
+        currentWeight += MODE_WEIGHTS.numberListening;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Number Listening');
+            return new NumberListeningMode();
+        }
+
+        // Default to Word Spelling
+        console.log('Selected game mode: Word Spelling');
+        return new WordSpellingMode();
     }
 
     showDiceRollAnimation() {
@@ -231,7 +244,8 @@ export class PokeballGameScene extends Phaser.Scene {
             'LeftRightMode': { face: 4, icon: 'game-mode-directions' },
             'LetterDragMatchMode': { face: 5, icon: 'game-mode-lettermatch' },
             'SpeechRecognitionMode': { face: 6, icon: 'game-mode-speech' },
-            'NumberListeningMode': { face: 7, icon: 'game-mode-numbers' }
+            'NumberListeningMode': { face: 7, icon: 'game-mode-numbers' },
+            'WordSpellingMode': { face: 8, icon: 'game-mode-spelling' }
         };
 
         const selectedMode = gameModeMap[this.gameMode.constructor.name];
@@ -253,16 +267,16 @@ export class PokeballGameScene extends Phaser.Scene {
             ease: 'Sine.easeInOut'
         });
 
-        // Create 7 game mode icons in a single row below the dice
+        // Create 8 game mode icons in a single row below the dice
         const iconSize = 60;
-        const spacing = 60; // Adjusted for 7 icons
-        const totalWidth = (iconSize * 7) + (spacing * 6);
+        const spacing = 50; // Adjusted for 8 icons
+        const totalWidth = (iconSize * 8) + (spacing * 7);
         const startX = (width - totalWidth) / 2 + iconSize / 2;
         const iconY = height / 2 + 200; // Increased spacing from dice
 
         const gameIcons = [];
         const gameDiceFaces = [];
-        const iconKeys = ['game-mode-letter', 'game-mode-word', 'game-mode-emojiword', 'game-mode-directions', 'game-mode-lettermatch', 'game-mode-speech', 'game-mode-numbers'];
+        const iconKeys = ['game-mode-letter', 'game-mode-word', 'game-mode-emojiword', 'game-mode-directions', 'game-mode-lettermatch', 'game-mode-speech', 'game-mode-numbers', 'game-mode-spelling'];
 
         iconKeys.forEach((key, index) => {
             const x = startX + index * (iconSize + spacing);
@@ -306,7 +320,7 @@ export class PokeballGameScene extends Phaser.Scene {
                 rollCount++;
 
                 // Show random face
-                const randomFace = Phaser.Math.Between(1, 6);
+                const randomFace = Phaser.Math.Between(1, 8);
                 diceSprite.setTexture(`dice-face-${randomFace}`);
 
                 // Shake effect
