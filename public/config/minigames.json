@@ -2,5 +2,12 @@
   "numbers": {
     "required": 3,
     "numbers": "10-19"
+  },
+  "letters": {
+    "letters": "a-z"
+  },
+  "pokemonCatching": {
+    "nameCase": "uppercase",
+    "alphabetCase": "lowercase"
   }
 }

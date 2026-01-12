@@ -149,10 +149,13 @@ export class BootScene extends Phaser.Scene {
     }
 
     loadLetterAudio() {
-        // Load Swedish letter audio for all 29 letters
-        SWEDISH_LETTERS.forEach(letter => {
-            const audioKey = `letter_audio_${letter.toLowerCase()}`;
-            const audioFilename = `${letter.toLowerCase()}.mp3`;
+        // Load Swedish letter audio for all standard letters (a-z, å, ä, ö)
+        // We load all lowercase letters since the audio files are all lowercase
+        const allLetters = 'abcdefghijklmnopqrstuvwxyzåäö'.split('');
+
+        allLetters.forEach(letter => {
+            const audioKey = `letter_audio_${letter}`;
+            const audioFilename = `${letter}.mp3`;
             this.load.audio(audioKey, `letter_audio/${audioFilename}`);
         });
     }

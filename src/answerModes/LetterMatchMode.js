@@ -32,6 +32,24 @@ export class LetterMatchMode extends BaseAnswerMode {
             nameCase: config.nameCase || 'lowercase',      // 'lowercase' | 'uppercase'
             alphabetCase: config.alphabetCase || 'uppercase' // 'lowercase' | 'uppercase'
         };
+        this.configLoaded = false;
+    }
+
+    async loadConfig() {
+        try {
+            const response = await fetch('/config/minigames.json');
+            if (response.ok) {
+                const serverConfig = await response.json();
+                if (serverConfig.pokemonCatching) {
+                    this.config.nameCase = serverConfig.pokemonCatching.nameCase || this.config.nameCase;
+                    this.config.alphabetCase = serverConfig.pokemonCatching.alphabetCase || this.config.alphabetCase;
+                    console.log('LetterMatchMode loaded config:', this.config);
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to load Pokemon catching config, using defaults:', error);
+        }
+        this.configLoaded = true;
     }
 
     generateChallenge(pokemon) {

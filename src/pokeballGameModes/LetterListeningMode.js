@@ -19,8 +19,16 @@ export class LetterListeningMode extends BasePokeballGameMode {
         this.correctInRow = 0; // Track consecutive correct answers
         this.requiredCorrect = 3; // Need 3 correct to get Pokemon
         this.ballIndicators = []; // Visual progress indicators
-        // Load configured letters (supports both uppercase and lowercase)
-        this.availableLetters = getConfiguredLetters();
+        // Start with default letters, will be updated when config is loaded
+        this.availableLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+            'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Å', 'Ä', 'Ö'];
+        this.configLoaded = false;
+    }
+
+    async loadConfig() {
+        this.availableLetters = await getConfiguredLetters();
+        this.configLoaded = true;
+        console.log('LetterListeningMode loaded with letters:', this.availableLetters);
     }
 
     generateChallenge() {

@@ -184,7 +184,11 @@ async function showAdminPage() {
     }
 
     // Load server config
-    let serverConfig = { numbers: { required: 1, numbers: '10-99' } };
+    let serverConfig = {
+        numbers: { required: 1, numbers: '10-99' },
+        letters: { letters: 'A-Z,Å,Ä,Ö' },
+        pokemonCatching: { nameCase: 'uppercase', alphabetCase: 'lowercase' }
+    };
     try {
         const response = await fetch('/config/minigames.json');
         if (response.ok) {
@@ -345,6 +349,7 @@ async function showAdminPage() {
                     <select id="minigame-selector" onchange="switchMinigameConfig()" style="width: 100%; max-width: 400px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px;">
                         <option value="letters">🔊 Letter Listening</option>
                         <option value="numbers">🔢 Number Listening</option>
+                        <option value="pokemon-catching">🎯 Pokemon Catching (Letter Match)</option>
                     </select>
                 </div>
 
@@ -353,7 +358,7 @@ async function showAdminPage() {
 
                     <div style="margin-bottom: 20px;">
                         <label style="display: block; font-weight: bold; margin-bottom: 5px;">Available Letters:</label>
-                        <input type="text" id="config-letters-list" value="${localStorage.getItem('letterListeningLetters') || 'A-Z,Å,Ä,Ö'}" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace;">
+                        <input type="text" id="config-letters-list" value="${serverConfig.letters?.letters || 'A-Z,Å,Ä,Ö'}" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace;">
                         <div style="color: #666; margin-top: 5px; font-size: 14px;">
                             Format: <code>a-z,B,C,Ä,Ö</code> (uppercase and lowercase letters are different)<br>
                             Examples: <code>A-Z</code> (all uppercase), <code>a-z</code> (all lowercase), <code>A,B,C,a,b,c</code> (mix)
@@ -362,7 +367,7 @@ async function showAdminPage() {
                         <div id="letters-error" style="margin-top: 10px; color: #f44336; font-weight: bold; display: none;"></div>
                     </div>
 
-                    <button onclick="saveLetterConfig()" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Letter Config</button>
+                    <button onclick="saveMinigameConfig('letters')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Letter Config</button>
                     <div id="config-letters-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
                 </div>
 
@@ -387,6 +392,43 @@ async function showAdminPage() {
 
                     <button onclick="saveMinigameConfig('numbers')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Number Config</button>
                     <div id="config-numbers-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
+                </div>
+
+                <div id="config-pokemon-catching" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                    <h3 style="margin-top: 0;">Pokemon Catching Configuration</h3>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Pokemon Name Case:</label>
+                        <select id="config-catching-namecase" style="width: 100%; max-width: 300px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                            <option value="lowercase" ${serverConfig.pokemonCatching?.nameCase === 'lowercase' ? 'selected' : ''}>Lowercase (pikachu)</option>
+                            <option value="uppercase" ${serverConfig.pokemonCatching?.nameCase === 'uppercase' || !serverConfig.pokemonCatching?.nameCase ? 'selected' : ''}>Uppercase (PIKACHU)</option>
+                        </select>
+                        <div style="color: #666; margin-top: 5px; font-size: 14px;">
+                            How the Pokemon name is displayed
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Keyboard Letter Case:</label>
+                        <select id="config-catching-alphabetcase" style="width: 100%; max-width: 300px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                            <option value="lowercase" ${serverConfig.pokemonCatching?.alphabetCase === 'lowercase' || !serverConfig.pokemonCatching?.alphabetCase ? 'selected' : ''}>Lowercase (a b c)</option>
+                            <option value="uppercase" ${serverConfig.pokemonCatching?.alphabetCase === 'uppercase' ? 'selected' : ''}>Uppercase (A B C)</option>
+                        </select>
+                        <div style="color: #666; margin-top: 5px; font-size: 14px;">
+                            How the letter buttons are displayed
+                        </div>
+                    </div>
+
+                    <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196F3; margin-bottom: 20px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">Preview:</div>
+                        <div style="color: #666; font-size: 14px;">
+                            Pokemon name: <span style="font-family: monospace; font-size: 16px; font-weight: bold;" id="preview-name-case">pikachu</span><br>
+                            Keyboard: <span style="font-family: monospace; font-size: 16px; font-weight: bold;" id="preview-alphabet-case">A B C D E</span>
+                        </div>
+                    </div>
+
+                    <button onclick="saveMinigameConfig('pokemon-catching')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Catching Config</button>
+                    <div id="config-catching-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
                 </div>
             </div>
 
@@ -542,28 +584,24 @@ async function showAdminPage() {
         return true;
     };
 
-    window.saveLetterConfig = function() {
-        const lettersInput = document.getElementById('config-letters-list').value;
 
-        // Validate
-        if (!window.updateLettersPreview()) {
-            return;
+    window.updatePokemonCatchingPreview = function() {
+        const nameCase = document.getElementById('config-catching-namecase').value;
+        const alphabetCase = document.getElementById('config-catching-alphabetcase').value;
+
+        // Update preview
+        const namePreview = document.getElementById('preview-name-case');
+        const alphabetPreview = document.getElementById('preview-alphabet-case');
+
+        if (namePreview) {
+            namePreview.textContent = nameCase === 'uppercase' ? 'PIKACHU' : 'pikachu';
         }
 
-        const letters = window.parseLetterRange(lettersInput);
-
-        // Save to localStorage
-        localStorage.setItem('letterListeningLetters', lettersInput);
-        localStorage.setItem('letterListeningLettersParsed', JSON.stringify(letters));
-
-        const message = document.getElementById('config-letters-message');
-        message.textContent = '✓ Letter configuration saved! (Reload game to apply)';
-        message.style.color = '#4CAF50';
-
-        setTimeout(() => {
-            message.textContent = '';
-        }, 3000);
+        if (alphabetPreview) {
+            alphabetPreview.textContent = alphabetCase === 'uppercase' ? 'A B C D E' : 'a b c d e';
+        }
     };
+
 
     window.switchMinigameConfig = function() {
         const selector = document.getElementById('minigame-selector');
@@ -572,6 +610,7 @@ async function showAdminPage() {
         // Hide all configs
         document.getElementById('config-letters').style.display = 'none';
         document.getElementById('config-numbers').style.display = 'none';
+        document.getElementById('config-pokemon-catching').style.display = 'none';
 
         // Show selected config
         document.getElementById('config-' + value).style.display = 'block';
@@ -581,6 +620,8 @@ async function showAdminPage() {
             window.updateLettersPreview();
         } else if (value === 'numbers') {
             window.updateNumbersPreview();
+        } else if (value === 'pokemon-catching') {
+            window.updatePokemonCatchingPreview();
         }
     };
 
@@ -649,7 +690,109 @@ async function showAdminPage() {
     };
 
     window.saveMinigameConfig = async function(game) {
-        if (game === 'numbers') {
+        if (game === 'pokemon-catching') {
+            const nameCase = document.getElementById('config-catching-namecase').value;
+            const alphabetCase = document.getElementById('config-catching-alphabetcase').value;
+
+            const message = document.getElementById('config-catching-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                // Load current config
+                const response = await fetch('/config/minigames.json');
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' },
+                    pokemonCatching: { nameCase: 'uppercase', alphabetCase: 'lowercase' }
+                };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                // Update pokemon catching config
+                fullConfig.pokemonCatching = {
+                    nameCase: nameCase,
+                    alphabetCase: alphabetCase
+                };
+
+                // Save to server
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Pokemon catching config saved to server! All devices will use these settings.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save catching config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
+        } else if (game === 'letters') {
+            const lettersInput = document.getElementById('config-letters-list').value;
+
+            // Validate
+            if (!window.updateLettersPreview()) {
+                return;
+            }
+
+            const message = document.getElementById('config-letters-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                // Load current config
+                const response = await fetch('/config/minigames.json');
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' }
+                };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                // Update letters config
+                fullConfig.letters = {
+                    letters: lettersInput
+                };
+
+                // Save to server
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Letter config saved to server! All devices will use these settings.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save letter config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
+        } else if (game === 'numbers') {
             const required = parseInt(document.getElementById('config-numbers-required').value);
             const numbersInput = document.getElementById('config-numbers-range').value;
 
@@ -665,7 +808,10 @@ async function showAdminPage() {
             try {
                 // Load current config
                 const response = await fetch('/config/minigames.json');
-                let fullConfig = { numbers: { required: 1, numbers: '10-99' } };
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' }
+                };
                 if (response.ok) {
                     fullConfig = await response.json();
                 }
@@ -992,5 +1138,17 @@ async function showAdminPage() {
             // Trigger initial preview
             window.updateLettersPreview();
         }
+
+        // Add event listeners for Pokemon catching config
+        const nameCaseSelect = document.getElementById('config-catching-namecase');
+        const alphabetCaseSelect = document.getElementById('config-catching-alphabetcase');
+        if (nameCaseSelect) {
+            nameCaseSelect.addEventListener('change', window.updatePokemonCatchingPreview);
+        }
+        if (alphabetCaseSelect) {
+            alphabetCaseSelect.addEventListener('change', window.updatePokemonCatchingPreview);
+        }
+        // Trigger initial preview
+        window.updatePokemonCatchingPreview();
     }, 100);
 }

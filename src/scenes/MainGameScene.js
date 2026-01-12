@@ -50,10 +50,10 @@ export class MainGameScene extends Phaser.Scene {
         if (modeName === 'debug') {
             this.answerMode = new DebugMode();
         } else {
-            // Configure letter match mode: lowercase name, uppercase alphabet
+            // Configure letter match mode - will load config from server
             this.answerMode = new LetterMatchMode({
-                nameCase: 'lowercase',
-                alphabetCase: 'uppercase'
+                nameCase: 'uppercase', // Default, will be overridden by server config
+                alphabetCase: 'lowercase' // Default, will be overridden by server config
             });
         }
 
@@ -208,11 +208,19 @@ export class MainGameScene extends Phaser.Scene {
         // Display the Pokemon sprite
         this.displayPokemon();
 
-        // Generate challenge using answer mode
-        this.answerMode.generateChallenge(this.currentPokemon);
+        // Load config if needed, then generate challenge
+        if (this.answerMode.loadConfig && !this.answerMode.configLoaded) {
+            this.answerMode.loadConfig().then(() => {
+                this.answerMode.generateChallenge(this.currentPokemon);
+                this.answerMode.createChallengeUI(this, this.attemptsLeft);
+            });
+        } else {
+            // Generate challenge using answer mode
+            this.answerMode.generateChallenge(this.currentPokemon);
 
-        // Create UI using answer mode
-        this.answerMode.createChallengeUI(this, this.attemptsLeft);
+            // Create UI using answer mode
+            this.answerMode.createChallengeUI(this, this.attemptsLeft);
+        }
     }
 
     spawnPokemon() {
