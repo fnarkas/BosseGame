@@ -203,12 +203,103 @@ function showAdminPage() {
         gameContainer.style.display = 'none';
     }
 
+    // Check for sync parameter in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const syncData = urlParams.get('sync');
+    let syncMessage = null;
+
+    if (syncData) {
+        try {
+            // Decode base64 data
+            const jsonString = atob(syncData);
+            const importedPokemon = JSON.parse(jsonString);
+
+            // Validate data structure
+            if (Array.isArray(importedPokemon)) {
+                // Ensure all entries have proper format
+                const validatedPokemon = importedPokemon.map(p => {
+                    if (typeof p === 'number') {
+                        // Old format - convert to new format
+                        const pokemonData = POKEMON_DATA.find(pd => pd.id === p);
+                        return {
+                            id: p,
+                            name: pokemonData ? pokemonData.name : 'Unknown',
+                            caughtDate: new Date().toISOString()
+                        };
+                    } else if (p.id) {
+                        // Already proper format
+                        return p;
+                    }
+                    return null;
+                }).filter(p => p !== null);
+
+                // Merge with existing Pokemon instead of replacing
+                const existingPokemon = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
+                const mergedMap = new Map();
+
+                // Add existing Pokemon first (keeps original caught dates)
+                existingPokemon.forEach(p => {
+                    const id = p.id || p;
+                    if (typeof p === 'object' && p.id) {
+                        mergedMap.set(id, p);
+                    } else if (typeof p === 'number') {
+                        // Convert old format
+                        const pokemonData = POKEMON_DATA.find(pd => pd.id === p);
+                        mergedMap.set(id, {
+                            id: id,
+                            name: pokemonData ? pokemonData.name : 'Unknown',
+                            caughtDate: new Date().toISOString()
+                        });
+                    }
+                });
+
+                // Track how many new Pokemon we're adding
+                const existingCount = mergedMap.size;
+
+                // Add imported Pokemon (only if not already exists)
+                validatedPokemon.forEach(p => {
+                    if (!mergedMap.has(p.id)) {
+                        mergedMap.set(p.id, p);
+                    }
+                });
+
+                const finalList = Array.from(mergedMap.values());
+                const newCount = finalList.length - existingCount;
+
+                // Save merged list to localStorage
+                localStorage.setItem('pokemonCaughtList', JSON.stringify(finalList));
+
+                syncMessage = {
+                    text: '✓ Imported ' + newCount + ' new Pokemon! (Total: ' + finalList.length + ')',
+                    color: '#4CAF50'
+                };
+
+                // Remove sync parameter from URL without reload
+                const cleanURL = window.location.origin + window.location.pathname;
+                window.history.replaceState({}, document.title, cleanURL);
+            } else {
+                throw new Error('Invalid data format');
+            }
+        } catch (error) {
+            console.error('Failed to import sync data:', error);
+            syncMessage = {
+                text: '❌ Failed to import Pokemon data. Invalid sync URL.',
+                color: '#f44336'
+            };
+
+            // Remove invalid sync parameter
+            const cleanURL = window.location.origin + window.location.pathname;
+            window.history.replaceState({}, document.title, cleanURL);
+        }
+    }
+
     // Load current caught Pokemon
     const caughtPokemon = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
 
     // Generate Pokemon grid
     const pokemonGrid = POKEMON_DATA.map(pokemon => {
-        const isCaught = caughtPokemon.includes(pokemon.id);
+        // Handle both object format and plain ID format
+        const isCaught = caughtPokemon.some(p => (p.id || p) === pokemon.id);
         return `
             <div style="display: flex; align-items: center; padding: 10px; background: ${isCaught ? '#e8f5e9' : '#fff'}; border-radius: 8px; border: 1px solid ${isCaught ? '#4CAF50' : '#ddd'};">
                 <input type="checkbox"
@@ -227,75 +318,383 @@ function showAdminPage() {
         `;
     }).join('');
 
+    // Load current minigame weights
+    const defaultWeights = {
+        letterListening: 10,
+        wordEmoji: 10,
+        emojiWord: 10,
+        leftRight: 10,
+        letterDragMatch: 10,
+        speechRecognition: 10,
+        numberListening: 10,
+        wordSpelling: 40
+    };
+    const savedWeights = localStorage.getItem('minigameWeights');
+    const currentWeights = savedWeights ? JSON.parse(savedWeights) : defaultWeights;
+
     const adminHTML = `
-        <div style="font-family: Arial; max-width: 1200px; margin: 40px auto; padding: 40px; height: calc(100vh - 80px); display: flex; flex-direction: column;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <div style="font-family: Arial; max-width: 1400px; margin: 20px auto; padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h1 style="font-size: 36px; margin: 0;">⚙️ Admin Panel</h1>
                 <a href="/" style="padding: 12px 24px; background: #2196F3; color: white; border-radius: 8px; text-decoration: none; font-size: 16px;">← Back to Game</a>
             </div>
 
-            <div style="background: #f5f5f5; padding: 20px; border-radius: 10px; margin-bottom: 30px; flex-shrink: 0;">
-                <h2 style="margin-top: 0;">Pokemon Manager</h2>
-                <p style="color: #666;">Total caught: <strong id="caught-count">${caughtPokemon.length}</strong> / ${POKEMON_DATA.length}</p>
-                <div style="display: flex; gap: 10px;">
-                    <button onclick="catchAll()" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">✓ Catch All</button>
-                    <button onclick="releaseAll()" style="padding: 12px 24px; background: #f44336; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">✗ Release All</button>
+            ${syncMessage ? `
+            <div style="background: ${syncMessage.color}; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 18px; font-weight: bold;">
+                ${syncMessage.text}
+            </div>
+            ` : ''}
+
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                <h2 style="margin-top: 0;">Minigame Probabilities</h2>
+                <p style="color: #666; margin-bottom: 15px;">Adjust the probability weights for each minigame. Higher values = higher chance of appearing.</p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">🔊 Letter Listening</label>
+                        <input type="number" id="weight-letterListening" value="${currentWeights.letterListening}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">📝 Word-Emoji Match</label>
+                        <input type="number" id="weight-wordEmoji" value="${currentWeights.wordEmoji}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">📖 Emoji-Word Match</label>
+                        <input type="number" id="weight-emojiWord" value="${currentWeights.emojiWord}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">⬅️➡️ Directions</label>
+                        <input type="number" id="weight-leftRight" value="${currentWeights.leftRight}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">🔤 Letter Match</label>
+                        <input type="number" id="weight-letterDragMatch" value="${currentWeights.letterDragMatch}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">🎤 Speech Recognition</label>
+                        <input type="number" id="weight-speechRecognition" value="${currentWeights.speechRecognition}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">🔢 Number Listening</label>
+                        <input type="number" id="weight-numberListening" value="${currentWeights.numberListening}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">⌨️ Word Spelling</label>
+                        <input type="number" id="weight-wordSpelling" value="${currentWeights.wordSpelling}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    </div>
+                </div>
+                <div style="display: flex; gap: 20px; align-items: center;">
+                    <div style="flex: 1;">
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                            <button onclick="saveWeights()" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Probabilities</button>
+                            <button onclick="resetWeights()" style="padding: 12px 24px; background: #FF9800; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">🔄 Reset to Defaults</button>
+                        </div>
+                        <div id="weights-message" style="color: #4CAF50; font-weight: bold;"></div>
+                    </div>
+                    <div style="width: 300px; height: 300px;">
+                        <canvas id="probabilityChart"></canvas>
+                    </div>
                 </div>
             </div>
 
-            <div style="flex: 1; overflow-y: auto; padding-right: 10px;">
-                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 15px;">
-                    ${pokemonGrid}
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                <h2 style="margin-top: 0;">Pokemon Manager</h2>
+                <p style="color: #666;">Total caught: <strong id="caught-count">${caughtPokemon.length}</strong> / ${POKEMON_DATA.length}</p>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button onclick="catchAll()" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">✓ Catch All</button>
+                    <button onclick="releaseAll()" style="padding: 12px 24px; background: #f44336; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">✗ Release All</button>
+                    <button onclick="generateSyncURL()" style="padding: 12px 24px; background: #2196F3; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">🔗 Generate Sync URL</button>
                 </div>
+                <div id="sync-url-container" style="display: none; background: #fff; padding: 15px; border-radius: 8px; border: 2px solid #2196F3;">
+                    <p style="margin: 0 0 10px 0; font-weight: bold; color: #2196F3;">📋 Sync URL (copy and paste on other device):</p>
+                    <input type="text" id="sync-url-input" readonly style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px; background: #f9f9f9;" onclick="this.select()">
+                    <p style="margin: 10px 0 0 0; font-size: 14px; color: #666;">Open this URL on your iPad to sync Pokemon data</p>
+                </div>
+                <div id="sync-message" style="margin-top: 10px; padding: 10px; border-radius: 8px; font-weight: bold; display: none;"></div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 15px; margin-bottom: 40px;">
+                ${pokemonGrid}
             </div>
         </div>
 
-        <script>
-            function togglePokemon(id) {
-                const caughtList = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
-                const index = caughtList.indexOf(id);
-
-                if (index > -1) {
-                    caughtList.splice(index, 1);
-                } else {
-                    caughtList.push(id);
-                }
-
-                localStorage.setItem('pokemonCaughtList', JSON.stringify(caughtList));
-                updateUI();
-            }
-
-            function catchAll() {
-                const allIds = ${JSON.stringify(POKEMON_DATA.map(p => p.id))};
-                localStorage.setItem('pokemonCaughtList', JSON.stringify(allIds));
-                location.reload();
-            }
-
-            function releaseAll() {
-                localStorage.setItem('pokemonCaughtList', JSON.stringify([]));
-                location.reload();
-            }
-
-            function updateUI() {
-                const caughtList = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
-                document.getElementById('caught-count').textContent = caughtList.length;
-
-                // Update checkbox backgrounds
-                ${POKEMON_DATA.map(p => `
-                    const elem${p.id} = document.getElementById('pokemon-${p.id}').parentElement;
-                    if (caughtList.includes(${p.id})) {
-                        elem${p.id}.style.background = '#e8f5e9';
-                        elem${p.id}.style.borderColor = '#4CAF50';
-                        elem${p.id}.querySelector('div div:last-child').textContent = '✓ Caught';
-                    } else {
-                        elem${p.id}.style.background = '#fff';
-                        elem${p.id}.style.borderColor = '#ddd';
-                        elem${p.id}.querySelector('div div:last-child').textContent = 'Not caught';
-                    }
-                `).join('')}
-            }
-        </script>
     `;
 
     document.body.innerHTML = adminHTML;
+
+    // Reset body style to allow scrolling
+    document.body.style.overflow = 'auto';
+    document.body.style.height = 'auto';
+
+    // Define all admin functions globally
+    window.saveWeights = function() {
+        const weights = {
+            letterListening: parseInt(document.getElementById('weight-letterListening').value) || 0,
+            wordEmoji: parseInt(document.getElementById('weight-wordEmoji').value) || 0,
+            emojiWord: parseInt(document.getElementById('weight-emojiWord').value) || 0,
+            leftRight: parseInt(document.getElementById('weight-leftRight').value) || 0,
+            letterDragMatch: parseInt(document.getElementById('weight-letterDragMatch').value) || 0,
+            speechRecognition: parseInt(document.getElementById('weight-speechRecognition').value) || 0,
+            numberListening: parseInt(document.getElementById('weight-numberListening').value) || 0,
+            wordSpelling: parseInt(document.getElementById('weight-wordSpelling').value) || 0
+        };
+
+        localStorage.setItem('minigameWeights', JSON.stringify(weights));
+
+        const message = document.getElementById('weights-message');
+        message.textContent = '✓ Probabilities saved successfully!';
+        message.style.color = '#4CAF50';
+        setTimeout(() => {
+            message.textContent = '';
+        }, 3000);
+    };
+
+    window.resetWeights = function() {
+        const defaultWeights = {
+            letterListening: 10,
+            wordEmoji: 10,
+            emojiWord: 10,
+            leftRight: 10,
+            letterDragMatch: 10,
+            speechRecognition: 10,
+            numberListening: 10,
+            wordSpelling: 40
+        };
+
+        document.getElementById('weight-letterListening').value = defaultWeights.letterListening;
+        document.getElementById('weight-wordEmoji').value = defaultWeights.wordEmoji;
+        document.getElementById('weight-emojiWord').value = defaultWeights.emojiWord;
+        document.getElementById('weight-leftRight').value = defaultWeights.leftRight;
+        document.getElementById('weight-letterDragMatch').value = defaultWeights.letterDragMatch;
+        document.getElementById('weight-speechRecognition').value = defaultWeights.speechRecognition;
+        document.getElementById('weight-numberListening').value = defaultWeights.numberListening;
+        document.getElementById('weight-wordSpelling').value = defaultWeights.wordSpelling;
+
+        localStorage.setItem('minigameWeights', JSON.stringify(defaultWeights));
+
+        if (window.updateProbabilityChart) {
+            window.updateProbabilityChart();
+        }
+
+        const message = document.getElementById('weights-message');
+        message.textContent = '✓ Reset to default probabilities!';
+        message.style.color = '#FF9800';
+        setTimeout(() => {
+            message.textContent = '';
+        }, 3000);
+    };
+
+    window.togglePokemon = function(id) {
+        const caughtList = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
+        const index = caughtList.findIndex(p => (p.id || p) === id);
+
+        if (index > -1) {
+            caughtList.splice(index, 1);
+        } else {
+            const pokemon = POKEMON_DATA.find(p => p.id === id);
+            caughtList.push({
+                id: id,
+                name: pokemon ? pokemon.name : 'Unknown',
+                caughtDate: new Date().toISOString()
+            });
+        }
+
+        localStorage.setItem('pokemonCaughtList', JSON.stringify(caughtList));
+        updateUI();
+    };
+
+    window.catchAll = function() {
+        const allPokemon = POKEMON_DATA.map(p => ({
+            id: p.id,
+            name: p.name,
+            caughtDate: new Date().toISOString()
+        }));
+        localStorage.setItem('pokemonCaughtList', JSON.stringify(allPokemon));
+        location.reload();
+    };
+
+    window.releaseAll = function() {
+        localStorage.setItem('pokemonCaughtList', JSON.stringify([]));
+        location.reload();
+    };
+
+    window.generateSyncURL = function() {
+        const caughtList = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
+
+        if (caughtList.length === 0) {
+            showSyncMessage('⚠️ No Pokemon to sync! Catch some Pokemon first.', '#FF9800');
+            return;
+        }
+
+        const jsonString = JSON.stringify(caughtList);
+        const base64Data = btoa(jsonString);
+
+        const baseURL = window.location.origin + window.location.pathname;
+        const syncURL = baseURL + '?sync=' + base64Data;
+
+        document.getElementById('sync-url-container').style.display = 'block';
+        document.getElementById('sync-url-input').value = syncURL;
+        document.getElementById('sync-url-input').select();
+
+        showSyncMessage('✓ Sync URL generated! Copy and open on your iPad.', '#4CAF50');
+    };
+
+    function showSyncMessage(message, color) {
+        const messageDiv = document.getElementById('sync-message');
+        messageDiv.textContent = message;
+        messageDiv.style.background = color;
+        messageDiv.style.color = 'white';
+        messageDiv.style.display = 'block';
+
+        setTimeout(() => {
+            messageDiv.style.display = 'none';
+        }, 5000);
+    }
+
+    function updateUI() {
+        const caughtList = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
+        document.getElementById('caught-count').textContent = caughtList.length;
+
+        POKEMON_DATA.forEach(p => {
+            const elem = document.getElementById(`pokemon-${p.id}`);
+            if (!elem) return;
+
+            const container = elem.parentElement;
+            const isCaught = caughtList.some(entry => (entry.id || entry) === p.id);
+
+            if (isCaught) {
+                container.style.background = '#e8f5e9';
+                container.style.borderColor = '#4CAF50';
+                container.querySelector('div div:last-child').textContent = '✓ Caught';
+            } else {
+                container.style.background = '#fff';
+                container.style.borderColor = '#ddd';
+                container.querySelector('div div:last-child').textContent = 'Not caught';
+            }
+        });
+    }
+
+    // Load Chart.js script
+    const chartScript = document.createElement('script');
+    chartScript.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+    chartScript.onload = () => {
+        // Define functions globally after Chart.js loads
+        window.probabilityChart = null;
+
+        window.updateProbabilityChart = function() {
+            const weights = {
+                letterListening: parseInt(document.getElementById('weight-letterListening').value) || 0,
+                wordEmoji: parseInt(document.getElementById('weight-wordEmoji').value) || 0,
+                emojiWord: parseInt(document.getElementById('weight-emojiWord').value) || 0,
+                leftRight: parseInt(document.getElementById('weight-leftRight').value) || 0,
+                letterDragMatch: parseInt(document.getElementById('weight-letterDragMatch').value) || 0,
+                speechRecognition: parseInt(document.getElementById('weight-speechRecognition').value) || 0,
+                numberListening: parseInt(document.getElementById('weight-numberListening').value) || 0,
+                wordSpelling: parseInt(document.getElementById('weight-wordSpelling').value) || 0
+            };
+
+            const total = Object.values(weights).reduce((sum, val) => sum + val, 0);
+
+            if (total === 0) {
+                const data = Array(8).fill(12.5);
+                window.probabilityChart.data.datasets[0].data = data;
+            } else {
+                const data = [
+                    (weights.letterListening / total * 100).toFixed(1),
+                    (weights.wordEmoji / total * 100).toFixed(1),
+                    (weights.emojiWord / total * 100).toFixed(1),
+                    (weights.leftRight / total * 100).toFixed(1),
+                    (weights.letterDragMatch / total * 100).toFixed(1),
+                    (weights.speechRecognition / total * 100).toFixed(1),
+                    (weights.numberListening / total * 100).toFixed(1),
+                    (weights.wordSpelling / total * 100).toFixed(1)
+                ];
+                window.probabilityChart.data.datasets[0].data = data;
+            }
+
+            window.probabilityChart.update();
+        };
+
+        window.initChart = function() {
+            const ctx = document.getElementById('probabilityChart');
+            if (!ctx) return;
+
+            window.probabilityChart = new Chart(ctx.getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: [
+                        '🔊 Letter',
+                        '📝 Word-Emoji',
+                        '📖 Emoji-Word',
+                        '⬅️➡️ Directions',
+                        '🔤 Letter Match',
+                        '🎤 Speech',
+                        '🔢 Numbers',
+                        '⌨️ Spelling'
+                    ],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            '#FF6384',
+                            '#36A2EB',
+                            '#FFCE56',
+                            '#4BC0C0',
+                            '#9966FF',
+                            '#FF9F40',
+                            '#FF6384',
+                            '#C9CBCF'
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                boxWidth: 15,
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.label + ': ' + context.parsed + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            window.updateProbabilityChart();
+
+            // Add input event listeners
+            const inputs = [
+                'weight-letterListening',
+                'weight-wordEmoji',
+                'weight-emojiWord',
+                'weight-leftRight',
+                'weight-letterDragMatch',
+                'weight-speechRecognition',
+                'weight-numberListening',
+                'weight-wordSpelling'
+            ];
+
+            inputs.forEach(id => {
+                const input = document.getElementById(id);
+                if (input) {
+                    input.addEventListener('input', window.updateProbabilityChart);
+                }
+            });
+        };
+
+        // Initialize chart
+        window.initChart();
+    };
+    document.head.appendChild(chartScript);
 }

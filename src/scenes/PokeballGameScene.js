@@ -129,7 +129,7 @@ export class PokeballGameScene extends Phaser.Scene {
     selectRandomGameMode() {
         // Configurable weights for each game mode
         // Higher weight = higher probability of being selected
-        const MODE_WEIGHTS = {
+        const DEFAULT_MODE_WEIGHTS = {
             letterListening: 10,     // ~9% chance
             wordEmoji: 10,           // ~9% chance
             emojiWord: 10,           // ~9% chance
@@ -139,6 +139,10 @@ export class PokeballGameScene extends Phaser.Scene {
             numberListening: 10,     // ~9% chance
             wordSpelling: 40         // ~36% chance
         };
+
+        // Load custom weights from localStorage, or use defaults
+        const savedWeights = localStorage.getItem('minigameWeights');
+        const MODE_WEIGHTS = savedWeights ? JSON.parse(savedWeights) : DEFAULT_MODE_WEIGHTS;
 
         // Calculate total weight
         const totalWeight = MODE_WEIGHTS.letterListening +

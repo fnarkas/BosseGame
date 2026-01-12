@@ -1,4 +1,5 @@
 import { POKEMON_DATA } from './pokemonData.js';
+import { getRarityInfo } from './pokemonRarity.js';
 
 let gameInstance = null;
 
@@ -42,7 +43,8 @@ function renderPokedexGrid() {
 
     // Load caught Pokemon from localStorage
     const caughtPokemon = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
-    const caughtIds = new Set(caughtPokemon.map(p => p.id));
+    // Handle both object format {id: 1, name: "...", caughtDate: "..."} and plain ID format [1, 2, 3]
+    const caughtIds = new Set(caughtPokemon.map(p => p.id || p));
 
     // Update stats
     statsDiv.textContent = `Fångade: ${caughtPokemon.length} / ${POKEMON_DATA.length}`;
@@ -62,16 +64,20 @@ function renderPokedexGrid() {
     // Generate all Pokemon cards
     POKEMON_DATA.forEach((pokemon) => {
         const isCaught = caughtIds.has(pokemon.id);
+        const rarityInfo = getRarityInfo(pokemon);
 
         // Create card element
         const card = document.createElement('div');
         card.className = `pokemon-card ${isCaught ? 'caught' : ''}`;
 
-        // Add click handler for caught Pokemon to play audio
+        // Add click handler for caught Pokemon to show popup
         if (isCaught) {
             card.style.cursor = 'pointer';
             card.addEventListener('click', () => {
-                playPokemonAudio(pokemon.id);
+                // Show the popup and play audio
+                window.showPokemonCaughtPopup(pokemon.id, () => {
+                    playPokemonAudio(pokemon.id);
+                });
             });
         }
 
@@ -93,6 +99,14 @@ function renderPokedexGrid() {
         number.className = `pokemon-card-number ${!isCaught ? 'uncaught' : ''}`;
         number.textContent = `#${String(pokemon.id).padStart(3, '0')}`;
         card.appendChild(number);
+
+        // Stars (rarity indicator) - only show for caught Pokemon
+        if (isCaught && rarityInfo.stars > 0) {
+            const starsContainer = document.createElement('div');
+            starsContainer.className = 'pokemon-card-stars';
+            starsContainer.textContent = rarityInfo.icon;
+            card.appendChild(starsContainer);
+        }
 
         // Type icons
         if (pokemon.types && pokemon.types.length > 0) {
