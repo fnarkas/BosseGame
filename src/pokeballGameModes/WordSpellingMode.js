@@ -308,8 +308,11 @@ export class WordSpellingMode extends BasePokeballGameMode {
     }
 
     handleWordComplete(scene) {
-        // All letters collected! Play full word audio
-        playWordAudio(scene, this.challengeData.word);
+        // All letters collected!
+        // Wait for last letter audio to finish before playing word audio
+        scene.time.delayedCall(800, () => {
+            playWordAudio(scene, this.challengeData.word);
+        });
 
         // Update slots to show all letters in green
         destroyLetterSlots(this.slotsData.elements);
@@ -329,19 +332,22 @@ export class WordSpellingMode extends BasePokeballGameMode {
         showSlotParticleEffect(scene, centerX, centerY);
 
         // Wait for word audio to complete, then trigger reward
-        const audioKey = getWordAudioKey(this.challengeData.word);
-        const wordAudio = scene.sound.get(audioKey);
+        // Since word audio starts after 800ms delay, we need to wait for it
+        scene.time.delayedCall(900, () => {
+            const audioKey = getWordAudioKey(this.challengeData.word);
+            const wordAudio = scene.sound.get(audioKey);
 
-        if (wordAudio && wordAudio.isPlaying) {
-            wordAudio.once('complete', () => {
-                this.answerCallback(true, this.challengeData.word, centerX, centerY);
-            });
-        } else {
-            // Fallback: wait 1 second
-            scene.time.delayedCall(1000, () => {
-                this.answerCallback(true, this.challengeData.word, centerX, centerY);
-            });
-        }
+            if (wordAudio && wordAudio.isPlaying) {
+                wordAudio.once('complete', () => {
+                    this.answerCallback(true, this.challengeData.word, centerX, centerY);
+                });
+            } else {
+                // Fallback: wait 1 second
+                scene.time.delayedCall(1000, () => {
+                    this.answerCallback(true, this.challengeData.word, centerX, centerY);
+                });
+            }
+        });
     }
 
     updateLetterDisplay(scene) {
