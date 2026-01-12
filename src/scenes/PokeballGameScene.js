@@ -33,6 +33,32 @@ export class PokeballGameScene extends Phaser.Scene {
         // Background
         this.add.rectangle(0, 0, width, height, 0x87CEEB).setOrigin(0);
 
+        // Pokedex button (top left)
+        const pokedexBtn = this.add.text(80, 40, '📖', {
+            fontSize: '48px'
+        });
+        pokedexBtn.setOrigin(0.5);
+        pokedexBtn.setInteractive({ useHandCursor: true });
+        pokedexBtn.setDepth(1002); // Above overlay
+
+        pokedexBtn.on('pointerover', () => {
+            pokedexBtn.setScale(1.1);
+        });
+
+        pokedexBtn.on('pointerout', () => {
+            pokedexBtn.setScale(1.0);
+        });
+
+        pokedexBtn.on('pointerdown', () => {
+            // Pause this scene
+            this.scene.pause();
+            // Show Pokedex with resume callback
+            window.showPokedex(() => {
+                // Resume this scene when Pokedex closes
+                this.scene.resume();
+            });
+        });
+
         // Store button (top right, before coin counter)
         const storeBtn = this.add.image(width - 160, 52, 'store-icon');
         storeBtn.setOrigin(1, 0.5);

@@ -16,6 +16,9 @@ export class LetterListeningMode extends BasePokeballGameMode {
         this.hasError = false; // Track if player made an error
         this.isRevealing = false; // Track if we're showing the answer
         this.letterButtons = []; // Store button references
+        this.correctInRow = 0; // Track consecutive correct answers
+        this.requiredCorrect = 3; // Need 3 correct to get Pokemon
+        this.ballIndicators = []; // Visual progress indicators
     }
 
     generateChallenge() {
@@ -57,17 +60,8 @@ export class LetterListeningMode extends BasePokeballGameMode {
         // Play the letter audio automatically
         this.playLetterAudio(scene, this.challengeData.correctLetter);
 
-        // Instructions
-        const instructionText = scene.add.text(width / 2, 180, 'Vilken bokstav hörde du?', {
-            font: 'bold 36px Arial',
-            fill: '#2C3E50',
-            align: 'center'
-        }).setOrigin(0.5);
-        instructionText.setData('clearOnNewChallenge', true);
-        this.uiElements.push(instructionText);
-
         // Speaker button to replay audio (larger, centered)
-        const speakerBtn = scene.add.text(width / 2, 270, '🔊', {
+        const speakerBtn = scene.add.text(width / 2, 180, '🔊', {
             font: '80px Arial',
             padding: { y: 20 }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
@@ -91,6 +85,9 @@ export class LetterListeningMode extends BasePokeballGameMode {
             });
             this.playLetterAudio(scene, this.challengeData.correctLetter);
         });
+
+        // Create ball indicators showing progress
+        this.createBallIndicators(scene);
 
         // Create letter buttons in a grid (2 rows of 3)
         const letterButtonSize = 100;
@@ -152,12 +149,75 @@ export class LetterListeningMode extends BasePokeballGameMode {
                 if (!isCorrect) {
                     // Wrong answer - show error feedback then highlight correct answer
                     this.showWrongAnswerFeedback(scene, button);
-                } else if (this.answerCallback) {
-                    // Correct answer - proceed as normal
-                    this.answerCallback(isCorrect, letter, x, y);
+                } else {
+                    // Correct answer!
+                    this.correctInRow++;
+                    this.updateBallIndicators();
+
+                    // Show success feedback
+                    button.setFillStyle(0x27AE60, 0.5); // Green
+                    button.setStrokeStyle(6, 0x27AE60);
+
+                    // Check if won
+                    if (this.correctInRow >= this.requiredCorrect) {
+                        // Player got 3 in a row! Give Pokemon
+                        scene.time.delayedCall(500, () => {
+                            if (this.answerCallback) {
+                                this.answerCallback(true, letter, x, y);
+                            }
+                        });
+                    } else {
+                        // Continue to next challenge
+                        scene.time.delayedCall(800, () => {
+                            this.cleanup(scene);
+                            this.generateChallenge();
+                            this.createChallengeUI(scene);
+                        });
+                    }
                 }
             });
         });
+    }
+
+    createBallIndicators(scene) {
+        const width = scene.cameras.main.width;
+        const y = 310;
+        const spacing = 60;
+
+        const startX = width / 2 - ((this.requiredCorrect - 1) * spacing) / 2;
+
+        this.ballIndicators = [];
+
+        for (let i = 0; i < this.requiredCorrect; i++) {
+            const x = startX + i * spacing;
+
+            // Create circle indicator
+            const circle = scene.add.circle(x, y, 20,
+                i < this.correctInRow ? 0x27AE60 : 0xffffff, 1);
+            circle.setStrokeStyle(3, 0x000000);
+
+            this.ballIndicators.push(circle);
+            this.uiElements.push(circle);
+        }
+
+        // Add gift emoji at the end
+        const giftX = startX + this.requiredCorrect * spacing;
+        const giftEmoji = scene.add.text(giftX, y, '🎁', {
+            fontSize: '48px',
+            padding: { y: 10 }
+        }).setOrigin(0.5);
+        this.uiElements.push(giftEmoji);
+    }
+
+    updateBallIndicators() {
+        // Update ball colors based on correctInRow
+        for (let i = 0; i < this.ballIndicators.length; i++) {
+            if (i < this.correctInRow) {
+                this.ballIndicators[i].setFillStyle(0x27AE60); // Green
+            } else {
+                this.ballIndicators[i].setFillStyle(0xffffff); // White
+            }
+        }
     }
 
     playLetterAudio(scene, letter) {
@@ -177,6 +237,10 @@ export class LetterListeningMode extends BasePokeballGameMode {
             this.challengeData.correctLetter,
             wrongLetter
         );
+
+        // Reset progress
+        this.correctInRow = 0;
+        this.updateBallIndicators();
 
         // Red flash on the wrong button
         wrongButton.setFillStyle(0xFF0000, 0.5); // Red fill
@@ -276,5 +340,6 @@ export class LetterListeningMode extends BasePokeballGameMode {
         });
         this.uiElements = [];
         this.letterButtons = [];
+        this.ballIndicators = [];
     }
 }

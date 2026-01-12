@@ -214,8 +214,19 @@ export class MainGameScene extends Phaser.Scene {
             this.isTutorialCatch = true;
             console.log(`Tutorial mode: Spawning ${selectedPokemon.name} (${tutorialIndex + 1}/3)`);
         } else {
-            // Normal mode: random Pokemon
-            selectedPokemon = Phaser.Utils.Array.GetRandom(POKEMON_DATA);
+            // Normal mode: random Pokemon from UNCAUGHT ones only
+            const caughtIds = new Set(caughtList.map(p => p.id || p));
+            const uncaughtPokemon = POKEMON_DATA.filter(p => !caughtIds.has(p.id));
+
+            if (uncaughtPokemon.length > 0) {
+                // Select from uncaught Pokemon
+                selectedPokemon = Phaser.Utils.Array.GetRandom(uncaughtPokemon);
+                console.log(`Spawning uncaught Pokemon: ${selectedPokemon.name} (${uncaughtPokemon.length} uncaught remaining)`);
+            } else {
+                // All Pokemon caught! Allow any Pokemon to spawn
+                selectedPokemon = Phaser.Utils.Array.GetRandom(POKEMON_DATA);
+                console.log(`All Pokemon caught! Spawning ${selectedPokemon.name} (repeat)`);
+            }
             this.isTutorialCatch = false;
         }
 

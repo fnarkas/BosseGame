@@ -1,6 +1,6 @@
 {
   "numbers": {
-    "required": 1,
-    "numbers": "10-99"
+    "required": 3,
+    "numbers": "10-19"
   }
 }

@@ -2,6 +2,7 @@ import { POKEMON_DATA } from './pokemonData.js';
 import { getRarityInfo } from './pokemonRarity.js';
 
 let gameInstance = null;
+let resumeCallback = null;
 
 /**
  * Initialize the Pokedex module with the Phaser game instance
@@ -17,10 +18,14 @@ export function initPokedex(game) {
 
 /**
  * Show the Pokedex overlay
+ * @param {Function} onClose - Optional callback to call when Pokedex closes
  */
-export function showPokedex() {
+export function showPokedex(onClose) {
     const overlay = document.getElementById('pokedex-overlay');
     overlay.style.display = 'block';
+
+    // Store resume callback
+    resumeCallback = onClose || null;
 
     // Render the Pokemon grid
     renderPokedexGrid();
@@ -32,6 +37,12 @@ export function showPokedex() {
 export function hidePokedex() {
     const overlay = document.getElementById('pokedex-overlay');
     overlay.style.display = 'none';
+
+    // Call resume callback if it exists
+    if (resumeCallback) {
+        resumeCallback();
+        resumeCallback = null;
+    }
 }
 
 /**
