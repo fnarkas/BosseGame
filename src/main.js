@@ -24,64 +24,42 @@ window.openStore = openStore;
 // Migrate old inventory before game starts
 migrateOldInventory();
 
+// Games Registry - Single source of truth for all minigames
+const GAMES_REGISTRY = [
+    { path: '/letters', name: '🔊 Letter Listening', mode: 'letter-only', scene: 'PokeballGameScene' },
+    { path: '/words', name: '📝 Word-Emoji Match', mode: 'word-emoji-only', scene: 'PokeballGameScene' },
+    { path: '/emojiword', name: '📖 Emoji-Word Match', mode: 'emojiword-only', scene: 'PokeballGameScene' },
+    { path: '/directions', name: '⬅️➡️ Directions', mode: 'directions-only', scene: 'PokeballGameScene' },
+    { path: '/lettermatch', name: '🔤 Letter Match', mode: 'lettermatch-only', scene: 'PokeballGameScene' },
+    { path: '/speech', name: '🎤 Speech Reading', mode: 'speech-only', scene: 'PokeballGameScene' },
+    { path: '/numbers', name: '🔢 Number Listening', mode: 'numbers-only', scene: 'PokeballGameScene' },
+    { path: '/wordspelling', name: '⌨️ Word Spelling', mode: 'wordspelling-only', scene: 'PokeballGameScene' },
+    { path: '/pokeballs', name: '🎲 Random Mix', mode: null, scene: 'PokeballGameScene' }
+];
+
 // Detect URL path to determine game mode and routing
 const path = window.location.pathname;
 let answerMode;
 let startScene = 'MainGameScene';
-let pokeballGameMode = null; // null = alternate, 'letter' = letter only, 'word-emoji' = word-emoji only
+let pokeballGameMode = null;
 let showStoreOnLoad = false;
 let showGamesMenu = false;
 let showAdmin = false;
 
-if (path === '/debug' || path === '/debug/') {
+// Check if path matches a game in the registry
+const gameConfig = GAMES_REGISTRY.find(g => g.path === path || g.path + '/' === path);
+
+if (gameConfig) {
+    // Found a registered game
+    answerMode = 'letter';
+    startScene = gameConfig.scene;
+    pokeballGameMode = gameConfig.mode;
+    console.log(`Running ${gameConfig.name}`);
+} else if (path === '/debug' || path === '/debug/') {
     answerMode = 'debug';
     console.log('Running in DEBUG mode');
-} else if (path === '/letters' || path === '/letters/') {
-    answerMode = 'letter'; // default
-    startScene = 'PokeballGameScene';
-    pokeballGameMode = 'letter-only';
-    console.log('Running LETTER LISTENING mode (debug)');
-} else if (path === '/words' || path === '/words/') {
-    answerMode = 'letter'; // default
-    startScene = 'PokeballGameScene';
-    pokeballGameMode = 'word-emoji-only';
-    console.log('Running WORD-EMOJI MATCH mode (debug)');
-} else if (path === '/directions' || path === '/directions/') {
-    answerMode = 'letter'; // default
-    startScene = 'PokeballGameScene';
-    pokeballGameMode = 'directions-only';
-    console.log('Running LEFT/RIGHT DIRECTIONS mode (debug)');
-} else if (path === '/pokeballs' || path === '/pokeballs/') {
-    answerMode = 'letter'; // default
-    startScene = 'PokeballGameScene';
-    console.log('Running POKEBALL GAME mode');
-} else if (path === '/lettermatch' || path === '/lettermatch/') {
-    answerMode = 'letter'; // default
-    startScene = 'PokeballGameScene';
-    pokeballGameMode = 'lettermatch-only';
-    console.log('Running LETTER DRAG MATCH mode (debug)');
-} else if (path === '/speech' || path === '/speech/') {
-    answerMode = 'letter'; // default
-    startScene = 'PokeballGameScene';
-    pokeballGameMode = 'speech-only';
-    console.log('Running SPEECH RECOGNITION mode (debug)');
-} else if (path === '/numbers' || path === '/numbers/') {
-    answerMode = 'letter'; // default
-    startScene = 'PokeballGameScene';
-    pokeballGameMode = 'numbers-only';
-    console.log('Running NUMBER LISTENING mode (debug)');
-} else if (path === '/emojiword' || path === '/emojiword/') {
-    answerMode = 'letter'; // default
-    startScene = 'PokeballGameScene';
-    pokeballGameMode = 'emojiword-only';
-    console.log('Running EMOJI-WORD MATCH mode (debug)');
-} else if (path === '/wordspelling' || path === '/wordspelling/') {
-    answerMode = 'letter'; // default
-    startScene = 'PokeballGameScene';
-    pokeballGameMode = 'wordspelling-only';
-    console.log('Running WORD SPELLING mode (debug)');
 } else if (path === '/store' || path === '/store/') {
-    answerMode = 'letter'; // default
+    answerMode = 'letter';
     startScene = 'MainGameScene';
     showStoreOnLoad = true;
     console.log('Opening STORE');
@@ -92,10 +70,9 @@ if (path === '/debug' || path === '/debug/') {
     showAdmin = true;
     console.log('Showing ADMIN PANEL');
 } else if (path === '/reset' || path === '/reset/') {
-    // Reset all progress
     resetAllProgress();
 } else {
-    answerMode = 'letter'; // default
+    answerMode = 'letter';
     console.log('Running in LETTER MATCH mode');
 }
 
@@ -175,26 +152,29 @@ function showGamesMenuPage() {
         gameContainer.style.display = 'none';
     }
 
+    // Auto-generate game links from registry
+    const gamesHTML = GAMES_REGISTRY.map(game => `
+        <a href="${game.path}" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px; text-align: center;">
+            ${game.name}
+        </a>
+    `).join('');
+
     const menuHTML = `
-        <div style="font-family: Arial; max-width: 600px; margin: 80px auto; padding: 40px;">
+        <div style="font-family: Arial; max-width: 1200px; margin: 20px auto; padding: 20px;">
             <h1 style="text-align: center; margin-bottom: 40px; font-size: 36px;">🎮 Games</h1>
-            <div style="display: grid; gap: 15px;">
-                <a href="/" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🎯 Main Game</a>
-                <a href="/pokeballs" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🎲 Random Mix</a>
-                <a href="/letters" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🔊 Letter Listening</a>
-                <a href="/words" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">📝 Word-Emoji Match</a>
-                <a href="/emojiword" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">📖 Emoji-Word Match</a>
-                <a href="/lettermatch" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🔤 Letter Match</a>
-                <a href="/directions" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">⬅️➡️ Directions</a>
-                <a href="/speech" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🎤 Speech Reading</a>
-                <a href="/numbers" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🔢 Number Listening</a>
-                <a href="/wordspelling" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">⌨️ Word Spelling</a>
-                <a href="/store" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px;">🛒 Store</a>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                <a href="/" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px; text-align: center;">🎯 Main Game</a>
+                ${gamesHTML}
+                <a href="/store" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px; text-align: center;">🛒 Store</a>
             </div>
         </div>
     `;
 
     document.body.innerHTML = menuHTML;
+
+    // Reset body style to allow scrolling
+    document.body.style.overflow = 'auto';
+    document.body.style.height = 'auto';
 }
 
 function showAdminPage() {

@@ -25,6 +25,8 @@ export class WordSpellingMode extends BasePokeballGameMode {
         this.hasError = false;
         this.isRevealing = false;
         this.ballIndicators = [];
+        this.livesRemaining = 2; // Start with 2 hearts
+        this.heartsDisplay = null;
     }
 
     generateChallenge() {
@@ -52,6 +54,7 @@ export class WordSpellingMode extends BasePokeballGameMode {
         this.collectedIndices = new Set();
         this.hasError = false;
         this.isRevealing = false;
+        this.livesRemaining = 2; // Reset lives for new challenge
     }
 
     createChallengeUI(scene) {
@@ -60,6 +63,13 @@ export class WordSpellingMode extends BasePokeballGameMode {
 
         // Store scene reference
         this.scene = scene;
+
+        // Show hearts at the top
+        const heartsText = '❤️'.repeat(this.livesRemaining) + '🖤'.repeat(2 - this.livesRemaining);
+        this.heartsDisplay = scene.add.text(width / 2, 70, heartsText, {
+            font: '36px Arial'
+        }).setOrigin(0.5);
+        this.uiElements.push(this.heartsDisplay);
 
         // Speaker button to replay audio (centered at top)
         const speakerBtn = scene.add.text(width / 2, 180, '🔊', {
@@ -201,6 +211,15 @@ export class WordSpellingMode extends BasePokeballGameMode {
         // Add to used letters
         this.usedLetters.push(selectedLetter);
 
+        // Lose a life
+        this.livesRemaining--;
+
+        // Update hearts display
+        const heartsText = '❤️'.repeat(this.livesRemaining) + '🖤'.repeat(2 - this.livesRemaining);
+        if (this.heartsDisplay) {
+            this.heartsDisplay.setText(heartsText);
+        }
+
         // Play correct letter audio, then wrong letter audio
         const correctAudioKey = `letter_audio_${correctLetter.toLowerCase()}`;
         scene.sound.play(correctAudioKey);
@@ -219,11 +238,15 @@ export class WordSpellingMode extends BasePokeballGameMode {
         // Update keyboard to gray out wrong letter
         updateLetterKeyboard(this.keyboardData.letterButtons, this.usedLetters);
 
-        // ONE ERROR = GAME OVER - show correct answer after shake
-        scene.time.delayedCall(400, () => {
-            this.hasError = true;
-            this.showCorrectAnswer(scene);
-        });
+        // Check if out of lives
+        if (this.livesRemaining <= 0) {
+            // GAME OVER - show correct answer after shake
+            scene.time.delayedCall(400, () => {
+                this.hasError = true;
+                this.showCorrectAnswer(scene);
+            });
+        }
+        // Otherwise, player can continue trying with remaining lives
     }
 
     showCorrectAnswer(scene) {
@@ -322,6 +345,12 @@ export class WordSpellingMode extends BasePokeballGameMode {
     }
 
     updateLetterDisplay(scene) {
+        // Update hearts display to current state
+        if (this.heartsDisplay) {
+            const heartsText = '❤️'.repeat(this.livesRemaining) + '🖤'.repeat(2 - this.livesRemaining);
+            this.heartsDisplay.setText(heartsText);
+        }
+
         // Destroy old slots
         destroyLetterSlots(this.slotsData.elements);
 
@@ -366,5 +395,6 @@ export class WordSpellingMode extends BasePokeballGameMode {
         this.keyboardData = null;
         this.slotsData = null;
         this.ballIndicators = [];
+        this.heartsDisplay = null;
     }
 }
