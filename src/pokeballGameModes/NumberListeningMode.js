@@ -6,7 +6,11 @@ export class NumberListeningMode extends BasePokeballGameMode {
     constructor() {
         super();
         this.correctInRow = 0;
-        this.requiredCorrect = 1; // Number of correct answers needed to win
+
+        // Default values (will be overridden by loadConfig)
+        this.requiredCorrect = 1;
+        this.availableNumbers = [];
+
         this.currentNumber = null;
         this.tensZone = null;
         this.onesZone = null;
@@ -14,11 +18,71 @@ export class NumberListeningMode extends BasePokeballGameMode {
         this.ballIndicators = [];
         this.currentAudio = null;
         this.isRevealing = false;
+        this.configLoaded = false;
+    }
+
+    async loadConfig() {
+        try {
+            const response = await fetch('/config/minigames.json');
+            if (response.ok) {
+                const serverConfig = await response.json();
+                const config = serverConfig.numbers || { required: 1, numbers: '10-99' };
+                this.requiredCorrect = config.required || 1;
+                this.availableNumbers = this.parseNumberRange(config.numbers || '10-99');
+
+                console.log('NumberListeningMode config loaded from server:', {
+                    required: this.requiredCorrect,
+                    numbersConfig: config.numbers,
+                    availableNumbers: this.availableNumbers,
+                    count: this.availableNumbers.length
+                });
+            } else {
+                throw new Error('Config not found');
+            }
+        } catch (error) {
+            console.warn('Failed to load server config, using defaults:', error);
+            this.requiredCorrect = 1;
+            this.availableNumbers = this.parseNumberRange('10-99');
+        }
+
+        this.configLoaded = true;
+    }
+
+    parseNumberRange(input) {
+        try {
+            const parts = input.split(',');
+            const numbers = new Set();
+
+            for (const part of parts) {
+                const trimmed = part.trim();
+                if (trimmed.includes('-')) {
+                    const [start, end] = trimmed.split('-').map(n => parseInt(n.trim()));
+                    if (isNaN(start) || isNaN(end) || start > end || start < 0) {
+                        continue; // Skip invalid
+                    }
+                    for (let i = start; i <= end; i++) {
+                        numbers.add(i);
+                    }
+                } else {
+                    const num = parseInt(trimmed);
+                    if (isNaN(num) || num < 0) {
+                        continue; // Skip invalid
+                    }
+                    numbers.add(num);
+                }
+            }
+
+            const result = Array.from(numbers).sort((a, b) => a - b);
+            return result.length > 0 ? result : [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]; // Fallback
+        } catch (error) {
+            return [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]; // Fallback
+        }
     }
 
     generateChallenge() {
-        // Generate random number between 10-99
-        this.currentNumber = Math.floor(Math.random() * 90) + 10;
+        // Generate random number from configured available numbers
+        const randomIndex = Math.floor(Math.random() * this.availableNumbers.length);
+        this.currentNumber = this.availableNumbers[randomIndex];
 
         this.challengeData = {
             number: this.currentNumber,
@@ -26,7 +90,11 @@ export class NumberListeningMode extends BasePokeballGameMode {
             ones: this.currentNumber % 10
         };
 
-        console.log('Number challenge:', this.currentNumber);
+        console.log('Generated number challenge:', {
+            number: this.currentNumber,
+            randomIndex: randomIndex,
+            availableCount: this.availableNumbers.length
+        });
     }
 
     createChallengeUI(scene) {

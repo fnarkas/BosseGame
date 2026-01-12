@@ -177,10 +177,21 @@ function showGamesMenuPage() {
     document.body.style.height = 'auto';
 }
 
-function showAdminPage() {
+async function showAdminPage() {
     const gameContainer = document.getElementById('game-container');
     if (gameContainer) {
         gameContainer.style.display = 'none';
+    }
+
+    // Load server config
+    let serverConfig = { numbers: { required: 1, numbers: '10-99' } };
+    try {
+        const response = await fetch('/config/minigames.json');
+        if (response.ok) {
+            serverConfig = await response.json();
+        }
+    } catch (error) {
+        console.warn('Failed to load server config, using defaults:', error);
     }
 
     // Check for sync parameter in URL
@@ -326,6 +337,41 @@ function showAdminPage() {
             ` : ''}
 
             <div style="background: #f5f5f5; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                <h2 style="margin-top: 0;">Minigame Configuration</h2>
+                <p style="color: #666; margin-bottom: 15px;">Configure settings for individual minigames.</p>
+
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; font-weight: bold; margin-bottom: 5px;">Select Minigame:</label>
+                    <select id="minigame-selector" style="width: 100%; max-width: 400px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px;">
+                        <option value="numbers">🔢 Number Listening</option>
+                    </select>
+                </div>
+
+                <div id="config-numbers" style="display: block; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                    <h3 style="margin-top: 0;">Number Listening Configuration</h3>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Numbers to Clear Before Gift:</label>
+                        <input type="number" id="config-numbers-required" value="${serverConfig.numbers.required}" min="1" max="25" style="width: 100px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">How many correct answers needed to get the Pokemon</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Available Numbers:</label>
+                        <input type="text" id="config-numbers-range" value="${serverConfig.numbers.numbers}" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace;">
+                        <div style="color: #666; margin-top: 5px; font-size: 14px;">
+                            Format: <code>0,1,3,4-9,15-20</code> (ranges and individual numbers separated by commas)
+                        </div>
+                        <div id="numbers-preview" style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px; min-height: 40px;"></div>
+                        <div id="numbers-error" style="margin-top: 10px; color: #f44336; font-weight: bold; display: none;"></div>
+                    </div>
+
+                    <button onclick="saveMinigameConfig('numbers')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Number Config</button>
+                    <div id="config-numbers-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
+                </div>
+            </div>
+
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
                 <h2 style="margin-top: 0;">Minigame Probabilities</h2>
                 <p style="color: #666; margin-bottom: 15px;">Adjust the probability weights for each minigame. Higher values = higher chance of appearing.</p>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin-bottom: 15px;">
@@ -404,6 +450,125 @@ function showAdminPage() {
     // Reset body style to allow scrolling
     document.body.style.overflow = 'auto';
     document.body.style.height = 'auto';
+
+    // Number range parser
+    window.parseNumberRange = function(input) {
+        try {
+            const parts = input.split(',');
+            const numbers = new Set();
+
+            for (const part of parts) {
+                const trimmed = part.trim();
+                if (trimmed.includes('-')) {
+                    const [start, end] = trimmed.split('-').map(n => parseInt(n.trim()));
+                    if (isNaN(start) || isNaN(end) || start > end || start < 0) {
+                        return null; // Invalid
+                    }
+                    for (let i = start; i <= end; i++) {
+                        numbers.add(i);
+                    }
+                } else {
+                    const num = parseInt(trimmed);
+                    if (isNaN(num) || num < 0) {
+                        return null; // Invalid
+                    }
+                    numbers.add(num);
+                }
+            }
+
+            return Array.from(numbers).sort((a, b) => a - b);
+        } catch (error) {
+            return null;
+        }
+    };
+
+    window.updateNumbersPreview = function() {
+        const input = document.getElementById('config-numbers-range').value;
+        const preview = document.getElementById('numbers-preview');
+        const error = document.getElementById('numbers-error');
+
+        const numbers = window.parseNumberRange(input);
+
+        if (numbers === null || numbers.length === 0) {
+            error.textContent = '❌ Invalid format! Please use format like: 0,1,3,4-9,15-20';
+            error.style.display = 'block';
+            preview.innerHTML = '';
+            return false;
+        }
+
+        error.style.display = 'none';
+
+        // Create visual chips for numbers
+        const chips = numbers.map(num =>
+            `<span style="display: inline-block; padding: 4px 10px; margin: 3px; background: #4CAF50; color: white; border-radius: 12px; font-size: 14px;">${num}</span>`
+        ).join('');
+
+        preview.innerHTML = `
+            <div style="margin-bottom: 8px; font-weight: bold; color: #333;">
+                ✓ ${numbers.length} number${numbers.length !== 1 ? 's' : ''} configured
+            </div>
+            <div style="max-height: 150px; overflow-y: auto;">
+                ${chips}
+            </div>
+        `;
+
+        return true;
+    };
+
+    window.saveMinigameConfig = async function(game) {
+        if (game === 'numbers') {
+            const required = parseInt(document.getElementById('config-numbers-required').value);
+            const numbersInput = document.getElementById('config-numbers-range').value;
+
+            // Validate
+            if (!window.updateNumbersPreview()) {
+                return;
+            }
+
+            const message = document.getElementById('config-numbers-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                // Load current config
+                const response = await fetch('/config/minigames.json');
+                let fullConfig = { numbers: { required: 1, numbers: '10-99' } };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                // Update numbers config
+                fullConfig.numbers = {
+                    required: required,
+                    numbers: numbersInput
+                };
+
+                // Save to server
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Config saved to server! All devices will use these settings.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
+        }
+    };
 
     // Define all admin functions globally
     window.saveWeights = function() {
@@ -677,4 +842,15 @@ function showAdminPage() {
         window.initChart();
     };
     document.head.appendChild(chartScript);
+
+    // Initialize numbers preview on page load
+    setTimeout(() => {
+        window.updateNumbersPreview();
+
+        // Add event listener for real-time preview updates
+        const numbersInput = document.getElementById('config-numbers-range');
+        if (numbersInput) {
+            numbersInput.addEventListener('input', window.updateNumbersPreview);
+        }
+    }, 100);
 }

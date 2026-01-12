@@ -388,9 +388,16 @@ export class PokeballGameScene extends Phaser.Scene {
     loadNextChallenge() {
         this.isProcessingAnswer = false;
 
-        // Generate and display new challenge
-        this.gameMode.generateChallenge();
-        this.gameMode.createChallengeUI(this);
+        // Load config if needed, then generate challenge
+        if (this.gameMode.loadConfig && !this.gameMode.configLoaded) {
+            this.gameMode.loadConfig().then(() => {
+                this.gameMode.generateChallenge();
+                this.gameMode.createChallengeUI(this);
+            });
+        } else {
+            this.gameMode.generateChallenge();
+            this.gameMode.createChallengeUI(this);
+        }
     }
 
     handleAnswer(isCorrect, answer, x, y) {
