@@ -5,6 +5,7 @@ import { createInventoryHUD, updateInventoryHUD } from '../inventoryHUD.js';
 import { hasPokeballs, removePokeball, getInventory, POKEBALL_TYPES } from '../inventory.js';
 import { showPokeballSelector } from '../pokeballSelector.js';
 import { getRarityInfo, attemptCatch } from '../pokemonRarity.js';
+import { getCoinCount, deductCoins } from '../currency.js';
 
 export class MainGameScene extends Phaser.Scene {
     constructor() {
@@ -84,6 +85,10 @@ export class MainGameScene extends Phaser.Scene {
         diceBtn.setInteractive({ useHandCursor: true });
 
         diceBtn.on('pointerdown', () => {
+            // Save current Pokemon to registry before leaving
+            if (this.currentPokemon) {
+                this.registry.set('currentPokemon', this.currentPokemon);
+            }
             this.scene.start('PokeballGameScene');
         });
 
@@ -158,7 +163,7 @@ export class MainGameScene extends Phaser.Scene {
         this.startNewEncounter();
     }
 
-    startNewEncounter() {
+    startNewEncounter(forceNewPokemon = false) {
         // Reset attempts
         this.attemptsLeft = 3;
 
@@ -188,8 +193,20 @@ export class MainGameScene extends Phaser.Scene {
             return;
         }
 
-        // Spawn random Pokemon
-        this.spawnPokemon();
+        // Check if we should use existing Pokemon or spawn new one
+        if (!forceNewPokemon && this.registry.get('currentPokemon')) {
+            // Restore previous Pokemon from registry
+            this.currentPokemon = this.registry.get('currentPokemon');
+            console.log('Restoring previous Pokemon:', this.currentPokemon.name);
+        } else {
+            // Spawn new random Pokemon
+            this.spawnPokemon();
+            // Save to registry
+            this.registry.set('currentPokemon', this.currentPokemon);
+        }
+
+        // Display the Pokemon sprite
+        this.displayPokemon();
 
         // Generate challenge using answer mode
         this.answerMode.generateChallenge(this.currentPokemon);
@@ -199,8 +216,6 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     spawnPokemon() {
-        const width = this.cameras.main.width;
-
         // Tutorial system: First 3 encounters are always Onix, Zubat, Seel (100% catch rate)
         const caughtList = this.registry.get('caughtPokemon') || [];
         const tutorialPokemonIds = [95, 41, 86]; // Onix, Zubat, Seel - names with similar upper/lowercase letters
@@ -234,14 +249,19 @@ export class MainGameScene extends Phaser.Scene {
             id: selectedPokemon.id,
             name: selectedPokemon.name
         };
+    }
+
+    displayPokemon() {
+        const width = this.cameras.main.width;
 
         // Create Pokemon sprite
-        this.currentPokemonSprite = this.add.image(width / 2, 250, `pokemon_${selectedPokemon.id}`);
+        this.currentPokemonSprite = this.add.image(width / 2, 250, `pokemon_${this.currentPokemon.id}`);
         this.currentPokemonSprite.setScale(0.5);
         this.currentPokemonSprite.setData('clearOnNewEncounter', true);
 
         // Show rarity indicator (skip for tutorial Pokemon to keep it simple)
         if (!this.isTutorialCatch) {
+            const selectedPokemon = POKEMON_DATA.find(p => p.id === this.currentPokemon.id);
             const rarityInfo = getRarityInfo(selectedPokemon);
             if (rarityInfo.icon) {
                 this.rarityIndicator = this.add.text(width / 2, 150, rarityInfo.icon, {
@@ -251,7 +271,59 @@ export class MainGameScene extends Phaser.Scene {
             }
         }
 
-        // Bounce animation
+        // Re-roll button (positioned to the right of Pokemon)
+        const rerollBtn = this.add.text(width / 2 + 200, 250, '🎲', {
+            fontSize: '64px'
+        }).setOrigin(0.5);
+        rerollBtn.setInteractive({ useHandCursor: true });
+        rerollBtn.setData('clearOnNewEncounter', true);
+
+        // Re-roll cost indicator (below button)
+        const rerollCost = this.add.text(width / 2 + 200, 315, '5', {
+            fontSize: '24px',
+            fontFamily: 'Arial',
+            fill: '#ffffff',
+            stroke: '#000000',
+            strokeThickness: 4
+        }).setOrigin(0.5);
+        rerollCost.setData('clearOnNewEncounter', true);
+
+        // Coin icon for re-roll cost
+        const rerollCoinIcon = this.add.image(width / 2 + 225, 315, 'coin-tiny');
+        rerollCoinIcon.setOrigin(0, 0.5);
+        rerollCoinIcon.setScale(0.6);
+        rerollCoinIcon.setData('clearOnNewEncounter', true);
+
+        rerollBtn.on('pointerover', () => {
+            rerollBtn.setScale(1.1);
+        });
+
+        rerollBtn.on('pointerout', () => {
+            rerollBtn.setScale(1.0);
+        });
+
+        rerollBtn.on('pointerdown', () => {
+            const currentCoins = getCoinCount();
+
+            if (currentCoins >= 5) {
+                // Deduct 5 coins
+                deductCoins(5);
+
+                // Update inventory HUD immediately to show coin deduction
+                updateInventoryHUD(this.inventoryHUD);
+
+                // Force new Pokemon spawn
+                this.startNewEncounter(true);
+            } else {
+                // Not enough coins - show feedback
+                rerollBtn.setTint(0xFF0000);
+                this.time.delayedCall(300, () => {
+                    rerollBtn.clearTint();
+                });
+            }
+        });
+
+        // Bounce animation for Pokemon
         this.tweens.add({
             targets: this.currentPokemonSprite,
             y: 270,
@@ -990,6 +1062,10 @@ export class MainGameScene extends Phaser.Scene {
             mediumDust.destroy();
             smallDust.destroy();
             this.isAnimating = false;
+
+            // Clear current Pokemon from registry so next encounter generates a new one
+            this.registry.remove('currentPokemon');
+
             this.startNewEncounter();
         });
     }
@@ -1009,5 +1085,8 @@ export class MainGameScene extends Phaser.Scene {
             this.registry.set('caughtPokemon', caughtList);
             localStorage.setItem('pokemonCaughtList', JSON.stringify(caughtList));
         }
+
+        // Clear current Pokemon from registry so next encounter generates a new one
+        this.registry.remove('currentPokemon');
     }
 }

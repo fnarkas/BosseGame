@@ -342,12 +342,31 @@ async function showAdminPage() {
 
                 <div style="margin-bottom: 15px;">
                     <label style="display: block; font-weight: bold; margin-bottom: 5px;">Select Minigame:</label>
-                    <select id="minigame-selector" style="width: 100%; max-width: 400px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px;">
+                    <select id="minigame-selector" onchange="switchMinigameConfig()" style="width: 100%; max-width: 400px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px;">
+                        <option value="letters">🔊 Letter Listening</option>
                         <option value="numbers">🔢 Number Listening</option>
                     </select>
                 </div>
 
-                <div id="config-numbers" style="display: block; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                <div id="config-letters" style="display: block; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                    <h3 style="margin-top: 0;">Letter Listening Configuration</h3>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Available Letters:</label>
+                        <input type="text" id="config-letters-list" value="${localStorage.getItem('letterListeningLetters') || 'A-Z,Å,Ä,Ö'}" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace;">
+                        <div style="color: #666; margin-top: 5px; font-size: 14px;">
+                            Format: <code>a-z,B,C,Ä,Ö</code> (uppercase and lowercase letters are different)<br>
+                            Examples: <code>A-Z</code> (all uppercase), <code>a-z</code> (all lowercase), <code>A,B,C,a,b,c</code> (mix)
+                        </div>
+                        <div id="letters-preview" style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px; min-height: 40px;"></div>
+                        <div id="letters-error" style="margin-top: 10px; color: #f44336; font-weight: bold; display: none;"></div>
+                    </div>
+
+                    <button onclick="saveLetterConfig()" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Letter Config</button>
+                    <div id="config-letters-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
+                </div>
+
+                <div id="config-numbers" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
                     <h3 style="margin-top: 0;">Number Listening Configuration</h3>
 
                     <div style="margin-bottom: 20px;">
@@ -450,6 +469,120 @@ async function showAdminPage() {
     // Reset body style to allow scrolling
     document.body.style.overflow = 'auto';
     document.body.style.height = 'auto';
+
+    // Letter range parser (supports uppercase/lowercase)
+    window.parseLetterRange = function(input) {
+        try {
+            const parts = input.split(',');
+            const letters = [];
+
+            for (const part of parts) {
+                const trimmed = part.trim();
+                if (trimmed.includes('-')) {
+                    // Handle range like "a-z" or "A-Z"
+                    const [start, end] = trimmed.split('-').map(s => s.trim());
+                    if (start.length !== 1 || end.length !== 1) {
+                        return null; // Invalid
+                    }
+                    const startCode = start.charCodeAt(0);
+                    const endCode = end.charCodeAt(0);
+
+                    if (startCode > endCode) {
+                        return null; // Invalid range
+                    }
+
+                    for (let i = startCode; i <= endCode; i++) {
+                        letters.push(String.fromCharCode(i));
+                    }
+                } else if (trimmed.length === 1) {
+                    // Single letter
+                    letters.push(trimmed);
+                } else if (trimmed.length > 1) {
+                    return null; // Invalid
+                }
+            }
+
+            // Remove duplicates while preserving order
+            return Array.from(new Set(letters));
+        } catch (error) {
+            return null;
+        }
+    };
+
+    window.updateLettersPreview = function() {
+        const input = document.getElementById('config-letters-list').value;
+        const preview = document.getElementById('letters-preview');
+        const error = document.getElementById('letters-error');
+
+        const letters = window.parseLetterRange(input);
+
+        if (letters === null || letters.length === 0) {
+            error.textContent = '❌ Invalid format! Please use format like: a-z,B,C,Ä,Ö';
+            error.style.display = 'block';
+            preview.innerHTML = '';
+            return false;
+        }
+
+        error.style.display = 'none';
+
+        // Create visual chips for letters
+        const chips = letters.map(letter =>
+            `<span style="display: inline-block; padding: 6px 12px; margin: 3px; background: #2196F3; color: white; border-radius: 12px; font-size: 18px; font-weight: bold;">${letter}</span>`
+        ).join('');
+
+        preview.innerHTML = `
+            <div style="margin-bottom: 8px; font-weight: bold; color: #333;">
+                ✓ ${letters.length} letter${letters.length !== 1 ? 's' : ''} configured
+            </div>
+            <div style="max-height: 150px; overflow-y: auto;">
+                ${chips}
+            </div>
+        `;
+
+        return true;
+    };
+
+    window.saveLetterConfig = function() {
+        const lettersInput = document.getElementById('config-letters-list').value;
+
+        // Validate
+        if (!window.updateLettersPreview()) {
+            return;
+        }
+
+        const letters = window.parseLetterRange(lettersInput);
+
+        // Save to localStorage
+        localStorage.setItem('letterListeningLetters', lettersInput);
+        localStorage.setItem('letterListeningLettersParsed', JSON.stringify(letters));
+
+        const message = document.getElementById('config-letters-message');
+        message.textContent = '✓ Letter configuration saved! (Reload game to apply)';
+        message.style.color = '#4CAF50';
+
+        setTimeout(() => {
+            message.textContent = '';
+        }, 3000);
+    };
+
+    window.switchMinigameConfig = function() {
+        const selector = document.getElementById('minigame-selector');
+        const value = selector.value;
+
+        // Hide all configs
+        document.getElementById('config-letters').style.display = 'none';
+        document.getElementById('config-numbers').style.display = 'none';
+
+        // Show selected config
+        document.getElementById('config-' + value).style.display = 'block';
+
+        // Update previews
+        if (value === 'letters') {
+            window.updateLettersPreview();
+        } else if (value === 'numbers') {
+            window.updateNumbersPreview();
+        }
+    };
 
     // Number range parser
     window.parseNumberRange = function(input) {
@@ -847,10 +980,17 @@ async function showAdminPage() {
     setTimeout(() => {
         window.updateNumbersPreview();
 
-        // Add event listener for real-time preview updates
+        // Add event listeners for real-time preview updates
         const numbersInput = document.getElementById('config-numbers-range');
         if (numbersInput) {
             numbersInput.addEventListener('input', window.updateNumbersPreview);
+        }
+
+        const lettersInput = document.getElementById('config-letters-list');
+        if (lettersInput) {
+            lettersInput.addEventListener('input', window.updateLettersPreview);
+            // Trigger initial preview
+            window.updateLettersPreview();
         }
     }, 100);
 }

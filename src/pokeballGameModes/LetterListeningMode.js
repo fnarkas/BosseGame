@@ -1,5 +1,5 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
-import { SWEDISH_LETTERS } from '../letterData.js';
+import { getConfiguredLetters } from '../letterData.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
 import { resetStreak } from '../streak.js';
 import { updateBoosterBar } from '../boosterBar.js';
@@ -19,11 +19,13 @@ export class LetterListeningMode extends BasePokeballGameMode {
         this.correctInRow = 0; // Track consecutive correct answers
         this.requiredCorrect = 3; // Need 3 correct to get Pokemon
         this.ballIndicators = []; // Visual progress indicators
+        // Load configured letters (supports both uppercase and lowercase)
+        this.availableLetters = getConfiguredLetters();
     }
 
     generateChallenge() {
-        // Get unused letters
-        const availableLetters = SWEDISH_LETTERS.filter(
+        // Get unused letters from configured set
+        const availableLetters = this.availableLetters.filter(
             letter => !this.usedLetters.has(letter)
         );
 
@@ -38,7 +40,7 @@ export class LetterListeningMode extends BasePokeballGameMode {
         this.usedLetters.add(correctLetter);
 
         // Generate 5 distractors (letters that are not the correct one)
-        const otherLetters = SWEDISH_LETTERS.filter(l => l !== correctLetter);
+        const otherLetters = this.availableLetters.filter(l => l !== correctLetter);
         const distractors = Phaser.Utils.Array.Shuffle(otherLetters).slice(0, 5);
 
         // Shuffle all choices (correct + distractors)
