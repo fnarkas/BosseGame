@@ -1,16 +1,17 @@
 /**
- * Gift Box Reward Animation
- * Shows gift box opening animation with coin reward
+ * Reward Animation
+ * Shows gift box (normal modes) or treasure chest (legendary modes) opening animation with coin reward
  */
 
 /**
- * Create and show gift box reward animation
+ * Create and show reward animation
  * @param {Phaser.Scene} scene - The Phaser scene to add the animation to
  * @param {number} coinAmount - Amount of coins to show (already multiplied)
- * @param {number} multiplier - Streak multiplier (1-5)
+ * @param {number} multiplier - Streak multiplier (1-5) or null for legendary
+ * @param {boolean} isLegendary - Whether this is a legendary mode (uses treasure chest instead of gift)
  * @param {Function} onComplete - Callback when animation completes
  */
-export function showGiftBoxReward(scene, coinAmount, multiplier, onComplete) {
+export function showGiftBoxReward(scene, coinAmount, multiplier, isLegendary, onComplete) {
   const centerX = scene.cameras.main.width / 2;
   const centerY = scene.cameras.main.height / 2;
 
@@ -25,34 +26,56 @@ export function showGiftBoxReward(scene, coinAmount, multiplier, onComplete) {
   overlay.setOrigin(0, 0);
   overlay.setDepth(1000);
 
-  // Create gift box emoji text
-  const giftBox = scene.add.text(centerX, centerY, '🎁', {
-    fontSize: '120px',
-    align: 'center',
-    padding: { y: 30 }
-  });
-  giftBox.setOrigin(0.5);
-  giftBox.setDepth(1001);
-  giftBox.setScale(0);
+  let rewardIcon;
 
-  // Scale in the gift box
+  if (isLegendary) {
+    // Create treasure chest sprite for legendary modes
+    rewardIcon = scene.add.image(centerX, centerY, 'treasure-chest');
+    rewardIcon.setOrigin(0.5);
+    rewardIcon.setDepth(1001);
+    rewardIcon.setScale(0);
+  } else {
+    // Create gift box emoji for normal modes
+    rewardIcon = scene.add.text(centerX, centerY, '🎁', {
+      fontSize: '120px',
+      align: 'center',
+      padding: { y: 30 }
+    });
+    rewardIcon.setOrigin(0.5);
+    rewardIcon.setDepth(1001);
+    rewardIcon.setScale(0);
+  }
+
+  // Scale in the reward icon
   scene.tweens.add({
-    targets: giftBox,
-    scale: 1,
+    targets: rewardIcon,
+    scale: isLegendary ? 1.2 : 1,
     duration: 300,
     ease: 'Back.easeOut',
     onComplete: () => {
-      // Start jiggle animation
-      jiggleGiftBox(scene, giftBox, () => {
-        // Explosion and reveal coins
-        explodeAndReveal(scene, giftBox, coinAmount, multiplier, () => {
-          // Clean up overlay
-          overlay.destroy();
-          if (onComplete) {
-            onComplete();
-          }
+      if (isLegendary) {
+        // Bounce animation for treasure chest
+        bounceTreasureChest(scene, rewardIcon, () => {
+          // Explosion and reveal coins
+          explodeAndReveal(scene, rewardIcon, coinAmount, multiplier, () => {
+            overlay.destroy();
+            if (onComplete) {
+              onComplete();
+            }
+          });
         });
-      });
+      } else {
+        // Jiggle animation for gift box
+        jiggleGiftBox(scene, rewardIcon, () => {
+          // Explosion and reveal coins
+          explodeAndReveal(scene, rewardIcon, coinAmount, multiplier, () => {
+            overlay.destroy();
+            if (onComplete) {
+              onComplete();
+            }
+          });
+        });
+      }
     }
   });
 }
@@ -90,11 +113,45 @@ function jiggleGiftBox(scene, giftBox, onComplete) {
 }
 
 /**
+ * Bounce animation for treasure chest (simulates it shaking/unlocking)
+ */
+function bounceTreasureChest(scene, treasureChest, onComplete) {
+  const bounceCount = 3;
+  let currentBounce = 0;
+
+  const bounce = () => {
+    if (currentBounce >= bounceCount) {
+      // Reset and proceed
+      treasureChest.setScale(1.2);
+      if (onComplete) {
+        onComplete();
+      }
+      return;
+    }
+
+    // Bounce up and down
+    scene.tweens.add({
+      targets: treasureChest,
+      y: treasureChest.y - 20,
+      scale: 1.3,
+      duration: 150,
+      yoyo: true,
+      onComplete: () => {
+        currentBounce++;
+        bounce();
+      }
+    });
+  };
+
+  bounce();
+}
+
+/**
  * Create explosion particle effect and reveal coins
  */
-function explodeAndReveal(scene, giftBox, coinAmount, multiplier, onComplete) {
-  const centerX = giftBox.x;
-  const centerY = giftBox.y;
+function explodeAndReveal(scene, treasureChest, coinAmount, multiplier, onComplete) {
+  const centerX = treasureChest.x;
+  const centerY = treasureChest.y;
 
   // Create particle explosion
   const particles = [];
@@ -128,14 +185,14 @@ function explodeAndReveal(scene, giftBox, coinAmount, multiplier, onComplete) {
     });
   }
 
-  // Hide gift box
+  // Hide treasure chest
   scene.tweens.add({
-    targets: giftBox,
+    targets: treasureChest,
     alpha: 0,
     scale: 0.5,
     duration: 300,
     onComplete: () => {
-      giftBox.destroy();
+      treasureChest.destroy();
 
       // Show coin reward (with multiplier if > 1)
       showCoinReveal(scene, centerX, centerY, coinAmount, multiplier, onComplete);

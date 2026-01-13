@@ -110,11 +110,10 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
         this.progressText.setDepth(2);
         this.uiElements.push(this.progressText);
 
-        // Gift emoji to the right of the bar (prize indicator)
-        this.legendaryBallIcon = scene.add.text(barX + barWidth / 2 + 60, barY, '🎁', {
-            fontSize: '64px',
-            fontFamily: 'Arial'
-        }).setOrigin(0.5);
+        // Treasure chest to the right of the bar (prize indicator for legendary)
+        this.legendaryBallIcon = scene.add.image(barX + barWidth / 2 + 60, barY, 'treasure-chest');
+        this.legendaryBallIcon.setOrigin(0.5);
+        this.legendaryBallIcon.setScale(0.5); // Scale down to fit next to bar
         this.uiElements.push(this.legendaryBallIcon);
     }
 

@@ -449,8 +449,8 @@ export class PokeballGameScene extends Phaser.Scene {
             // Show success feedback particles
             this.showSuccessFeedback(x, y);
 
-            // Show gift box reward animation (with or without multiplier)
-            showGiftBoxReward(this, finalCoinReward, isLegendaryMode ? null : multiplier, () => {
+            // Show reward animation (gift box for normal, treasure chest for legendary)
+            showGiftBoxReward(this, finalCoinReward, isLegendaryMode ? null : multiplier, isLegendaryMode, () => {
                 // Animation complete - update coin count
                 this.coinCount = addCoins(finalCoinReward);
                 this.coinCounterText.setText(`${this.coinCount}`);
