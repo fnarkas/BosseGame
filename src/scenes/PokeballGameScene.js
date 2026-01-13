@@ -8,6 +8,7 @@ import { SpeechRecognitionMode } from '../pokeballGameModes/SpeechRecognitionMod
 import { NumberListeningMode } from '../pokeballGameModes/NumberListeningMode.js';
 import { WordSpellingMode } from '../pokeballGameModes/WordSpellingMode.js';
 import { LegendaryAlphabetMatchMode } from '../pokeballGameModes/LegendaryAlphabetMatchMode.js';
+import { LegendaryNumbersMode } from '../pokeballGameModes/LegendaryNumbersMode.js';
 import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier } from '../streak.js';
@@ -155,6 +156,10 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /legendary - legendary alphabet match challenge
             this.gameMode = new LegendaryAlphabetMatchMode();
             console.log('Selected game mode: Legendary Alphabet Match (forced)');
+        } else if (forcedMode === 'legendary-numbers-only') {
+            // Debug path: /legendarynumbers - legendary numbers challenge
+            this.gameMode = new LegendaryNumbersMode();
+            console.log('Selected game mode: Legendary Numbers (forced)');
         } else {
             // Normal mode: Randomly select from all game modes with configurable probabilities
             this.gameMode = this.selectRandomGameMode();
@@ -165,15 +170,16 @@ export class PokeballGameScene extends Phaser.Scene {
         // Configurable weights for each game mode
         // Higher weight = higher probability of being selected
         const DEFAULT_MODE_WEIGHTS = {
-            letterListening: 10,     // ~8.3% chance
-            wordEmoji: 10,           // ~8.3% chance
-            emojiWord: 10,           // ~8.3% chance
-            leftRight: 10,           // ~8.3% chance
-            letterDragMatch: 10,     // ~8.3% chance
-            speechRecognition: 10,   // ~8.3% chance
-            numberListening: 10,     // ~8.3% chance
-            wordSpelling: 40,        // ~33.3% chance
-            legendary: 10            // ~8.3% chance
+            letterListening: 10,
+            wordEmoji: 10,
+            emojiWord: 10,
+            leftRight: 10,
+            letterDragMatch: 10,
+            speechRecognition: 10,
+            numberListening: 10,
+            wordSpelling: 40,
+            legendary: 10,
+            legendaryNumbers: 10
         };
 
         // Load custom weights from localStorage, or use defaults
@@ -189,7 +195,8 @@ export class PokeballGameScene extends Phaser.Scene {
                           MODE_WEIGHTS.speechRecognition +
                           MODE_WEIGHTS.numberListening +
                           MODE_WEIGHTS.wordSpelling +
-                          MODE_WEIGHTS.legendary;
+                          MODE_WEIGHTS.legendary +
+                          MODE_WEIGHTS.legendaryNumbers;
 
         // Generate random number between 0 and total weight
         const random = Math.random() * totalWeight;
@@ -245,6 +252,12 @@ export class PokeballGameScene extends Phaser.Scene {
             return new LegendaryAlphabetMatchMode();
         }
 
+        currentWeight += MODE_WEIGHTS.legendaryNumbers;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Legendary Numbers');
+            return new LegendaryNumbersMode();
+        }
+
         // Default to Word Spelling
         console.log('Selected game mode: Word Spelling');
         return new WordSpellingMode();
@@ -293,7 +306,8 @@ export class PokeballGameScene extends Phaser.Scene {
             'SpeechRecognitionMode': { face: 6, icon: 'game-mode-speech' },
             'NumberListeningMode': { face: 7, icon: 'game-mode-numbers' },
             'WordSpellingMode': { face: 8, icon: 'game-mode-spelling' },
-            'LegendaryAlphabetMatchMode': { face: 9, icon: 'game-mode-legendary' }
+            'LegendaryAlphabetMatchMode': { face: 9, icon: 'game-mode-legendary' },
+            'LegendaryNumbersMode': { face: 10, icon: 'game-mode-legendary-numbers' }
         };
 
         const selectedMode = gameModeMap[this.gameMode.constructor.name];
@@ -315,16 +329,16 @@ export class PokeballGameScene extends Phaser.Scene {
             ease: 'Sine.easeInOut'
         });
 
-        // Create 9 game mode icons in a single row below the dice
-        const iconSize = 60;
-        const spacing = 45; // Adjusted for 9 icons
-        const totalWidth = (iconSize * 9) + (spacing * 8);
+        // Create 10 game mode icons in a single row below the dice
+        const iconSize = 55;
+        const spacing = 40; // Adjusted for 10 icons
+        const totalWidth = (iconSize * 10) + (spacing * 9);
         const startX = (width - totalWidth) / 2 + iconSize / 2;
         const iconY = height / 2 + 200; // Increased spacing from dice
 
         const gameIcons = [];
         const gameDiceFaces = [];
-        const iconKeys = ['game-mode-letter', 'game-mode-word', 'game-mode-emojiword', 'game-mode-directions', 'game-mode-lettermatch', 'game-mode-speech', 'game-mode-numbers', 'game-mode-spelling', 'game-mode-legendary'];
+        const iconKeys = ['game-mode-letter', 'game-mode-word', 'game-mode-emojiword', 'game-mode-directions', 'game-mode-lettermatch', 'game-mode-speech', 'game-mode-numbers', 'game-mode-spelling', 'game-mode-legendary', 'game-mode-legendary-numbers'];
 
         iconKeys.forEach((key, index) => {
             const x = startX + index * (iconSize + spacing);
@@ -368,7 +382,7 @@ export class PokeballGameScene extends Phaser.Scene {
                 rollCount++;
 
                 // Show random face
-                const randomFace = Phaser.Math.Between(1, 8);
+                const randomFace = Phaser.Math.Between(1, 10);
                 diceSprite.setTexture(`dice-face-${randomFace}`);
 
                 // Shake effect
@@ -433,7 +447,8 @@ export class PokeballGameScene extends Phaser.Scene {
         this.isProcessingAnswer = false;
 
         // Show/hide booster bar based on game mode
-        const isLegendaryMode = this.gameMode.constructor.name === 'LegendaryAlphabetMatchMode';
+        const modeName = this.gameMode.constructor.name;
+        const isLegendaryMode = modeName === 'LegendaryAlphabetMatchMode' || modeName === 'LegendaryNumbersMode';
         if (isLegendaryMode) {
             hideBoosterBar(this.boosterBarElements);
         } else {
@@ -458,7 +473,8 @@ export class PokeballGameScene extends Phaser.Scene {
 
         if (isCorrect) {
             // Check if this is legendary mode
-            const isLegendaryMode = this.gameMode.constructor.name === 'LegendaryAlphabetMatchMode';
+            const modeName = this.gameMode.constructor.name;
+            const isLegendaryMode = modeName === 'LegendaryAlphabetMatchMode' || modeName === 'LegendaryNumbersMode';
 
             // Increment streak and get multiplier (only for non-legendary modes)
             let newStreak, multiplier, baseCoinReward, finalCoinReward;
@@ -512,7 +528,8 @@ export class PokeballGameScene extends Phaser.Scene {
             });
         } else {
             // Reset streak on wrong answer (not for legendary mode)
-            const isLegendaryMode = this.gameMode.constructor.name === 'LegendaryAlphabetMatchMode';
+            const modeName = this.gameMode.constructor.name;
+            const isLegendaryMode = modeName === 'LegendaryAlphabetMatchMode' || modeName === 'LegendaryNumbersMode';
             if (!isLegendaryMode) {
                 const newStreak = resetStreak();
                 updateBoosterBar(this.boosterBarElements, newStreak, this);

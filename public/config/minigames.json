@@ -13,5 +13,9 @@
   "legendary": {
     "coinReward": 100,
     "maxErrors": 3
+  },
+  "legendaryNumbers": {
+    "coinReward": 100,
+    "maxErrors": 3
   }
 }
