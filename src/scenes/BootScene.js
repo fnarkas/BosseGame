@@ -198,6 +198,9 @@ export class BootScene extends Phaser.Scene {
         // Generate dice face textures
         this.generateDiceFaces();
 
+        // Generate wheel texture
+        this.generateWheelTexture();
+
         // Store game data globally
         this.registry.set('caughtPokemon', this.loadCaughtPokemon());
 
@@ -249,6 +252,109 @@ export class BootScene extends Phaser.Scene {
             graphics.generateTexture(`dice-face-${i + 1}`, 100, 100);
             graphics.destroy();
         }
+    }
+
+    generateWheelTexture() {
+        const size = 600;
+        const centerX = size / 2;
+        const centerY = size / 2;
+        const radius = size / 2 - 10;
+        const slices = 10;
+        const anglePerSlice = (Math.PI * 2) / slices;
+
+        // Slice colors (matching dice colors)
+        const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xA78BFA, 0xFF8C42, 0x26A69A, 0xFFC107, 0xFFD700, 0x00BCD4];
+
+        // Icon keys in order (matching gameModeMap face order)
+        const iconKeys = [
+            'game-mode-letter',
+            'game-mode-word',
+            'game-mode-emojiword',
+            'game-mode-directions',
+            'game-mode-lettermatch',
+            'game-mode-speech',
+            'game-mode-numbers',
+            'game-mode-spelling',
+            'game-mode-legendary',
+            'game-mode-legendary-numbers'
+        ];
+
+        const graphics = this.add.graphics();
+
+        // Draw each slice
+        for (let i = 0; i < slices; i++) {
+            const startAngle = i * anglePerSlice - Math.PI / 2; // Start at top
+            const endAngle = (i + 1) * anglePerSlice - Math.PI / 2;
+
+            // Draw slice background
+            graphics.fillStyle(colors[i], 1);
+            graphics.beginPath();
+            graphics.moveTo(centerX, centerY);
+            graphics.arc(centerX, centerY, radius, startAngle, endAngle, false);
+            graphics.closePath();
+            graphics.fillPath();
+
+            // Draw slice border
+            graphics.lineStyle(3, 0x000000, 1);
+            graphics.beginPath();
+            graphics.moveTo(centerX, centerY);
+            graphics.lineTo(
+                centerX + Math.cos(startAngle) * radius,
+                centerY + Math.sin(startAngle) * radius
+            );
+            graphics.strokePath();
+        }
+
+        // Draw outer circle border (after slices)
+        graphics.lineStyle(6, 0x000000, 1);
+        graphics.strokeCircle(centerX, centerY, radius);
+
+        // Generate the base wheel texture
+        graphics.generateTexture('game-wheel-base', size, size);
+        graphics.clear();
+        graphics.destroy();
+
+        // Now create a render texture to add the icons
+        const rt = this.add.renderTexture(0, 0, size, size);
+
+        // First draw the base wheel
+        const wheelBase = this.add.image(centerX, centerY, 'game-wheel-base');
+        rt.draw(wheelBase);
+        wheelBase.destroy();
+
+        // Add icons to each slice
+        for (let i = 0; i < slices; i++) {
+            const angle = i * anglePerSlice - Math.PI / 2 + anglePerSlice / 2; // Center of slice
+            const iconDistance = radius * 0.65; // 65% from center
+            const iconX = centerX + Math.cos(angle) * iconDistance;
+            const iconY = centerY + Math.sin(angle) * iconDistance;
+
+            const icon = this.add.image(iconX, iconY, iconKeys[i]);
+            icon.setScale(0.35); // Smaller icons to fit better
+            // Rotate icon so top faces outward from center
+            const angleDegrees = (angle * 180 / Math.PI); // Convert to degrees
+            icon.setAngle(angleDegrees + 90); // +90 to align top edge outward
+            rt.draw(icon);
+            icon.destroy();
+        }
+
+        // Save as final wheel texture
+        rt.saveTexture('game-wheel');
+        rt.destroy();
+
+        // Generate pointer (triangle at top)
+        const pointer = this.add.graphics();
+        pointer.fillStyle(0xFF4444, 1);
+        pointer.lineStyle(3, 0x000000, 1);
+        pointer.beginPath();
+        pointer.moveTo(50, 0);
+        pointer.lineTo(30, 40);
+        pointer.lineTo(70, 40);
+        pointer.closePath();
+        pointer.fillPath();
+        pointer.strokePath();
+        pointer.generateTexture('wheel-pointer', 100, 40);
+        pointer.destroy();
     }
 
     loadCaughtPokemon() {

@@ -271,175 +271,126 @@ export class PokeballGameScene extends Phaser.Scene {
         const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
         overlay.setDepth(1000);
 
-        // Create booster bar for dice scene (above overlay)
-        const diceBoosterBar = createBoosterBar(this, width / 2, 60, 1002);
+        // Create booster bar for wheel scene (above overlay)
+        const wheelBoosterBar = createBoosterBar(this, width / 2, 60, 1002);
         const currentStreak = getStreak();
-        updateBoosterBar(diceBoosterBar, currentStreak, this);
+        updateBoosterBar(wheelBoosterBar, currentStreak, this);
 
         // Pokemon catching button (top left) - exit back to catching Pokemon
         const pokeballBtn = this.add.image(70, 50, 'pokeball_poke-ball');
-        pokeballBtn.setScale(0.8); // 64px * 0.8 = ~51px
+        pokeballBtn.setScale(0.8);
         pokeballBtn.setDepth(1002);
         pokeballBtn.setInteractive({ useHandCursor: true });
 
         pokeballBtn.on('pointerdown', () => {
-            // Clean up dice animation
+            // Clean up wheel animation
             overlay.destroy();
-            diceSprite.destroy();
-            gameIcons.forEach(icon => icon.destroy());
-            gameDiceFaces.forEach(face => face.destroy());
+            wheelSprite.destroy();
+            pointerSprite.destroy();
             pokeballBtn.destroy();
-            destroyBoosterBar(diceBoosterBar);
+            destroyBoosterBar(wheelBoosterBar);
 
             // Clean up game mode and return to Pokemon catching
             this.gameMode.cleanup(this);
             this.scene.start('MainGameScene');
         });
 
-        // Map game mode to dice face and icon
+        // Map game mode to slice number (1-10)
         const gameModeMap = {
-            'LetterListeningMode': { face: 1, icon: 'game-mode-letter' },
-            'WordEmojiMatchMode': { face: 2, icon: 'game-mode-word' },
-            'EmojiWordMatchMode': { face: 3, icon: 'game-mode-emojiword' },
-            'LeftRightMode': { face: 4, icon: 'game-mode-directions' },
-            'LetterDragMatchMode': { face: 5, icon: 'game-mode-lettermatch' },
-            'SpeechRecognitionMode': { face: 6, icon: 'game-mode-speech' },
-            'NumberListeningMode': { face: 7, icon: 'game-mode-numbers' },
-            'WordSpellingMode': { face: 8, icon: 'game-mode-spelling' },
-            'LegendaryAlphabetMatchMode': { face: 9, icon: 'game-mode-legendary' },
-            'LegendaryNumbersMode': { face: 10, icon: 'game-mode-legendary-numbers' }
+            'LetterListeningMode': 1,
+            'WordEmojiMatchMode': 2,
+            'EmojiWordMatchMode': 3,
+            'LeftRightMode': 4,
+            'LetterDragMatchMode': 5,
+            'SpeechRecognitionMode': 6,
+            'NumberListeningMode': 7,
+            'WordSpellingMode': 8,
+            'LegendaryAlphabetMatchMode': 9,
+            'LegendaryNumbersMode': 10
         };
 
-        const selectedMode = gameModeMap[this.gameMode.constructor.name];
-        const selectedFace = selectedMode.face;
+        const selectedSlice = gameModeMap[this.gameMode.constructor.name];
 
-        // Create dice sprite in center
-        const diceSprite = this.add.image(width / 2, height / 2 - 150, `dice-face-1`);
-        diceSprite.setScale(2);
-        diceSprite.setDepth(1001);
-        diceSprite.setInteractive({ useHandCursor: true });
+        // Create wheel sprite in center
+        const wheelSprite = this.add.image(width / 2, height / 2, 'game-wheel');
+        wheelSprite.setScale(0.8);
+        wheelSprite.setDepth(1001);
+        wheelSprite.setInteractive({ useHandCursor: true });
 
-        // Add pulsing animation to dice to show it's interactive
+        // Create pointer at top center
+        const pointerSprite = this.add.image(width / 2, height / 2 - 250, 'wheel-pointer');
+        pointerSprite.setAngle(180); // Rotate 180 degrees to point down at wheel
+        pointerSprite.setDepth(1003);
+
+        // Add pulsing animation to wheel to show it's interactive
         this.tweens.add({
-            targets: diceSprite,
-            scale: 2.1,
+            targets: wheelSprite,
+            scale: 0.85,
             duration: 800,
             yoyo: true,
             repeat: -1,
             ease: 'Sine.easeInOut'
         });
 
-        // Create 10 game mode icons in a single row below the dice
-        const iconSize = 55;
-        const spacing = 40; // Adjusted for 10 icons
-        const totalWidth = (iconSize * 10) + (spacing * 9);
-        const startX = (width - totalWidth) / 2 + iconSize / 2;
-        const iconY = height / 2 + 200; // Increased spacing from dice
+        // Wait for player to click the wheel to start spinning
+        wheelSprite.once('pointerdown', () => {
+            // Stop pulsing animation
+            this.tweens.killTweensOf(wheelSprite);
+            wheelSprite.setScale(0.8);
 
-        const gameIcons = [];
-        const gameDiceFaces = [];
-        const iconKeys = ['game-mode-letter', 'game-mode-word', 'game-mode-emojiword', 'game-mode-directions', 'game-mode-lettermatch', 'game-mode-speech', 'game-mode-numbers', 'game-mode-spelling', 'game-mode-legendary', 'game-mode-legendary-numbers'];
-
-        iconKeys.forEach((key, index) => {
-            const x = startX + index * (iconSize + spacing);
-
-            // Game mode icon
-            const icon = this.add.image(x, iconY, key);
-            icon.setScale(0.4);
-            icon.setAlpha(0.3); // Start faded
-            icon.setDepth(1001);
-            gameIcons.push(icon);
-
-            // Small dice face above the icon showing what number it corresponds to
-            const diceFace = this.add.image(x, iconY - 100, `dice-face-${index + 1}`); // Reduced gap for smaller icons
-            diceFace.setScale(0.4);
-            diceFace.setAlpha(0.3); // Start faded
-            diceFace.setDepth(1001);
-            gameDiceFaces.push(diceFace);
-        });
-
-        // Wait for player to click the dice to start rolling
-        diceSprite.once('pointerdown', () => {
-            // Stop pulsing animation on dice
-            this.tweens.killTweensOf(diceSprite);
-            diceSprite.setScale(2);
-
-            // Hide pokeball button when dice starts rolling
+            // Hide pokeball button when wheel starts spinning
             pokeballBtn.destroy();
 
-            // Start the rolling animation
-            this.startDiceRoll(diceSprite, selectedFace, gameIcons, gameDiceFaces, overlay, diceBoosterBar);
+            // Start the spinning animation
+            this.startWheelSpin(wheelSprite, pointerSprite, selectedSlice, overlay, wheelBoosterBar);
         });
     }
 
-    startDiceRoll(diceSprite, selectedFace, gameIcons, gameDiceFaces, overlay, diceBoosterBar) {
-        // Rolling animation - cycle through faces (shorter)
-        let rollCount = 0;
-        const maxRolls = 12; // Reduced from 20
-        const rollTimer = this.time.addEvent({
-            delay: 80, // Start faster (was 100ms)
-            callback: () => {
-                rollCount++;
+    startWheelSpin(wheelSprite, pointerSprite, selectedSlice, overlay, wheelBoosterBar) {
+        // Calculate target rotation
+        // Slices are numbered 1-10, starting at top (slice 1 at -90 degrees)
+        // Each slice is 36 degrees (360 / 10)
+        const sliceAngle = 36;
+        const targetSliceAngle = (selectedSlice - 1) * sliceAngle; // 0-324 degrees
 
-                // Show random face
-                const randomFace = Phaser.Math.Between(1, 10);
-                diceSprite.setTexture(`dice-face-${randomFace}`);
+        // Add 3-5 full rotations for spinning effect
+        const fullRotations = Phaser.Math.Between(3, 5) * 360;
 
-                // Shake effect
-                diceSprite.setScale(2.2);
+        // Add random offset within the slice for natural feel
+        const randomOffset = Phaser.Math.Between(-15, 15);
+
+        // Total rotation needed
+        const totalRotation = fullRotations + targetSliceAngle + randomOffset;
+
+        // Spin the wheel
+        this.tweens.add({
+            targets: wheelSprite,
+            angle: totalRotation,
+            duration: 4000,
+            ease: 'Cubic.easeOut',
+            onComplete: () => {
+                // Bounce the pointer when wheel stops
                 this.tweens.add({
-                    targets: diceSprite,
-                    scale: 2,
-                    duration: 50
+                    targets: pointerSprite,
+                    y: pointerSprite.y + 15,
+                    duration: 150,
+                    yoyo: true,
+                    repeat: 2,
+                    ease: 'Bounce.easeOut'
                 });
 
-                // Slow down over time
-                if (rollCount < maxRolls) {
-                    rollTimer.delay = Math.min(rollTimer.delay + 25, 350); // Faster progression
-                } else {
-                    // Final roll - land on selected face
-                    rollTimer.destroy();
+                // Wait then transition to game
+                this.time.delayedCall(1000, () => {
+                    // Clean up
+                    overlay.destroy();
+                    wheelSprite.destroy();
+                    pointerSprite.destroy();
+                    destroyBoosterBar(wheelBoosterBar);
 
-                    diceSprite.setTexture(`dice-face-${selectedFace}`);
-
-                    // Highlight the selected game icon and its dice face
-                    const selectedIconIndex = selectedFace - 1;
-                    const selectedIcon = gameIcons[selectedIconIndex];
-                    const selectedDiceFace = gameDiceFaces[selectedIconIndex];
-
-                    this.tweens.add({
-                        targets: [selectedIcon, selectedDiceFace],
-                        alpha: 1,
-                        scale: 0.9,
-                        duration: 500,
-                        ease: 'Back.easeOut'
-                    });
-
-                    // Pulse animation on selected icon
-                    this.tweens.add({
-                        targets: selectedIcon,
-                        scaleX: 1.0,
-                        scaleY: 1.0,
-                        duration: 400,
-                        yoyo: true,
-                        repeat: 2
-                    });
-
-                    // Wait then transition to game (shorter wait)
-                    this.time.delayedCall(1500, () => { // Reduced from 2000
-                        // Clean up
-                        overlay.destroy();
-                        diceSprite.destroy();
-                        gameIcons.forEach(icon => icon.destroy());
-                        gameDiceFaces.forEach(face => face.destroy());
-                        destroyBoosterBar(diceBoosterBar);
-
-                        // Start the actual game
-                        this.loadNextChallenge();
-                    });
-                }
-            },
-            loop: true
+                    // Start the actual game
+                    this.loadNextChallenge();
+                });
+            }
         });
     }
 
