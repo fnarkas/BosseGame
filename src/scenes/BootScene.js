@@ -58,6 +58,9 @@ export class BootScene extends Phaser.Scene {
         // Load tiny coin sprite for inventory (64x64)
         this.load.image('coin-tiny', 'coin-tiny.png');
 
+        // Load treasure chest sprite for legendary rewards
+        this.load.image('treasure-chest', 'treasure-chest.png');
+
         // Load UI button icons (optimized 128x128 versions)
         this.load.image('dice-icon', 'dice-icon-small.png');
         this.load.image('pokedex-icon', 'pokedex-icon-small.png');
@@ -81,17 +84,17 @@ export class BootScene extends Phaser.Scene {
         // Load word audio
         this.loadWordAudio();
 
-        // Load minigame icons (256x256 JPEG)
-        this.load.image('game-mode-letter', 'minigame_icons/letter_listening.jpeg');
-        this.load.image('game-mode-word', 'minigame_icons/word_emoji_match.jpeg');
-        this.load.image('game-mode-emojiword', 'minigame_icons/emoji_word_match.jpeg');
-        this.load.image('game-mode-directions', 'minigame_icons/left_right.jpeg');
-        this.load.image('game-mode-numbers', 'minigame_icons/number_listening.jpeg');
-        this.load.image('game-mode-lettermatch', 'minigame_icons/letter_drag_match.jpeg');
-        this.load.image('game-mode-speech', 'minigame_icons/speech_recognition.jpeg');
-        this.load.image('game-mode-spelling', 'minigame_icons/word_spelling.jpeg');
-        this.load.image('game-mode-legendary', 'minigame_icons/legendary_alphabet.jpeg');
-        this.load.image('game-mode-legendary-numbers', 'minigame_icons/legendary_numbers.jpeg');
+        // Load minigame icons (256x256 PNG with transparent backgrounds)
+        this.load.image('game-mode-letter', 'minigame_icons/letter_listening.png');
+        this.load.image('game-mode-word', 'minigame_icons/word_emoji_match.png');
+        this.load.image('game-mode-emojiword', 'minigame_icons/emoji_word_match.png');
+        this.load.image('game-mode-directions', 'minigame_icons/left_right.png');
+        this.load.image('game-mode-numbers', 'minigame_icons/number_listening.png');
+        this.load.image('game-mode-lettermatch', 'minigame_icons/letter_drag_match.png');
+        this.load.image('game-mode-speech', 'minigame_icons/speech_recognition.png');
+        this.load.image('game-mode-spelling', 'minigame_icons/word_spelling.png');
+        this.load.image('game-mode-legendary', 'minigame_icons/legendary_alphabet.png');
+        this.load.image('game-mode-legendary-numbers', 'minigame_icons/legendary_numbers.png');
     }
 
     loadPokemonImages() {
