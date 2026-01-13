@@ -69,7 +69,7 @@ export function getBaseCatchRate(pokemon) {
  * Calculate final catch probability
  * @param {Object} pokemon - Pokemon data object
  * @param {number} pokeballMultiplier - Pokeball catch rate multiplier (from POKEBALL_TYPES)
- * @param {string} ballType - Type of pokeball being used ('pokeball', 'greatball', 'ultraball')
+ * @param {string} ballType - Type of pokeball being used ('pokeball', 'greatball', 'ultraball', 'legendaryball')
  * @returns {number} Final catch probability (0.0 to 1.0, capped at 1.0)
  */
 export function calculateCatchProbability(pokemon, pokeballMultiplier, ballType = 'pokeball') {
@@ -87,6 +87,11 @@ export function calculateCatchProbability(pokemon, pokeballMultiplier, ballType 
     return 1.0;
   }
 
+  // Legendary Ball always catches 3-star (legendary) Pokemon
+  if (ballType === 'legendaryball' && rarityInfo.stars === 3) {
+    return 1.0;
+  }
+
   const baseCatchRate = getBaseCatchRate(pokemon);
   const finalRate = baseCatchRate * pokeballMultiplier;
   return Math.min(finalRate, 1.0); // Cap at 100%
@@ -97,7 +102,7 @@ export function calculateCatchProbability(pokemon, pokeballMultiplier, ballType 
  * @param {Object} pokemon - Pokemon data object
  * @param {number} pokeballMultiplier - Pokeball catch rate multiplier
  * @param {boolean} isTutorial - If true, always succeed (for tutorial Pokemon)
- * @param {string} ballType - Type of pokeball being used ('pokeball', 'greatball', 'ultraball')
+ * @param {string} ballType - Type of pokeball being used ('pokeball', 'greatball', 'ultraball', 'legendaryball')
  * @returns {boolean} True if catch succeeded, false if failed
  */
 export function attemptCatch(pokemon, pokeballMultiplier, isTutorial = false, ballType = 'pokeball') {

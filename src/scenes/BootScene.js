@@ -112,6 +112,7 @@ export class BootScene extends Phaser.Scene {
         this.load.image('pokeball_poke-ball-tiny', 'pokeball_sprites/poke-ball-tiny.png');
         this.load.image('pokeball_great-ball-tiny', 'pokeball_sprites/great-ball-tiny.png');
         this.load.image('pokeball_ultra-ball-tiny', 'pokeball_sprites/ultra-ball-tiny.png');
+        this.load.image('pokeball_legendary-ball-tiny', 'pokeball_sprites/legendary-ball-tiny.png');
 
         // Load old PNG pokeball sprites (for other types)
         const otherPokeballs = [

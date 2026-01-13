@@ -43,11 +43,12 @@ export function createInventoryHUD(scene, x, y) {
 
     // Pokeball inventory - use tiny sprites
     const inventory = getInventory();
-    const pokeballTypes = ['pokeball', 'greatball', 'ultraball'];
+    const pokeballTypes = ['pokeball', 'greatball', 'ultraball', 'legendaryball'];
     const spriteMap = {
         'pokeball': 'pokeball_poke-ball-tiny',
         'greatball': 'pokeball_great-ball-tiny',
-        'ultraball': 'pokeball_ultra-ball-tiny'
+        'ultraball': 'pokeball_ultra-ball-tiny',
+        'legendaryball': 'pokeball_legendary-ball-tiny'
     };
 
     pokeballTypes.forEach(type => {
