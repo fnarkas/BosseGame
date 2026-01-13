@@ -124,9 +124,13 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
         const matrixWidth = cols * cellSize;
         const matrixHeight = rows * cellSize;
 
-        // Background for matrix
+        // Background for matrix - make it interactive
         const matrixBg = scene.add.rectangle(matrixX, matrixY, matrixWidth + 12, matrixHeight + 12, 0x000000, 0.7);
         matrixBg.setOrigin(0.5);
+        matrixBg.setInteractive({ useHandCursor: true });
+        matrixBg.on('pointerdown', () => {
+            this.showMatrixPopup();
+        });
         this.uiElements.push(matrixBg);
 
         this.numberMatrix = [];
@@ -145,11 +149,136 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
                 // Cell background - just colored squares, no text
                 const isCleared = this.clearedNumbers.has(number);
                 const cell = scene.add.rectangle(x, y, cellSize - 3, cellSize - 3, isCleared ? 0x27AE60 : 0x555555, 0.9);
+                cell.setInteractive({ useHandCursor: true });
+                cell.on('pointerdown', () => {
+                    this.showMatrixPopup();
+                });
                 this.uiElements.push(cell);
 
                 this.numberMatrix.push({ number, cell });
             }
         }
+    }
+
+    showMatrixPopup() {
+        // Create HTML popup overlay
+        const popup = document.createElement('div');
+        popup.id = 'legendary-numbers-matrix-popup';
+        popup.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        `;
+
+        const content = document.createElement('div');
+        content.style.cssText = `
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 90%;
+            max-height: 90%;
+            overflow: auto;
+        `;
+
+        const title = document.createElement('h2');
+        title.textContent = 'Progress: Numbers 0-100';
+        title.style.cssText = `
+            margin: 0 0 20px 0;
+            text-align: center;
+            font-family: Arial, sans-serif;
+        `;
+        content.appendChild(title);
+
+        // Create matrix grid
+        const matrix = document.createElement('div');
+        matrix.style.cssText = `
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 4px;
+            margin-bottom: 20px;
+        `;
+
+        // Create cells for 0-100
+        for (let i = 0; i <= 100; i++) {
+            const cell = document.createElement('div');
+            const isCleared = this.clearedNumbers.has(i);
+
+            cell.textContent = i;
+            cell.style.cssText = `
+                aspect-ratio: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: ${isCleared ? '#27AE60' : '#555555'};
+                color: white;
+                font-family: Arial, sans-serif;
+                font-weight: bold;
+                font-size: 16px;
+                border-radius: 4px;
+                min-width: 40px;
+                min-height: 40px;
+            `;
+            matrix.appendChild(cell);
+        }
+
+        content.appendChild(matrix);
+
+        // Add progress text
+        const progressText = document.createElement('div');
+        progressText.textContent = `Cleared: ${this.clearedNumbers.size} / ${this.getTotalNumbers()}`;
+        progressText.style.cssText = `
+            text-align: center;
+            font-family: Arial, sans-serif;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        `;
+        content.appendChild(progressText);
+
+        // Add close button
+        const closeButton = document.createElement('button');
+        closeButton.textContent = 'Close';
+        closeButton.style.cssText = `
+            display: block;
+            margin: 0 auto;
+            padding: 12px 40px;
+            font-size: 18px;
+            font-family: Arial, sans-serif;
+            background: #3498DB;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        `;
+        closeButton.onmouseover = () => {
+            closeButton.style.background = '#2980B9';
+        };
+        closeButton.onmouseout = () => {
+            closeButton.style.background = '#3498DB';
+        };
+        closeButton.onclick = () => {
+            document.body.removeChild(popup);
+        };
+        content.appendChild(closeButton);
+
+        popup.appendChild(content);
+
+        // Close on background click
+        popup.onclick = (e) => {
+            if (e.target === popup) {
+                document.body.removeChild(popup);
+            }
+        };
+
+        document.body.appendChild(popup);
     }
 
     updateNumberMatrix(clearedNumber) {
