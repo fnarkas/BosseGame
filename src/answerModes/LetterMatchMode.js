@@ -267,23 +267,18 @@ export class LetterMatchMode extends BaseAnswerMode {
     }
 
     playLetterAudio(letter) {
-        console.log('🔊 playLetterAudio called with letter:', letter);
-
         if (!this.scene) {
             console.warn('❌ No scene available');
             return;
         }
 
         const audioKey = `letter_audio_${letter.toLowerCase()}`;
-        console.log('🔊 Looking for audio key:', audioKey);
 
-        // Check if audio exists and play it
-        if (this.scene.sound.get(audioKey)) {
-            console.log('✅ Audio found, playing:', audioKey);
+        // Check if audio exists in cache before playing
+        if (this.scene.cache.audio.exists(audioKey)) {
             this.scene.sound.play(audioKey);
         } else {
             console.warn(`❌ Audio not found for letter: ${letter}, key: ${audioKey}`);
-            console.log('Available sounds:', Object.keys(this.scene.cache.audio.entries.entries));
         }
     }
 
@@ -428,6 +423,9 @@ export class LetterMatchMode extends BaseAnswerMode {
                 });
 
                 button.on('pointerdown', () => {
+                    // Play letter audio immediately for any letter pressed
+                    this.playLetterAudio(letter);
+
                     const result = this.checkAnswer(letter);
 
                     // Only call callback if result is not null
@@ -435,8 +433,7 @@ export class LetterMatchMode extends BaseAnswerMode {
                     // true = all letters collected (trigger catch)
                     // false = wrong answer (lose life)
                     if (result === null) {
-                        // Correct letter but more remain - play correct letter sound
-                        this.playLetterAudio(letter);
+                        // Correct letter but more remain
 
                         // Show particle effect
                         this.showCorrectLetterEffect();
@@ -446,11 +443,7 @@ export class LetterMatchMode extends BaseAnswerMode {
                             this.updateLetterDisplay();
                         });
                     } else if (result === false) {
-                        // Wrong answer - play correct letter THEN wrong letter
-                        this.playLetterAudio(this.currentLetter);
-                        this.scene.time.delayedCall(600, () => {
-                            this.playLetterAudio(letter);
-                        });
+                        // Wrong answer - letter audio already played above
 
                         // Show shake/red effect
                         this.showIncorrectLetterEffect();
@@ -462,7 +455,7 @@ export class LetterMatchMode extends BaseAnswerMode {
                             }
                         });
                     } else if (result === true) {
-                        // All letters collected - play Pokemon name audio
+                        // All letters collected - last letter audio already played above
                         const pokemonId = this.challengeData.pokemon.id;
                         const audioKey = `pokemon_audio_${pokemonId}`;
 
@@ -476,18 +469,19 @@ export class LetterMatchMode extends BaseAnswerMode {
                             this.showCorrectLetterEffect();
                         });
 
-                        // Play Pokemon name audio
-                        const pokemonAudio = this.scene.sound.add(audioKey);
+                        // Wait for last letter audio to finish before playing Pokemon name
+                        // 800ms delay to prevent audio overlap
+                        this.scene.time.delayedCall(800, () => {
+                            // Play Pokemon name audio
+                            const pokemonAudio = this.scene.sound.add(audioKey);
 
-                        // Wait for audio to complete before showing pokeball selector
-                        pokemonAudio.once('complete', () => {
-                            if (this.answerCallback) {
-                                this.answerCallback(result);
-                            }
-                        });
+                            // Wait for audio to complete before showing pokeball selector
+                            pokemonAudio.once('complete', () => {
+                                if (this.answerCallback) {
+                                    this.answerCallback(result);
+                                }
+                            });
 
-                        // Start playing the audio after particles show
-                        this.scene.time.delayedCall(100, () => {
                             pokemonAudio.play();
                         });
                     }
