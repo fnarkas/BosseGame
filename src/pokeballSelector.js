@@ -42,16 +42,17 @@ export function showPokeballSelector(scene, onSelect, onCancel) {
     selectorUI.overlay.setInteractive();
 
     const inventory = getInventory();
-    const pokeballTypes = ['pokeball', 'greatball', 'ultraball'];
+    const pokeballTypes = ['pokeball', 'greatball', 'ultraball', 'legendaryball'];
     const spriteMap = {
         'pokeball': 'pokeball_poke-ball',
         'greatball': 'pokeball_great-ball',
-        'ultraball': 'pokeball_ultra-ball'
+        'ultraball': 'pokeball_ultra-ball',
+        'legendaryball': 'pokeball_legendary-ball'
     };
 
     const ballSize = 128; // Size of pokeball sprites
-    const spacing = 160; // Space between balls
-    const totalWidth = (ballSize * 3) + (spacing * 2);
+    const spacing = 140; // Space between balls (reduced for 4 balls)
+    const totalWidth = (ballSize * 4) + (spacing * 3);
     const startX = (width - totalWidth) / 2 + (ballSize / 2);
     const ballY = height / 2;
 

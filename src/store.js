@@ -89,7 +89,8 @@ function createPokeballCard(type, data) {
     const fileMap = {
         'pokeball': 'poke-ball-small',
         'greatball': 'great-ball-small',
-        'ultraball': 'ultra-ball-small'
+        'ultraball': 'ultra-ball-small',
+        'legendaryball': 'legendary-ball'
     };
     img.src = `pokeball_sprites/${fileMap[type]}.png`;
     img.alt = data.name;

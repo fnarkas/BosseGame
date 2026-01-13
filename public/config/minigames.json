@@ -9,5 +9,9 @@
   "pokemonCatching": {
     "nameCase": "uppercase",
     "alphabetCase": "lowercase"
+  },
+  "legendary": {
+    "coinReward": 100,
+    "maxErrors": 3
   }
 }

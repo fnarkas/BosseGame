@@ -162,10 +162,40 @@ export function updateBoosterBar(elements, streak, scene) {
 }
 
 /**
+ * Hide booster bar
+ * @param {Object} elements - Bar elements to hide
+ */
+export function hideBoosterBar(elements) {
+  if (!elements) return;
+
+  elements.container.forEach(el => {
+    if (el && el.setVisible) {
+      el.setVisible(false);
+    }
+  });
+}
+
+/**
+ * Show booster bar
+ * @param {Object} elements - Bar elements to show
+ */
+export function showBoosterBar(elements) {
+  if (!elements) return;
+
+  elements.container.forEach(el => {
+    if (el && el.setVisible) {
+      el.setVisible(true);
+    }
+  });
+}
+
+/**
  * Destroy booster bar and clean up
  * @param {Object} elements - Bar elements to destroy
  */
 export function destroyBoosterBar(elements) {
+  if (!elements) return;
+
   // Stop glow tween if active
   if (elements.glowTween) {
     elements.glowTween.stop();

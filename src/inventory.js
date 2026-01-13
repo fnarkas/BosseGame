@@ -27,6 +27,12 @@ export const POKEBALL_TYPES = {
     price: 100,
     catchRate: 1.4,
     emoji: '⚫'
+  },
+  legendaryball: {
+    name: 'Legendary Ball',
+    price: 500,
+    catchRate: 2.0,
+    emoji: '👑'
   }
 };
 
@@ -44,7 +50,8 @@ export function getInventory() {
   return {
     pokeball: 0,
     greatball: 0,
-    ultraball: 0
+    ultraball: 0,
+    legendaryball: 0
   };
 }
 
@@ -100,7 +107,7 @@ export function removePokeball(type) {
  */
 export function hasPokeballs() {
   const inventory = getInventory();
-  return inventory.pokeball > 0 || inventory.greatball > 0 || inventory.ultraball > 0;
+  return inventory.pokeball > 0 || inventory.greatball > 0 || inventory.ultraball > 0 || inventory.legendaryball > 0;
 }
 
 /**
@@ -109,7 +116,7 @@ export function hasPokeballs() {
  */
 export function getTotalPokeballCount() {
   const inventory = getInventory();
-  return inventory.pokeball + inventory.greatball + inventory.ultraball;
+  return inventory.pokeball + inventory.greatball + inventory.ultraball + inventory.legendaryball;
 }
 
 /**
@@ -139,7 +146,8 @@ export function migrateOldInventory() {
     const inventory = {
       pokeball: count,
       greatball: 0,
-      ultraball: 0
+      ultraball: 0,
+      legendaryball: 0
     };
     saveInventory(inventory);
 
@@ -156,7 +164,8 @@ export function migrateOldInventory() {
     saveInventory({
       pokeball: 5, // Start with 5 pokeballs as per original design
       greatball: 0,
-      ultraball: 0
+      ultraball: 0,
+      legendaryball: 0
     });
 
     // Initialize coin count

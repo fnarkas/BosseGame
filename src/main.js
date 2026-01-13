@@ -26,15 +26,16 @@ migrateOldInventory();
 
 // Games Registry - Single source of truth for all minigames
 const GAMES_REGISTRY = [
-    { path: '/letters', name: '🔊 Letter Listening', mode: 'letter-only', scene: 'PokeballGameScene' },
-    { path: '/words', name: '📝 Word-Emoji Match', mode: 'word-emoji-only', scene: 'PokeballGameScene' },
-    { path: '/emojiword', name: '📖 Emoji-Word Match', mode: 'emojiword-only', scene: 'PokeballGameScene' },
-    { path: '/directions', name: '⬅️➡️ Directions', mode: 'directions-only', scene: 'PokeballGameScene' },
-    { path: '/lettermatch', name: '🔤 Letter Match', mode: 'lettermatch-only', scene: 'PokeballGameScene' },
-    { path: '/speech', name: '🎤 Speech Reading', mode: 'speech-only', scene: 'PokeballGameScene' },
-    { path: '/numbers', name: '🔢 Number Listening', mode: 'numbers-only', scene: 'PokeballGameScene' },
-    { path: '/wordspelling', name: '⌨️ Word Spelling', mode: 'wordspelling-only', scene: 'PokeballGameScene' },
-    { path: '/pokeballs', name: '🎲 Random Mix', mode: null, scene: 'PokeballGameScene' }
+    { path: '/letters', name: '🔊 Letter Listening', mode: 'letter-only', scene: 'PokeballGameScene', weightKey: 'letterListening' },
+    { path: '/words', name: '📝 Word-Emoji Match', mode: 'word-emoji-only', scene: 'PokeballGameScene', weightKey: 'wordEmoji' },
+    { path: '/emojiword', name: '📖 Emoji-Word Match', mode: 'emojiword-only', scene: 'PokeballGameScene', weightKey: 'emojiWord' },
+    { path: '/directions', name: '⬅️➡️ Directions', mode: 'directions-only', scene: 'PokeballGameScene', weightKey: 'leftRight' },
+    { path: '/lettermatch', name: '🔤 Letter Match', mode: 'lettermatch-only', scene: 'PokeballGameScene', weightKey: 'letterDragMatch' },
+    { path: '/speech', name: '🎤 Speech Reading', mode: 'speech-only', scene: 'PokeballGameScene', weightKey: 'speechRecognition' },
+    { path: '/numbers', name: '🔢 Number Listening', mode: 'numbers-only', scene: 'PokeballGameScene', weightKey: 'numberListening' },
+    { path: '/wordspelling', name: '⌨️ Word Spelling', mode: 'wordspelling-only', scene: 'PokeballGameScene', weightKey: 'wordSpelling' },
+    { path: '/legendary', name: '👑 Legendary Challenge', mode: 'legendary-only', scene: 'PokeballGameScene', weightKey: 'legendary' },
+    { path: '/pokeballs', name: '🎲 Random Mix', mode: null, scene: 'PokeballGameScene', weightKey: null }
 ];
 
 // Detect URL path to determine game mode and routing
@@ -107,6 +108,9 @@ if (showGamesMenu) {
     };
 
     const game = new Phaser.Game(config);
+
+    // Make game globally accessible for debug methods
+    window.phaserGame = game;
 
     // Initialize Pokedex with game instance for audio access
     initPokedex(game);
@@ -350,6 +354,7 @@ async function showAdminPage() {
                         <option value="letters">🔊 Letter Listening</option>
                         <option value="numbers">🔢 Number Listening</option>
                         <option value="pokemon-catching">🎯 Pokemon Catching (Letter Match)</option>
+                        <option value="legendary">👑 Legendary Challenge</option>
                     </select>
                 </div>
 
@@ -430,44 +435,46 @@ async function showAdminPage() {
                     <button onclick="saveMinigameConfig('pokemon-catching')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Catching Config</button>
                     <div id="config-catching-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
                 </div>
+
+                <div id="config-legendary" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                    <h3 style="margin-top: 0;">Legendary Challenge Configuration</h3>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Coin Reward:</label>
+                        <input type="number" id="config-legendary-coins" value="${serverConfig.legendary?.coinReward || 100}" min="1" max="10000" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">🎁 Coins earned for completing the challenge</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Max Errors (Hearts):</label>
+                        <input type="number" id="config-legendary-errors" value="${serverConfig.legendary?.maxErrors || 3}" min="1" max="10" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">❤️ Number of mistakes allowed before game over</span>
+                    </div>
+
+                    <div style="padding: 15px; background: #fff3cd; border-radius: 8px; border: 1px solid #ffc107; margin-bottom: 20px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ About Legendary Challenge:</div>
+                        <div style="color: #666; font-size: 14px;">
+                            Players must match all uppercase letters (A-Z,Å,Ä,Ö) with their lowercase counterparts.<br>
+                            Drag and drop all 29 letters to complete the challenge and earn the coin reward.<br>
+                            Each incorrect match loses one heart. Running out of hearts restarts the challenge.
+                        </div>
+                    </div>
+
+                    <button onclick="saveMinigameConfig('legendary')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Legendary Config</button>
+                    <div id="config-legendary-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
+                </div>
             </div>
 
             <div style="background: #f5f5f5; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
                 <h2 style="margin-top: 0;">Minigame Probabilities</h2>
                 <p style="color: #666; margin-bottom: 15px;">Adjust the probability weights for each minigame. Higher values = higher chance of appearing.</p>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin-bottom: 15px;">
-                    <div>
-                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">🔊 Letter Listening</label>
-                        <input type="number" id="weight-letterListening" value="${currentWeights.letterListening}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-                    </div>
-                    <div>
-                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">📝 Word-Emoji Match</label>
-                        <input type="number" id="weight-wordEmoji" value="${currentWeights.wordEmoji}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-                    </div>
-                    <div>
-                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">📖 Emoji-Word Match</label>
-                        <input type="number" id="weight-emojiWord" value="${currentWeights.emojiWord}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-                    </div>
-                    <div>
-                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">⬅️➡️ Directions</label>
-                        <input type="number" id="weight-leftRight" value="${currentWeights.leftRight}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-                    </div>
-                    <div>
-                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">🔤 Letter Match</label>
-                        <input type="number" id="weight-letterDragMatch" value="${currentWeights.letterDragMatch}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-                    </div>
-                    <div>
-                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">🎤 Speech Recognition</label>
-                        <input type="number" id="weight-speechRecognition" value="${currentWeights.speechRecognition}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-                    </div>
-                    <div>
-                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">🔢 Number Listening</label>
-                        <input type="number" id="weight-numberListening" value="${currentWeights.numberListening}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-                    </div>
-                    <div>
-                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">⌨️ Word Spelling</label>
-                        <input type="number" id="weight-wordSpelling" value="${currentWeights.wordSpelling}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-                    </div>
+                    ${GAMES_REGISTRY.filter(game => game.weightKey).map(game => `
+                        <div>
+                            <label style="display: block; font-weight: bold; margin-bottom: 5px;">${game.name}</label>
+                            <input type="number" id="weight-${game.weightKey}" value="${currentWeights[game.weightKey] || 10}" min="0" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        </div>
+                    `).join('')}
                 </div>
                 <div style="display: flex; gap: 20px; align-items: center;">
                     <div style="flex: 1;">
@@ -611,6 +618,7 @@ async function showAdminPage() {
         document.getElementById('config-letters').style.display = 'none';
         document.getElementById('config-numbers').style.display = 'none';
         document.getElementById('config-pokemon-catching').style.display = 'none';
+        document.getElementById('config-legendary').style.display = 'none';
 
         // Show selected config
         document.getElementById('config-' + value).style.display = 'block';
@@ -846,23 +854,77 @@ async function showAdminPage() {
             setTimeout(() => {
                 message.textContent = '';
             }, 5000);
+        } else if (game === 'legendary') {
+            const coinReward = parseInt(document.getElementById('config-legendary-coins').value);
+            const maxErrors = parseInt(document.getElementById('config-legendary-errors').value);
+
+            const message = document.getElementById('config-legendary-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                // Load current config
+                const response = await fetch('/config/minigames.json');
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' },
+                    pokemonCatching: { nameCase: 'uppercase', alphabetCase: 'lowercase' },
+                    legendary: { coinReward: 100, maxErrors: 3 }
+                };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                // Update legendary config
+                fullConfig.legendary = {
+                    coinReward: coinReward,
+                    maxErrors: maxErrors
+                };
+
+                // Save to server
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Legendary config saved to server! All devices will use these settings.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save legendary config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
         }
     };
 
     // Define all admin functions globally
     window.saveWeights = function() {
-        const weights = {
-            letterListening: parseInt(document.getElementById('weight-letterListening').value) || 0,
-            wordEmoji: parseInt(document.getElementById('weight-wordEmoji').value) || 0,
-            emojiWord: parseInt(document.getElementById('weight-emojiWord').value) || 0,
-            leftRight: parseInt(document.getElementById('weight-leftRight').value) || 0,
-            letterDragMatch: parseInt(document.getElementById('weight-letterDragMatch').value) || 0,
-            speechRecognition: parseInt(document.getElementById('weight-speechRecognition').value) || 0,
-            numberListening: parseInt(document.getElementById('weight-numberListening').value) || 0,
-            wordSpelling: parseInt(document.getElementById('weight-wordSpelling').value) || 0
-        };
+        const weights = {};
+
+        // Dynamically read all weight inputs from GAMES_REGISTRY
+        GAMES_REGISTRY.filter(game => game.weightKey).forEach(game => {
+            const input = document.getElementById(`weight-${game.weightKey}`);
+            if (input) {
+                weights[game.weightKey] = parseInt(input.value) || 0;
+            }
+        });
 
         localStorage.setItem('minigameWeights', JSON.stringify(weights));
+
+        if (window.updateProbabilityChart) {
+            window.updateProbabilityChart();
+        }
 
         const message = document.getElementById('weights-message');
         message.textContent = '✓ Probabilities saved successfully!';
@@ -873,25 +935,20 @@ async function showAdminPage() {
     };
 
     window.resetWeights = function() {
-        const defaultWeights = {
-            letterListening: 10,
-            wordEmoji: 10,
-            emojiWord: 10,
-            leftRight: 10,
-            letterDragMatch: 10,
-            speechRecognition: 10,
-            numberListening: 10,
-            wordSpelling: 40
-        };
+        // Define default weights (most games 10, wordSpelling 40)
+        const defaultWeights = {};
+        GAMES_REGISTRY.filter(game => game.weightKey).forEach(game => {
+            // Word Spelling gets 40, everything else gets 10
+            defaultWeights[game.weightKey] = game.weightKey === 'wordSpelling' ? 40 : 10;
+        });
 
-        document.getElementById('weight-letterListening').value = defaultWeights.letterListening;
-        document.getElementById('weight-wordEmoji').value = defaultWeights.wordEmoji;
-        document.getElementById('weight-emojiWord').value = defaultWeights.emojiWord;
-        document.getElementById('weight-leftRight').value = defaultWeights.leftRight;
-        document.getElementById('weight-letterDragMatch').value = defaultWeights.letterDragMatch;
-        document.getElementById('weight-speechRecognition').value = defaultWeights.speechRecognition;
-        document.getElementById('weight-numberListening').value = defaultWeights.numberListening;
-        document.getElementById('weight-wordSpelling').value = defaultWeights.wordSpelling;
+        // Update all input fields
+        GAMES_REGISTRY.filter(game => game.weightKey).forEach(game => {
+            const input = document.getElementById(`weight-${game.weightKey}`);
+            if (input) {
+                input.value = defaultWeights[game.weightKey];
+            }
+        });
 
         localStorage.setItem('minigameWeights', JSON.stringify(defaultWeights));
 
@@ -1005,33 +1062,29 @@ async function showAdminPage() {
         window.probabilityChart = null;
 
         window.updateProbabilityChart = function() {
-            const weights = {
-                letterListening: parseInt(document.getElementById('weight-letterListening').value) || 0,
-                wordEmoji: parseInt(document.getElementById('weight-wordEmoji').value) || 0,
-                emojiWord: parseInt(document.getElementById('weight-emojiWord').value) || 0,
-                leftRight: parseInt(document.getElementById('weight-leftRight').value) || 0,
-                letterDragMatch: parseInt(document.getElementById('weight-letterDragMatch').value) || 0,
-                speechRecognition: parseInt(document.getElementById('weight-speechRecognition').value) || 0,
-                numberListening: parseInt(document.getElementById('weight-numberListening').value) || 0,
-                wordSpelling: parseInt(document.getElementById('weight-wordSpelling').value) || 0
-            };
+            const weights = {};
+            const gamesWithWeights = GAMES_REGISTRY.filter(game => game.weightKey);
+
+            // Dynamically read all weight inputs
+            gamesWithWeights.forEach(game => {
+                const input = document.getElementById(`weight-${game.weightKey}`);
+                if (input) {
+                    weights[game.weightKey] = parseInt(input.value) || 0;
+                }
+            });
 
             const total = Object.values(weights).reduce((sum, val) => sum + val, 0);
 
             if (total === 0) {
-                const data = Array(8).fill(12.5);
+                // If all weights are 0, show equal distribution
+                const equalPercent = 100 / gamesWithWeights.length;
+                const data = Array(gamesWithWeights.length).fill(equalPercent.toFixed(1));
                 window.probabilityChart.data.datasets[0].data = data;
             } else {
-                const data = [
-                    (weights.letterListening / total * 100).toFixed(1),
-                    (weights.wordEmoji / total * 100).toFixed(1),
-                    (weights.emojiWord / total * 100).toFixed(1),
-                    (weights.leftRight / total * 100).toFixed(1),
-                    (weights.letterDragMatch / total * 100).toFixed(1),
-                    (weights.speechRecognition / total * 100).toFixed(1),
-                    (weights.numberListening / total * 100).toFixed(1),
-                    (weights.wordSpelling / total * 100).toFixed(1)
-                ];
+                // Calculate percentage for each game
+                const data = gamesWithWeights.map(game =>
+                    (weights[game.weightKey] / total * 100).toFixed(1)
+                );
                 window.probabilityChart.data.datasets[0].data = data;
             }
 
@@ -1042,31 +1095,24 @@ async function showAdminPage() {
             const ctx = document.getElementById('probabilityChart');
             if (!ctx) return;
 
+            const gamesWithWeights = GAMES_REGISTRY.filter(game => game.weightKey);
+
+            // Generate colors dynamically (cycle through palette)
+            const colorPalette = [
+                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+                '#FF9F40', '#4DC9F6', '#F67019', '#F53794', '#537BC4'
+            ];
+            const colors = gamesWithWeights.map((_, index) =>
+                colorPalette[index % colorPalette.length]
+            );
+
             window.probabilityChart = new Chart(ctx.getContext('2d'), {
                 type: 'pie',
                 data: {
-                    labels: [
-                        '🔊 Letter',
-                        '📝 Word-Emoji',
-                        '📖 Emoji-Word',
-                        '⬅️➡️ Directions',
-                        '🔤 Letter Match',
-                        '🎤 Speech',
-                        '🔢 Numbers',
-                        '⌨️ Spelling'
-                    ],
+                    labels: gamesWithWeights.map(game => game.name),
                     datasets: [{
                         data: [],
-                        backgroundColor: [
-                            '#FF6384',
-                            '#36A2EB',
-                            '#FFCE56',
-                            '#4BC0C0',
-                            '#9966FF',
-                            '#FF9F40',
-                            '#FF6384',
-                            '#C9CBCF'
-                        ],
+                        backgroundColor: colors,
                         borderWidth: 2,
                         borderColor: '#fff'
                     }]
@@ -1097,20 +1143,9 @@ async function showAdminPage() {
 
             window.updateProbabilityChart();
 
-            // Add input event listeners
-            const inputs = [
-                'weight-letterListening',
-                'weight-wordEmoji',
-                'weight-emojiWord',
-                'weight-leftRight',
-                'weight-letterDragMatch',
-                'weight-speechRecognition',
-                'weight-numberListening',
-                'weight-wordSpelling'
-            ];
-
-            inputs.forEach(id => {
-                const input = document.getElementById(id);
+            // Add input event listeners dynamically for all games
+            GAMES_REGISTRY.filter(game => game.weightKey).forEach(game => {
+                const input = document.getElementById(`weight-${game.weightKey}`);
                 if (input) {
                     input.addEventListener('input', window.updateProbabilityChart);
                 }

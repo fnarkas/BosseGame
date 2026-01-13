@@ -1,5 +1,21 @@
 # Claude Code Instructions
 
+## Development Server Policy
+
+**NEVER start the development server!**
+
+### Rules:
+1. ❌ **NEVER** run `npm run dev` or any dev server command
+2. ✅ The dev server is ALWAYS running with Vite auto-reload
+3. ✅ Changes are picked up automatically by hot module replacement
+4. ✅ Just make the code changes and notify user they're ready to test
+
+### Remember:
+- The dev server is already running in the background
+- Vite automatically reloads on file changes
+- Starting a new server will cause port conflicts
+- Just make changes and let the user test
+
 ## Git Commit Policy
 
 **NEVER commit without explicit user approval!**

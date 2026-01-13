@@ -90,6 +90,7 @@ export class BootScene extends Phaser.Scene {
         this.load.image('game-mode-lettermatch', 'minigame_icons/letter_drag_match.jpeg');
         this.load.image('game-mode-speech', 'minigame_icons/speech_recognition.jpeg');
         this.load.image('game-mode-spelling', 'minigame_icons/word_spelling.jpeg');
+        this.load.image('game-mode-legendary', 'minigame_icons/legendary_alphabet.jpeg');
     }
 
     loadPokemonImages() {
@@ -104,6 +105,7 @@ export class BootScene extends Phaser.Scene {
         this.load.image('pokeball_poke-ball', 'pokeball_sprites/poke-ball-small.png');
         this.load.image('pokeball_great-ball', 'pokeball_sprites/great-ball-small.png');
         this.load.image('pokeball_ultra-ball', 'pokeball_sprites/ultra-ball-small.png');
+        this.load.image('pokeball_legendary-ball', 'pokeball_sprites/legendary-ball.png');
 
         // Load tiny 64x64 pokeball sprites for inventory
         this.load.image('pokeball_poke-ball-tiny', 'pokeball_sprites/poke-ball-tiny.png');
@@ -204,8 +206,8 @@ export class BootScene extends Phaser.Scene {
     }
 
     generateDiceFaces() {
-        // Create 8 dice faces with different colored dots representing each game mode
-        const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xA78BFA, 0xFF8C42, 0x26A69A, 0xFFC107]; // Red, Cyan, Yellow, Mint, Purple, Orange, Teal, Amber
+        // Create 9 dice faces with different colored dots representing each game mode
+        const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xA78BFA, 0xFF8C42, 0x26A69A, 0xFFC107, 0xFFD700]; // Red, Cyan, Yellow, Mint, Purple, Orange, Teal, Amber, Gold
         const dotPatterns = [
             [{ x: 0.5, y: 0.5 }], // 1 dot (center)
             [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.7 }], // 2 dots (diagonal)
@@ -214,10 +216,11 @@ export class BootScene extends Phaser.Scene {
             [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.5, y: 0.5 }, { x: 0.3, y: 0.7 }, { x: 0.7, y: 0.7 }], // 5 dots
             [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.3, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.3, y: 0.7 }, { x: 0.7, y: 0.7 }], // 6 dots
             [{ x: 0.2, y: 0.2 }, { x: 0.5, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.5, y: 0.5 }, { x: 0.2, y: 0.8 }, { x: 0.5, y: 0.8 }, { x: 0.8, y: 0.8 }], // 7 dots
-            [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.3, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.3, y: 0.7 }, { x: 0.7, y: 0.7 }, { x: 0.5, y: 0.2 }, { x: 0.5, y: 0.8 }] // 8 dots
+            [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.3, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.3, y: 0.7 }, { x: 0.7, y: 0.7 }, { x: 0.5, y: 0.2 }, { x: 0.5, y: 0.8 }], // 8 dots
+            [{ x: 0.25, y: 0.25 }, { x: 0.5, y: 0.25 }, { x: 0.75, y: 0.25 }, { x: 0.25, y: 0.5 }, { x: 0.5, y: 0.5 }, { x: 0.75, y: 0.5 }, { x: 0.25, y: 0.75 }, { x: 0.5, y: 0.75 }, { x: 0.75, y: 0.75 }] // 9 dots (3x3 grid)
         ];
 
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < 9; i++) {
             const graphics = this.add.graphics();
 
             // Draw white rounded rectangle background

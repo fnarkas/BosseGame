@@ -7,10 +7,11 @@ import { LetterDragMatchMode } from '../pokeballGameModes/LetterDragMatchMode.js
 import { SpeechRecognitionMode } from '../pokeballGameModes/SpeechRecognitionMode.js';
 import { NumberListeningMode } from '../pokeballGameModes/NumberListeningMode.js';
 import { WordSpellingMode } from '../pokeballGameModes/WordSpellingMode.js';
+import { LegendaryAlphabetMatchMode } from '../pokeballGameModes/LegendaryAlphabetMatchMode.js';
 import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier } from '../streak.js';
-import { createBoosterBar, updateBoosterBar, destroyBoosterBar } from '../boosterBar.js';
+import { createBoosterBar, updateBoosterBar, destroyBoosterBar, hideBoosterBar, showBoosterBar } from '../boosterBar.js';
 
 export class PokeballGameScene extends Phaser.Scene {
     constructor() {
@@ -86,10 +87,15 @@ export class PokeballGameScene extends Phaser.Scene {
         }).setOrigin(1, 0);
         this.coinCounterText.setDepth(1002); // Above overlay
 
-        // Create booster bar at top center
-        this.boosterBarElements = createBoosterBar(this, width / 2, 60, 1002);
-        const currentStreak = getStreak();
-        updateBoosterBar(this.boosterBarElements, currentStreak, this);
+        // Check if we're in forced/debug mode
+        const forcedMode = this.registry.get('pokeballGameMode');
+
+        // Create booster bar at top center (hide for legendary mode)
+        if (forcedMode !== 'legendary-only') {
+            this.boosterBarElements = createBoosterBar(this, width / 2, 60, 1002);
+            const currentStreak = getStreak();
+            updateBoosterBar(this.boosterBarElements, currentStreak, this);
+        }
 
         // Initialize game mode - alternate between modes
         this.selectGameMode();
@@ -100,7 +106,6 @@ export class PokeballGameScene extends Phaser.Scene {
         });
 
         // Check if we should show the dice animation (not for forced/debug modes)
-        const forcedMode = this.registry.get('pokeballGameMode');
         if (!forcedMode) {
             // Show dice rolling animation before starting the game
             this.showDiceRollAnimation();
@@ -146,6 +151,10 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /wordspelling - only show word spelling
             this.gameMode = new WordSpellingMode();
             console.log('Selected game mode: Word Spelling (forced)');
+        } else if (forcedMode === 'legendary-only') {
+            // Debug path: /legendary - legendary alphabet match challenge
+            this.gameMode = new LegendaryAlphabetMatchMode();
+            console.log('Selected game mode: Legendary Alphabet Match (forced)');
         } else {
             // Normal mode: Randomly select from all game modes with configurable probabilities
             this.gameMode = this.selectRandomGameMode();
@@ -156,14 +165,15 @@ export class PokeballGameScene extends Phaser.Scene {
         // Configurable weights for each game mode
         // Higher weight = higher probability of being selected
         const DEFAULT_MODE_WEIGHTS = {
-            letterListening: 10,     // ~9% chance
-            wordEmoji: 10,           // ~9% chance
-            emojiWord: 10,           // ~9% chance
-            leftRight: 10,           // ~9% chance
-            letterDragMatch: 10,     // ~9% chance
-            speechRecognition: 10,   // ~9% chance
-            numberListening: 10,     // ~9% chance
-            wordSpelling: 40         // ~36% chance
+            letterListening: 10,     // ~8.3% chance
+            wordEmoji: 10,           // ~8.3% chance
+            emojiWord: 10,           // ~8.3% chance
+            leftRight: 10,           // ~8.3% chance
+            letterDragMatch: 10,     // ~8.3% chance
+            speechRecognition: 10,   // ~8.3% chance
+            numberListening: 10,     // ~8.3% chance
+            wordSpelling: 40,        // ~33.3% chance
+            legendary: 10            // ~8.3% chance
         };
 
         // Load custom weights from localStorage, or use defaults
@@ -178,7 +188,8 @@ export class PokeballGameScene extends Phaser.Scene {
                           MODE_WEIGHTS.letterDragMatch +
                           MODE_WEIGHTS.speechRecognition +
                           MODE_WEIGHTS.numberListening +
-                          MODE_WEIGHTS.wordSpelling;
+                          MODE_WEIGHTS.wordSpelling +
+                          MODE_WEIGHTS.legendary;
 
         // Generate random number between 0 and total weight
         const random = Math.random() * totalWeight;
@@ -228,6 +239,12 @@ export class PokeballGameScene extends Phaser.Scene {
             return new NumberListeningMode();
         }
 
+        currentWeight += MODE_WEIGHTS.legendary;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Legendary Alphabet Match');
+            return new LegendaryAlphabetMatchMode();
+        }
+
         // Default to Word Spelling
         console.log('Selected game mode: Word Spelling');
         return new WordSpellingMode();
@@ -275,7 +292,8 @@ export class PokeballGameScene extends Phaser.Scene {
             'LetterDragMatchMode': { face: 5, icon: 'game-mode-lettermatch' },
             'SpeechRecognitionMode': { face: 6, icon: 'game-mode-speech' },
             'NumberListeningMode': { face: 7, icon: 'game-mode-numbers' },
-            'WordSpellingMode': { face: 8, icon: 'game-mode-spelling' }
+            'WordSpellingMode': { face: 8, icon: 'game-mode-spelling' },
+            'LegendaryAlphabetMatchMode': { face: 9, icon: 'game-mode-legendary' }
         };
 
         const selectedMode = gameModeMap[this.gameMode.constructor.name];
@@ -297,16 +315,16 @@ export class PokeballGameScene extends Phaser.Scene {
             ease: 'Sine.easeInOut'
         });
 
-        // Create 8 game mode icons in a single row below the dice
+        // Create 9 game mode icons in a single row below the dice
         const iconSize = 60;
-        const spacing = 50; // Adjusted for 8 icons
-        const totalWidth = (iconSize * 8) + (spacing * 7);
+        const spacing = 45; // Adjusted for 9 icons
+        const totalWidth = (iconSize * 9) + (spacing * 8);
         const startX = (width - totalWidth) / 2 + iconSize / 2;
         const iconY = height / 2 + 200; // Increased spacing from dice
 
         const gameIcons = [];
         const gameDiceFaces = [];
-        const iconKeys = ['game-mode-letter', 'game-mode-word', 'game-mode-emojiword', 'game-mode-directions', 'game-mode-lettermatch', 'game-mode-speech', 'game-mode-numbers', 'game-mode-spelling'];
+        const iconKeys = ['game-mode-letter', 'game-mode-word', 'game-mode-emojiword', 'game-mode-directions', 'game-mode-lettermatch', 'game-mode-speech', 'game-mode-numbers', 'game-mode-spelling', 'game-mode-legendary'];
 
         iconKeys.forEach((key, index) => {
             const x = startX + index * (iconSize + spacing);
@@ -414,6 +432,14 @@ export class PokeballGameScene extends Phaser.Scene {
     loadNextChallenge() {
         this.isProcessingAnswer = false;
 
+        // Show/hide booster bar based on game mode
+        const isLegendaryMode = this.gameMode.constructor.name === 'LegendaryAlphabetMatchMode';
+        if (isLegendaryMode) {
+            hideBoosterBar(this.boosterBarElements);
+        } else {
+            showBoosterBar(this.boosterBarElements);
+        }
+
         // Load config if needed, then generate challenge
         if (this.gameMode.loadConfig && !this.gameMode.configLoaded) {
             this.gameMode.loadConfig().then(() => {
@@ -431,22 +457,33 @@ export class PokeballGameScene extends Phaser.Scene {
         this.isProcessingAnswer = true;
 
         if (isCorrect) {
-            // Increment streak and get multiplier
-            const newStreak = incrementStreak();
-            const multiplier = getMultiplier();
+            // Check if this is legendary mode
+            const isLegendaryMode = this.gameMode.constructor.name === 'LegendaryAlphabetMatchMode';
 
-            // Update booster bar
-            updateBoosterBar(this.boosterBarElements, newStreak, this);
+            // Increment streak and get multiplier (only for non-legendary modes)
+            let newStreak, multiplier, baseCoinReward, finalCoinReward;
+
+            if (!isLegendaryMode) {
+                newStreak = incrementStreak();
+                multiplier = getMultiplier();
+
+                // Update booster bar
+                updateBoosterBar(this.boosterBarElements, newStreak, this);
+
+                // Generate random coin reward (1-3)
+                baseCoinReward = getRandomCoinReward();
+                finalCoinReward = baseCoinReward * multiplier;
+            } else {
+                // Legendary mode: use configured coin reward, no multiplier
+                multiplier = null;
+                finalCoinReward = this.gameMode.config.coinReward;
+            }
 
             // Show success feedback particles
             this.showSuccessFeedback(x, y);
 
-            // Generate random coin reward (1-3)
-            const baseCoinReward = getRandomCoinReward();
-            const finalCoinReward = baseCoinReward * multiplier;
-
-            // Show gift box reward animation with multiplier
-            showGiftBoxReward(this, finalCoinReward, multiplier, () => {
+            // Show gift box reward animation (with or without multiplier)
+            showGiftBoxReward(this, finalCoinReward, isLegendaryMode ? null : multiplier, () => {
                 // Animation complete - update coin count
                 this.coinCount = addCoins(finalCoinReward);
                 this.coinCounterText.setText(`${this.coinCount}`);
@@ -474,9 +511,12 @@ export class PokeballGameScene extends Phaser.Scene {
                 }
             });
         } else {
-            // Reset streak on wrong answer
-            const newStreak = resetStreak();
-            updateBoosterBar(this.boosterBarElements, newStreak, this);
+            // Reset streak on wrong answer (not for legendary mode)
+            const isLegendaryMode = this.gameMode.constructor.name === 'LegendaryAlphabetMatchMode';
+            if (!isLegendaryMode) {
+                const newStreak = resetStreak();
+                updateBoosterBar(this.boosterBarElements, newStreak, this);
+            }
 
             // Show error feedback
             this.showErrorFeedback(x, y);
