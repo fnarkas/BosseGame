@@ -6,6 +6,7 @@ import { LeftRightMode } from '../pokeballGameModes/LeftRightMode.js';
 import { LetterDragMatchMode } from '../pokeballGameModes/LetterDragMatchMode.js';
 import { SpeechRecognitionMode } from '../pokeballGameModes/SpeechRecognitionMode.js';
 import { NumberListeningMode } from '../pokeballGameModes/NumberListeningMode.js';
+import { NumberReadingMode } from '../pokeballGameModes/NumberReadingMode.js';
 import { WordSpellingMode } from '../pokeballGameModes/WordSpellingMode.js';
 import { LegendaryAlphabetMatchMode } from '../pokeballGameModes/LegendaryAlphabetMatchMode.js';
 import { LegendaryNumbersMode } from '../pokeballGameModes/LegendaryNumbersMode.js';
@@ -152,6 +153,10 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /numbers - only show number listening
             this.gameMode = new NumberListeningMode();
             console.log('Selected game mode: Number Listening (forced)');
+        } else if (forcedMode === 'numberreading-only') {
+            // Debug path: /numberreading - only show number reading
+            this.gameMode = new NumberReadingMode();
+            console.log('Selected game mode: Number Reading (forced)');
         } else if (forcedMode === 'emojiword-only') {
             // Debug path: /emojiword - only show emoji-word match
             this.gameMode = new EmojiWordMatchMode();
@@ -185,6 +190,7 @@ export class PokeballGameScene extends Phaser.Scene {
             letterDragMatch: 10,
             speechRecognition: 10,
             numberListening: 10,
+            numberReading: 10,
             wordSpelling: 40,
             legendary: 10,
             legendaryNumbers: 10
@@ -202,6 +208,7 @@ export class PokeballGameScene extends Phaser.Scene {
                           MODE_WEIGHTS.letterDragMatch +
                           MODE_WEIGHTS.speechRecognition +
                           MODE_WEIGHTS.numberListening +
+                          MODE_WEIGHTS.numberReading +
                           MODE_WEIGHTS.wordSpelling +
                           MODE_WEIGHTS.legendary +
                           MODE_WEIGHTS.legendaryNumbers;
@@ -252,6 +259,12 @@ export class PokeballGameScene extends Phaser.Scene {
         if (random < currentWeight) {
             console.log('Selected game mode: Number Listening');
             return new NumberListeningMode();
+        }
+
+        currentWeight += MODE_WEIGHTS.numberReading;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Number Reading');
+            return new NumberReadingMode();
         }
 
         currentWeight += MODE_WEIGHTS.legendary;
