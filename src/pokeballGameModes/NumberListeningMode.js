@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { showNumberProgressPopup } from './numberProgressPopup.js';
 
 export class NumberListeningMode extends BasePokeballGameMode {
     constructor() {
@@ -10,6 +11,7 @@ export class NumberListeningMode extends BasePokeballGameMode {
         // Default values (will be overridden by loadConfig)
         this.requiredCorrect = 1;
         this.availableNumbers = [];
+        this.clearedNumbers = new Set(); // Track which numbers have been cleared
 
         this.currentNumber = null;
         this.tensZone = null;
@@ -182,11 +184,58 @@ export class NumberListeningMode extends BasePokeballGameMode {
         this.onesZone.setData('label', onesLabel);
         this.uiElements.push(onesLabel);
 
+        // Create small matrix icon next to drop zones
+        this.createMatrixIcon(scene, dropZoneY);
+
         // Create ball indicators showing progress
         this.createBallIndicators(scene);
 
         // Create digit boxes (0-9) at bottom in 2 rows of 5
         this.createDigitBoxes(scene);
+    }
+
+    createMatrixIcon(scene, dropZoneY) {
+        const width = scene.cameras.main.width;
+
+        // Position to the right of the drop zones
+        const iconX = width / 2 + 180;
+        const iconY = dropZoneY;
+        const iconSize = 60;
+
+        // Create a grid icon background
+        const iconBg = scene.add.rectangle(iconX, iconY, iconSize, iconSize, 0x3498DB, 0.8);
+        iconBg.setStrokeStyle(3, 0xFFFFFF);
+        iconBg.setInteractive({ useHandCursor: true });
+        iconBg.on('pointerdown', () => {
+            this.showMatrixPopup();
+        });
+        this.uiElements.push(iconBg);
+
+        // Create mini grid pattern (3x3 squares to represent the matrix)
+        const miniCellSize = 12;
+        const miniGap = 4;
+        for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 3; col++) {
+                const x = iconX - miniCellSize - miniGap + col * (miniCellSize + miniGap);
+                const y = iconY - miniCellSize - miniGap + row * (miniCellSize + miniGap);
+                const miniCell = scene.add.rectangle(x, y, miniCellSize, miniCellSize, 0xFFFFFF, 0.9);
+                miniCell.setInteractive({ useHandCursor: true });
+                miniCell.on('pointerdown', () => {
+                    this.showMatrixPopup();
+                });
+                this.uiElements.push(miniCell);
+            }
+        }
+    }
+
+    showMatrixPopup() {
+        // Always show 0-99 regardless of configured numbers
+        showNumberProgressPopup(
+            this.clearedNumbers,
+            0,
+            99,
+            'Progress: Numbers 0-99'
+        );
     }
 
     createBallIndicators(scene) {
@@ -346,6 +395,10 @@ export class NumberListeningMode extends BasePokeballGameMode {
             // Correct!
             this.showCorrectFeedback(scene);
             this.correctInRow++;
+
+            // Add to cleared numbers
+            this.clearedNumbers.add(this.currentNumber);
+
             this.updateBallIndicators();
 
             // Check if won

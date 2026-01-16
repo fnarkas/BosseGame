@@ -1,15 +1,16 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
+import { showNumberProgressPopup } from './numberProgressPopup.js';
 
 /**
  * Legendary Numbers Mode
- * Player must correctly identify all numbers from 10-100
+ * Player must correctly identify all numbers from 0-99
  * Similar to NumberListeningMode but with progress tracking and matrix visualization
  */
 export class LegendaryNumbersMode extends BasePokeballGameMode {
     constructor() {
         super();
-        this.numbersRange = { min: 0, max: 100 }; // 0-100 = 101 numbers
+        this.numbersRange = { min: 0, max: 99 }; // 0-99 = 100 numbers
         this.clearedNumbers = new Set();
         this.currentNumber = null;
         this.tensZone = null;
@@ -49,7 +50,7 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
     }
 
     getTotalNumbers() {
-        return this.numbersRange.max - this.numbersRange.min + 1; // 101 numbers (0-100)
+        return this.numbersRange.max - this.numbersRange.min + 1; // 100 numbers (0-99)
     }
 
     generateChallenge() {
@@ -119,7 +120,7 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
         const matrixY = height / 2 + 20; // Centered vertically between top zones and bottom digits
         const cellSize = 18; // Much smaller
         const cols = 10; // 10 columns (0-9 for ones digit)
-        const rows = 11; // 11 rows (0-9, 10-19, 20-29, ..., 90-99, 100)
+        const rows = 10; // 10 rows (0-9, 10-19, 20-29, ..., 80-89, 90-99)
 
         const matrixWidth = cols * cellSize;
         const matrixHeight = rows * cellSize;
@@ -135,13 +136,13 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
 
         this.numberMatrix = [];
 
-        // Create grid of number cells (0-100)
+        // Create grid of number cells (0-99)
         for (let row = 0; row < rows; row++) {
             for (let col = 0; col < cols; col++) {
-                const number = row * 10 + col; // 0-100
+                const number = row * 10 + col; // 0-99
 
-                // Only show numbers 0-100
-                if (number > 100) continue;
+                // Only show numbers 0-99
+                if (number > 99) continue;
 
                 const x = matrixX - matrixWidth / 2 + col * cellSize + cellSize / 2;
                 const y = matrixY - matrixHeight / 2 + row * cellSize + cellSize / 2;
@@ -161,124 +162,12 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
     }
 
     showMatrixPopup() {
-        // Create HTML popup overlay
-        const popup = document.createElement('div');
-        popup.id = 'legendary-numbers-matrix-popup';
-        popup.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 10000;
-        `;
-
-        const content = document.createElement('div');
-        content.style.cssText = `
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            max-width: 90%;
-            max-height: 90%;
-            overflow: auto;
-        `;
-
-        const title = document.createElement('h2');
-        title.textContent = 'Progress: Numbers 0-100';
-        title.style.cssText = `
-            margin: 0 0 20px 0;
-            text-align: center;
-            font-family: Arial, sans-serif;
-        `;
-        content.appendChild(title);
-
-        // Create matrix grid
-        const matrix = document.createElement('div');
-        matrix.style.cssText = `
-            display: grid;
-            grid-template-columns: repeat(10, 1fr);
-            gap: 4px;
-            margin-bottom: 20px;
-        `;
-
-        // Create cells for 0-100
-        for (let i = 0; i <= 100; i++) {
-            const cell = document.createElement('div');
-            const isCleared = this.clearedNumbers.has(i);
-
-            cell.textContent = i;
-            cell.style.cssText = `
-                aspect-ratio: 1;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                background: ${isCleared ? '#27AE60' : '#555555'};
-                color: white;
-                font-family: Arial, sans-serif;
-                font-weight: bold;
-                font-size: 16px;
-                border-radius: 4px;
-                min-width: 40px;
-                min-height: 40px;
-            `;
-            matrix.appendChild(cell);
-        }
-
-        content.appendChild(matrix);
-
-        // Add progress text
-        const progressText = document.createElement('div');
-        progressText.textContent = `Cleared: ${this.clearedNumbers.size} / ${this.getTotalNumbers()}`;
-        progressText.style.cssText = `
-            text-align: center;
-            font-family: Arial, sans-serif;
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 15px;
-        `;
-        content.appendChild(progressText);
-
-        // Add close button
-        const closeButton = document.createElement('button');
-        closeButton.textContent = 'Close';
-        closeButton.style.cssText = `
-            display: block;
-            margin: 0 auto;
-            padding: 12px 40px;
-            font-size: 18px;
-            font-family: Arial, sans-serif;
-            background: #3498DB;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-        `;
-        closeButton.onmouseover = () => {
-            closeButton.style.background = '#2980B9';
-        };
-        closeButton.onmouseout = () => {
-            closeButton.style.background = '#3498DB';
-        };
-        closeButton.onclick = () => {
-            document.body.removeChild(popup);
-        };
-        content.appendChild(closeButton);
-
-        popup.appendChild(content);
-
-        // Close on background click
-        popup.onclick = (e) => {
-            if (e.target === popup) {
-                document.body.removeChild(popup);
-            }
-        };
-
-        document.body.appendChild(popup);
+        showNumberProgressPopup(
+            this.clearedNumbers,
+            this.numbersRange.min,
+            this.numbersRange.max,
+            'Progress: Numbers 0-99'
+        );
     }
 
     updateNumberMatrix(clearedNumber) {

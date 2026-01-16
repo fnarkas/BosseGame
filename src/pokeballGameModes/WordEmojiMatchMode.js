@@ -1,5 +1,5 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
-import { WORD_EMOJI_CHALLENGES } from '../wordEmojiData.js';
+import { getEmojiWordDictionary, getLetterFilterEnabled } from '../emojiWordDictionary.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
 import { resetStreak } from '../streak.js';
 import { updateBoosterBar } from '../boosterBar.js';
@@ -15,31 +15,90 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
         this.hasError = false; // Track if player made an error
         this.isRevealing = false; // Track if we're showing the answer
         this.emojiButtons = []; // Store button references
+        this.currentLetter = null; // Track current letter for filtering
     }
 
     generateChallenge() {
-        // Get unused challenges
-        const availableChallenges = WORD_EMOJI_CHALLENGES.filter(
-            challenge => !this.usedChallengeIds.has(challenge.id)
-        );
+        const dictionary = getEmojiWordDictionary();
+        const letterFilterEnabled = getLetterFilterEnabled();
 
-        // If all challenges used, reset
-        if (availableChallenges.length === 0) {
-            this.usedChallengeIds.clear();
-            return this.generateChallenge();
+        let availableChallenges;
+
+        if (letterFilterEnabled) {
+            // Letter filtering mode: pick all words from one letter
+            if (!this.currentLetter) {
+                // Pick a random letter that has enough words (at least 5)
+                const letterGroups = {};
+                dictionary.forEach(item => {
+                    if (!letterGroups[item.letter]) {
+                        letterGroups[item.letter] = [];
+                    }
+                    letterGroups[item.letter].push(item);
+                });
+
+                const validLetters = Object.keys(letterGroups).filter(
+                    letter => letterGroups[letter].length >= 5
+                );
+
+                if (validLetters.length === 0) {
+                    // Fallback to any letter if none have 5+ words
+                    const letters = Object.keys(letterGroups);
+                    this.currentLetter = Phaser.Utils.Array.GetRandom(letters);
+                } else {
+                    this.currentLetter = Phaser.Utils.Array.GetRandom(validLetters);
+                }
+            }
+
+            // Get all unused challenges for this letter
+            availableChallenges = dictionary.filter(
+                item => item.letter === this.currentLetter && !this.usedChallengeIds.has(item.id)
+            );
+
+            // If all challenges for this letter used, pick a new letter
+            if (availableChallenges.length === 0) {
+                this.usedChallengeIds.clear();
+                this.currentLetter = null;
+                return this.generateChallenge();
+            }
+        } else {
+            // Normal mode: any word
+            availableChallenges = dictionary.filter(
+                item => !this.usedChallengeIds.has(item.id)
+            );
+
+            // If all challenges used, reset
+            if (availableChallenges.length === 0) {
+                this.usedChallengeIds.clear();
+                return this.generateChallenge();
+            }
         }
 
         // Pick random challenge
         const challenge = Phaser.Utils.Array.GetRandom(availableChallenges);
         this.usedChallengeIds.add(challenge.id);
 
+        // Pick 4 random other emojis as distractors
+        let otherChallenges;
+        if (letterFilterEnabled) {
+            // Distractors from same letter
+            otherChallenges = dictionary.filter(
+                c => c.id !== challenge.id && c.letter === this.currentLetter
+            );
+        } else {
+            // Distractors from any letter
+            otherChallenges = dictionary.filter(c => c.id !== challenge.id);
+        }
+
+        const shuffledOthers = Phaser.Utils.Array.Shuffle([...otherChallenges]);
+        const distractorEmojis = shuffledOthers.slice(0, 4).map(c => c.emoji);
+
         // Shuffle emojis (correct + distractors)
-        const allEmojis = [challenge.correctEmoji, ...challenge.distractors];
+        const allEmojis = [challenge.emoji, ...distractorEmojis];
         const shuffledEmojis = Phaser.Utils.Array.Shuffle([...allEmojis]);
 
         this.challengeData = {
             word: challenge.word,
-            correctEmoji: challenge.correctEmoji,
+            correctEmoji: challenge.emoji,
             emojis: shuffledEmojis
         };
 

@@ -98,19 +98,27 @@ export class PokeballGameScene extends Phaser.Scene {
             updateBoosterBar(this.boosterBarElements, currentStreak, this);
         }
 
-        // Initialize game mode - alternate between modes
-        this.selectGameMode();
-
-        // Set up callback for game mode
-        this.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
-            this.handleAnswer(isCorrect, answer, x, y);
-        });
-
         // Check if we should show the dice animation (not for forced/debug modes)
         if (!forcedMode) {
+            // Initialize game mode - this will be shown on the wheel
+            this.selectGameMode();
+
+            // Set up callback for game mode
+            this.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
+                this.handleAnswer(isCorrect, answer, x, y);
+            });
+
             // Show dice rolling animation before starting the game
             this.showDiceRollAnimation();
         } else {
+            // Debug mode: Initialize game mode and start immediately
+            this.selectGameMode();
+
+            // Set up callback for game mode
+            this.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
+                this.handleAnswer(isCorrect, answer, x, y);
+            });
+
             // Start first challenge immediately for debug modes
             this.loadNextChallenge();
         }
@@ -348,19 +356,28 @@ export class PokeballGameScene extends Phaser.Scene {
 
     startWheelSpin(wheelSprite, pointerSprite, selectedSlice, overlay, wheelBoosterBar) {
         // Calculate target rotation
-        // Slices are numbered 1-10, starting at top (slice 1 at -90 degrees)
-        // Each slice is 36 degrees (360 / 10)
-        const sliceAngle = 36;
-        const targetSliceAngle = (selectedSlice - 1) * sliceAngle; // 0-324 degrees
+        // The wheel is generated in BootScene with 10 slices
+        // Slices are drawn starting at index 0 at the TOP (-90° in canvas coordinates)
+        // They proceed clockwise: index 0, 1, 2, ... 9
+        // The pointer is FIXED at the top pointing down
+        // selectedSlice is 1-10, so convert to index 0-9
 
-        // Add 3-5 full rotations for spinning effect
+        const sliceIndex = selectedSlice - 1; // Convert 1-10 to 0-9
+        const sliceAngle = 36; // 360 / 10 slices
+
+        // Index 0 is already at top (0° rotation needed)
+        // To bring index 1 to top, rotate -36° (counterclockwise)
+        // To bring index N to top, rotate -(N * 36)°
+        const targetRotation = -sliceIndex * sliceAngle;
+
+        // Add 3-5 full rotations (clockwise, positive degrees) for spinning effect
         const fullRotations = Phaser.Math.Between(3, 5) * 360;
 
-        // Add random offset within the slice for natural feel
-        const randomOffset = Phaser.Math.Between(-15, 15);
+        // Add random offset within the slice for natural feel (±12 degrees)
+        const randomOffset = Phaser.Math.Between(-12, 12);
 
-        // Total rotation needed
-        const totalRotation = fullRotations + targetSliceAngle + randomOffset;
+        // Total rotation: spin clockwise multiple times, then settle on target
+        const totalRotation = fullRotations + targetRotation + randomOffset;
 
         // Spin the wheel
         this.tweens.add({

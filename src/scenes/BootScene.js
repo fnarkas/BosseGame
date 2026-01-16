@@ -286,9 +286,11 @@ export class BootScene extends Phaser.Scene {
         const graphics = this.add.graphics();
 
         // Draw each slice
+        // Offset by half a slice so slice 0 is CENTERED at the top (not edge at top)
+        const offset = -Math.PI / 2 - anglePerSlice / 2;
         for (let i = 0; i < slices; i++) {
-            const startAngle = i * anglePerSlice - Math.PI / 2; // Start at top
-            const endAngle = (i + 1) * anglePerSlice - Math.PI / 2;
+            const startAngle = i * anglePerSlice + offset;
+            const endAngle = (i + 1) * anglePerSlice + offset;
 
             // Draw slice background
             graphics.fillStyle(colors[i], 1);
@@ -328,7 +330,9 @@ export class BootScene extends Phaser.Scene {
 
         // Add icons to each slice
         for (let i = 0; i < slices; i++) {
-            const angle = i * anglePerSlice - Math.PI / 2 + anglePerSlice / 2; // Center of slice
+            // Use same offset as slice drawing to center icons properly
+            const sliceOffset = -Math.PI / 2 - anglePerSlice / 2;
+            const angle = i * anglePerSlice + sliceOffset + anglePerSlice / 2; // Center of slice
             const iconDistance = radius * 0.65; // 65% from center
             const iconX = centerX + Math.cos(angle) * iconDistance;
             const iconY = centerY + Math.sin(angle) * iconDistance;

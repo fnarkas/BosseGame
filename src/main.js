@@ -484,7 +484,7 @@ async function showAdminPage() {
                     <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196F3; margin-bottom: 20px;">
                         <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ About Legendary Numbers:</div>
                         <div style="color: #666; font-size: 14px;">
-                            Players must correctly identify all numbers from 0 to 100 (101 total numbers).<br>
+                            Players must correctly identify all numbers from 0 to 99 (100 total numbers).<br>
                             Drag digits to form each number that's played via audio.<br>
                             Progress is tracked with a compact visual matrix (like Pokedex) showing cleared numbers.<br>
                             Speaker button (🔊) replays the current number.<br>
@@ -494,6 +494,101 @@ async function showAdminPage() {
 
                     <button onclick="saveMinigameConfig('legendary-numbers')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Legendary Numbers Config</button>
                     <div id="config-legendary-numbers-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
+                </div>
+            </div>
+
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                <h2 style="margin-top: 0;">📚 Emoji-Word Dictionary</h2>
+                <p style="color: #666; margin-bottom: 15px;">Manage words for emoji-word matching games (/emojiword and /words).</p>
+
+                <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="margin: 0;">Letter Filtering</h3>
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <span>Only show words from same letter:</span>
+                            <input type="checkbox" id="letter-filter-toggle" onchange="toggleLetterFilter()" style="width: 24px; height: 24px; cursor: pointer;">
+                        </label>
+                    </div>
+                    <div style="color: #666; font-size: 14px; padding: 10px; background: #e3f2fd; border-radius: 4px;">
+                        When enabled, all 5 words in each round will start with the same letter (e.g., all B words: BIL, BOLL, BOK, BLOMMA, BANAN)
+                    </div>
+                </div>
+
+                <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
+                    <h3 style="margin-top: 0;">Add New Word</h3>
+                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                        <input type="text" id="new-word" placeholder="Word (e.g., ÄPPLE)" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; text-transform: uppercase;">
+                        <input type="text" id="new-emoji" placeholder="Emoji (e.g., 🍎)" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <input type="text" id="new-letter" placeholder="Letter (e.g., Ä)" maxlength="1" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; text-transform: uppercase;">
+                        <button onclick="addEmojiWordEntry()" style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">➕ Add</button>
+                    </div>
+                    <div id="add-word-message" style="color: #4CAF50; font-size: 14px;"></div>
+
+                    <div style="margin-top: 15px; padding: 10px; background: #f9f9f9; border-radius: 4px; border: 1px solid #ddd;">
+                        <button onclick="toggleEmojiPicker()" style="padding: 8px 16px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 10px;">😀 Show Emoji Reference</button>
+                        <div id="emoji-picker" style="display: none;">
+                            <div style="color: #666; font-size: 14px; margin-bottom: 10px;">Click any emoji to copy it to the form:</div>
+                            <div style="max-height: 300px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;">
+                                <!-- Animals -->
+                                <div>
+                                    <div style="font-weight: bold; margin-bottom: 5px; color: #2196F3;">🐾 Animals</div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                                        ${['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🦗', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🐃', '🐂', '🐄', '🐎', '🐖', '🐏', '🐑', '🦙', '🐐', '🦌', '🐕', '🐩', '🦮', '🐈', '🐓', '🦃', '🦚', '🦜', '🦢', '🦩', '🕊️', '🐇', '🦝', '🦨', '🦡', '🦦', '🦥', '🐁', '🐀', '🦔'].map(e => `<span onclick="selectEmoji('${e}')" style="font-size: 24px; cursor: pointer; padding: 4px;" title="${e}">${e}</span>`).join('')}
+                                    </div>
+                                </div>
+
+                                <!-- Food -->
+                                <div>
+                                    <div style="font-weight: bold; margin-bottom: 5px; color: #2196F3;">🍎 Food & Drink</div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                                        ${['🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶️', '🫑', '🌽', '🥕', '🫒', '🧄', '🧅', '🥔', '🍠', '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚', '🍳', '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🦴', '🌭', '🍔', '🍟', '🍕', '🫓', '🥪', '🥙', '🧆', '🌮', '🌯', '🫔', '🥗', '🥘', '🫕', '🥫', '🍝', '🍜', '🍲', '🍛', '🍣', '🍱', '🥟', '🦪', '🍤', '🍙', '🍚', '🍘', '🍥', '🥠', '🥮', '🍢', '🍡', '🍧', '🍨', '🍦', '🥧', '🧁', '🍰', '🎂', '🍮', '🍭', '🍬', '🍫', '🍿', '🍩', '🍪', '🌰', '🥜', '🍯', '🥛', '🍼', '🫖', '☕', '🍵', '🧃', '🥤', '🧋', '🍶', '🍺', '🍻', '🥂', '🍷', '🥃', '🍸', '🍹', '🧉', '🍾', '🧊'].map(e => `<span onclick="selectEmoji('${e}')" style="font-size: 24px; cursor: pointer; padding: 4px;" title="${e}">${e}</span>`).join('')}
+                                    </div>
+                                </div>
+
+                                <!-- Objects -->
+                                <div>
+                                    <div style="font-weight: bold; margin-bottom: 5px; color: #2196F3;">⚽ Objects & Sports</div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                                        ${['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '⛸️', '🥌', '🎿', '⛷️', '🏂', '🪂', '🏋️', '🤸', '⛹️', '🤾', '🏌️', '🏇', '🧘', '🏊', '🤽', '🚣', '🧗', '🚴', '🚵', '🎪', '🎭', '🎨', '🎬', '🎤', '🎧', '🎼', '🎹', '🥁', '🪘', '🎷', '🎺', '🪗', '🎸', '🪕', '🎻', '🎲', '♟️', '🎯', '🎳', '🎮', '🎰', '🧩', '🪀', '🪁', '🎁', '🎈', '🎀', '🎊', '🎉', '🎎', '🏮', '🎏', '🎐', '🧧', '✉️', '📩', '📨', '📧', '💌', '📥', '📤', '📦', '🏷️', '🪧', '📪', '📫', '📬', '📭', '📮', '📯', '📜', '📃', '📄', '📑', '🧾', '📊', '📈', '📉', '🗒️', '🗓️', '📆', '📅', '🗑️', '📇', '🗃️', '🗳️', '🗄️', '📋', '📁', '📂', '🗂️', '🗞️', '📰', '📓', '📔', '📒', '📕', '📗', '📘', '📙', '📚', '📖', '🔖', '🧷', '🔗', '📎', '🖇️', '📐', '📏', '🧮', '📌', '📍', '✂️', '🖊️', '🖋️', '✒️', '🖌️', '🖍️', '📝', '✏️', '🔍', '🔎', '🔏', '🔐', '🔒', '🔓'].map(e => `<span onclick="selectEmoji('${e}')" style="font-size: 24px; cursor: pointer; padding: 4px;" title="${e}">${e}</span>`).join('')}
+                                    </div>
+                                </div>
+
+                                <!-- Transport -->
+                                <div>
+                                    <div style="font-weight: bold; margin-bottom: 5px; color: #2196F3;">🚗 Transport</div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                                        ${['🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🛻', '🚚', '🚛', '🚜', '🦯', '🦽', '🦼', '🛴', '🚲', '🛵', '🏍️', '🛺', '🚨', '🚔', '🚍', '🚘', '🚖', '🚡', '🚠', '🚟', '🚃', '🚋', '🚞', '🚝', '🚄', '🚅', '🚈', '🚂', '🚆', '🚇', '🚊', '🚉', '✈️', '🛫', '🛬', '🛩️', '💺', '🛰️', '🚀', '🛸', '🚁', '🛶', '⛵', '🚤', '🛥️', '🛳️', '⛴️', '🚢', '⚓', '🪝', '⛽', '🚧', '🚦', '🚥', '🚏', '🗺️', '🗿', '🗽', '🗼', '🏰', '🏯', '🏟️', '🎡', '🎢', '🎠', '⛲', '⛱️', '🏖️', '🏝️', '🏜️', '🌋', '⛰️', '🏔️', '🗻', '🏕️', '⛺', '🛖', '🏠', '🏡', '🏘️', '🏚️', '🏗️', '🏭', '🏢', '🏬', '🏣', '🏤', '🏥', '🏦', '🏨', '🏪', '🏫', '🏩', '💒', '🏛️', '⛪', '🕌', '🕍', '🛕', '🕋'].map(e => `<span onclick="selectEmoji('${e}')" style="font-size: 24px; cursor: pointer; padding: 4px;" title="${e}">${e}</span>`).join('')}
+                                    </div>
+                                </div>
+
+                                <!-- Nature -->
+                                <div>
+                                    <div style="font-weight: bold; margin-bottom: 5px; color: #2196F3;">🌳 Nature</div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                                        ${['⌚', '📱', '📲', '💻', '⌨️', '🖥️', '🖨️', '🖱️', '🖲️', '🕹️', '🗜️', '💾', '💿', '📀', '📼', '📷', '📸', '📹', '🎥', '📽️', '🎞️', '📞', '☎️', '📟', '📠', '📺', '📻', '🎙️', '🎚️', '🎛️', '🧭', '⏱️', '⏲️', '⏰', '🕰️', '⌛', '⏳', '📡', '🔋', '🪫', '🔌', '💡', '🔦', '🕯️', '🪔', '🧯', '🛢️', '💸', '💵', '💴', '💶', '💷', '🪙', '💰', '💳', '🪪', '💎', '⚖️', '🪜', '🧰', '🪛', '🔧', '🔨', '⚒️', '🛠️', '⛏️', '🪚', '🔩', '⚙️', '🪤', '🧱', '⛓️', '🧲', '🔫', '💣', '🧨', '🪓', '🔪', '🗡️', '⚔️', '🛡️', '🚬', '⚰️', '🪦', '⚱️', '🏺', '🔮', '📿', '🧿', '💈', '⚗️', '🔭', '🔬', '🕳️', '🩹', '🩺', '💊', '💉', '🩸', '🧬', '🦠', '🧫', '🧪', '🌡️', '🧹', '🪠', '🧺', '🧻', '🪣', '🧼', '🪥', '🧽', '🧴', '🛁', '🛀', '🧯', '🌸', '💮', '🏵️', '🌹', '🥀', '🌺', '🌻', '🌼', '🌷', '🌱', '🪴', '🌲', '🌳', '🌴', '🌵', '🌾', '🌿', '☘️', '🍀', '🍁', '🍂', '🍃', '🍇', '🌾', '💐', '🌍', '🌎', '🌏', '🌐', '🪐', '💫', '⭐', '🌟', '✨', '⚡', '☄️', '💥', '🔥', '🌪️', '🌈', '☀️', '🌤️', '⛅', '🌥️', '☁️', '🌦️', '🌧️', '⛈️', '🌩️', '🌨️', '❄️', '☃️', '⛄', '🌬️', '💨', '💧', '💦', '☔', '☂️', '🌊', '🌫️'].map(e => `<span onclick="selectEmoji('${e}')" style="font-size: 24px; cursor: pointer; padding: 4px;" title="${e}">${e}</span>`).join('')}
+                                    </div>
+                                </div>
+
+                                <!-- Symbols -->
+                                <div>
+                                    <div style="font-weight: bold; margin-bottom: 5px; color: #2196F3;">❤️ Symbols</div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                                        ${['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❤️‍🔥', '❤️‍🩹', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭', '❗', '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎', '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🛗', '🈳', '🈂️', '🛂', '🛃', '🛄', '🛅', '🚹', '🚺', '🚼', '⚧️', '🚻', '🚮', '🎦', '📶', '🈁', '🔣', 'ℹ️', '🔤', '🔡', '🔠', '🆖', '🆗', '🆙', '🆒', '🆕', '🆓', '0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟', '🔢', '#️⃣', '*️⃣', '⏏️', '▶️', '⏸️', '⏯️', '⏹️', '⏺️', '⏭️', '⏮️', '⏩', '⏪', '⏫', '⏬', '◀️', '🔼', '🔽', '➡️', '⬅️', '⬆️', '⬇️', '↗️', '↘️', '↙️', '↖️', '↕️', '↔️', '↪️', '↩️', '⤴️', '⤵️', '🔀', '🔁', '🔂', '🔄', '🔃', '🎵', '🎶', '➕', '➖', '➗', '✖️', '🟰', '♾️', '💲', '💱', '™️', '©️', '®️', '〰️', '➰', '➿', '🔚', '🔙', '🔛', '🔝', '🔜', '✔️', '☑️', '🔘', '🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '⚫', '⚪', '🟤', '🔺', '🔻', '🔸', '🔹', '🔶', '🔷', '🔳', '🔲', '▪️', '▫️', '◾', '◽', '◼️', '◻️', '🟥', '🟧', '🟨', '🟩', '🟦', '🟪', '⬛', '⬜', '🟫', '🔈', '🔇', '🔉', '🔊', '🔔', '🔕', '📣', '📢', '👁️‍🗨️', '💬', '💭', '🗯️', '♠️', '♣️', '♥️', '♦️', '🃏', '🎴', '🀄'].map(e => `<span onclick="selectEmoji('${e}')" style="font-size: 24px; cursor: pointer; padding: 4px;" title="${e}">${e}</span>`).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="margin: 0;">Word List (<span id="word-count">0</span> words)</h3>
+                        <button onclick="resetEmojiWordDict()" style="padding: 8px 16px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;">🔄 Reset to Defaults</button>
+                    </div>
+                    <div id="emoji-word-list" style="max-height: 400px; overflow-y: auto; border: 1px solid #eee; border-radius: 4px;">
+                        <!-- Words will be loaded here by JavaScript -->
+                    </div>
                 </div>
             </div>
 
@@ -1138,6 +1233,138 @@ async function showAdminPage() {
             }
         });
     }
+
+    // Emoji Word Dictionary Management Functions
+    window.loadEmojiWordDictionary = function() {
+        // Import functions
+        import('./emojiWordDictionary.js').then(module => {
+            const dictionary = module.getEmojiWordDictionary();
+            const letterFilterEnabled = module.getLetterFilterEnabled();
+
+            // Update checkbox
+            document.getElementById('letter-filter-toggle').checked = letterFilterEnabled;
+
+            // Update word count
+            document.getElementById('word-count').textContent = dictionary.length;
+
+            // Group words by letter
+            const byLetter = {};
+            dictionary.forEach(item => {
+                if (!byLetter[item.letter]) {
+                    byLetter[item.letter] = [];
+                }
+                byLetter[item.letter].push(item);
+            });
+
+            // Sort letters
+            const sortedLetters = Object.keys(byLetter).sort();
+
+            // Build HTML
+            let html = '';
+            sortedLetters.forEach(letter => {
+                html += `<div style="margin-bottom: 20px;">`;
+                html += `<div style="background: #2196F3; color: white; padding: 10px; font-weight: bold; font-size: 18px; position: sticky; top: 0; z-index: 1;">${letter} (${byLetter[letter].length} words)</div>`;
+
+                byLetter[letter].forEach(item => {
+                    html += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; background: white;">
+                            <div style="display: flex; gap: 15px; align-items: center;">
+                                <span style="font-size: 32px;">${item.emoji}</span>
+                                <span style="font-weight: bold; font-size: 18px;">${item.word}</span>
+                                <span style="color: #666;">(${item.letter})</span>
+                            </div>
+                            <button onclick="removeEmojiWordEntry(${item.id})" style="padding: 6px 12px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">🗑️ Remove</button>
+                        </div>
+                    `;
+                });
+
+                html += `</div>`;
+            });
+
+            document.getElementById('emoji-word-list').innerHTML = html;
+        });
+    };
+
+    window.toggleLetterFilter = function() {
+        import('./emojiWordDictionary.js').then(module => {
+            const enabled = document.getElementById('letter-filter-toggle').checked;
+            module.setLetterFilterEnabled(enabled);
+
+            const message = enabled ? '✓ Letter filtering enabled' : '✓ Letter filtering disabled';
+            const msgDiv = document.getElementById('add-word-message');
+            msgDiv.textContent = message;
+            msgDiv.style.color = '#4CAF50';
+            setTimeout(() => { msgDiv.textContent = ''; }, 2000);
+        });
+    };
+
+    window.addEmojiWordEntry = function() {
+        const word = document.getElementById('new-word').value.trim().toUpperCase();
+        const emoji = document.getElementById('new-emoji').value.trim();
+        const letter = document.getElementById('new-letter').value.trim().toUpperCase();
+
+        if (!word || !emoji || !letter) {
+            const msgDiv = document.getElementById('add-word-message');
+            msgDiv.textContent = '⚠️ All fields are required';
+            msgDiv.style.color = '#f44336';
+            return;
+        }
+
+        import('./emojiWordDictionary.js').then(module => {
+            module.addEmojiWord(word, emoji, letter);
+
+            // Clear inputs
+            document.getElementById('new-word').value = '';
+            document.getElementById('new-emoji').value = '';
+            document.getElementById('new-letter').value = '';
+
+            // Show success message
+            const msgDiv = document.getElementById('add-word-message');
+            msgDiv.textContent = `✓ Added: ${emoji} ${word}`;
+            msgDiv.style.color = '#4CAF50';
+            setTimeout(() => { msgDiv.textContent = ''; }, 2000);
+
+            // Reload list
+            window.loadEmojiWordDictionary();
+        });
+    };
+
+    window.removeEmojiWordEntry = function(id) {
+        if (!confirm('Remove this word?')) return;
+
+        import('./emojiWordDictionary.js').then(module => {
+            module.removeEmojiWord(id);
+            window.loadEmojiWordDictionary();
+        });
+    };
+
+    window.resetEmojiWordDict = function() {
+        if (!confirm('Reset dictionary to defaults? This will remove all custom words.')) return;
+
+        import('./emojiWordDictionary.js').then(module => {
+            module.resetEmojiWordDictionary();
+            window.loadEmojiWordDictionary();
+        });
+    };
+
+    // Emoji picker toggle
+    window.toggleEmojiPicker = function() {
+        const picker = document.getElementById('emoji-picker');
+        if (picker.style.display === 'none') {
+            picker.style.display = 'block';
+        } else {
+            picker.style.display = 'none';
+        }
+    };
+
+    // Select emoji from picker
+    window.selectEmoji = function(emoji) {
+        document.getElementById('new-emoji').value = emoji;
+        document.getElementById('new-emoji').focus();
+    };
+
+    // Load emoji word dictionary on page load
+    window.loadEmojiWordDictionary();
 
     // Load Chart.js script
     const chartScript = document.createElement('script');
