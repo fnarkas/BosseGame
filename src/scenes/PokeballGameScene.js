@@ -179,7 +179,7 @@ export class PokeballGameScene extends Phaser.Scene {
         }
     }
 
-    selectRandomGameMode() {
+    async selectRandomGameMode() {
         // Configurable weights for each game mode
         // Higher weight = higher probability of being selected
         const DEFAULT_MODE_WEIGHTS = {
@@ -196,9 +196,19 @@ export class PokeballGameScene extends Phaser.Scene {
             legendaryNumbers: 10
         };
 
-        // Load custom weights from localStorage, or use defaults
-        const savedWeights = localStorage.getItem('minigameWeights');
-        const MODE_WEIGHTS = savedWeights ? JSON.parse(savedWeights) : DEFAULT_MODE_WEIGHTS;
+        // Load weights from config file, fall back to defaults
+        let MODE_WEIGHTS = DEFAULT_MODE_WEIGHTS;
+        try {
+            const response = await fetch('/config/minigames.json');
+            if (response.ok) {
+                const config = await response.json();
+                if (config.weights) {
+                    MODE_WEIGHTS = { ...DEFAULT_MODE_WEIGHTS, ...config.weights };
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to load weights from config, using defaults:', error);
+        }
 
         // Calculate total weight
         const totalWeight = MODE_WEIGHTS.letterListening +

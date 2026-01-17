@@ -33,6 +33,7 @@ const GAMES_REGISTRY = [
     { path: '/lettermatch', name: '🔤 Letter Match', mode: 'lettermatch-only', scene: 'PokeballGameScene', weightKey: 'letterDragMatch' },
     { path: '/speech', name: '🎤 Speech Reading', mode: 'speech-only', scene: 'PokeballGameScene', weightKey: 'speechRecognition' },
     { path: '/numbers', name: '🔢 Number Listening', mode: 'numbers-only', scene: 'PokeballGameScene', weightKey: 'numberListening' },
+    { path: '/numberreading', name: '👀🔢 Number Reading', mode: 'numberreading-only', scene: 'PokeballGameScene', weightKey: 'numberReading' },
     { path: '/wordspelling', name: '⌨️ Word Spelling', mode: 'wordspelling-only', scene: 'PokeballGameScene', weightKey: 'wordSpelling' },
     { path: '/legendary', name: '👑 Legendary Challenge', mode: 'legendary-only', scene: 'PokeballGameScene', weightKey: 'legendary' },
     { path: '/legendarynumbers', name: '🔢👑 Legendary Numbers', mode: 'legendary-numbers-only', scene: 'PokeballGameScene', weightKey: 'legendaryNumbers' },
@@ -318,7 +319,7 @@ async function showAdminPage() {
         `;
     }).join('');
 
-    // Load current minigame weights
+    // Load current minigame weights from config file
     const defaultWeights = {
         letterListening: 10,
         wordEmoji: 10,
@@ -327,10 +328,17 @@ async function showAdminPage() {
         letterDragMatch: 10,
         speechRecognition: 10,
         numberListening: 10,
-        wordSpelling: 40
+        numberReading: 10,
+        wordSpelling: 40,
+        legendary: 10,
+        legendaryNumbers: 10
     };
-    const savedWeights = localStorage.getItem('minigameWeights');
-    const currentWeights = savedWeights ? JSON.parse(savedWeights) : defaultWeights;
+
+    // Try to load from config file, fall back to defaults
+    let currentWeights = { ...defaultWeights };
+    if (serverConfig.weights) {
+        currentWeights = { ...defaultWeights, ...serverConfig.weights };
+    }
 
     const adminHTML = `
         <div style="font-family: Arial; max-width: 1400px; margin: 20px auto; padding: 20px;">
@@ -1089,7 +1097,7 @@ async function showAdminPage() {
     };
 
     // Define all admin functions globally
-    window.saveWeights = function() {
+    window.saveWeights = async function() {
         const weights = {};
 
         // Dynamically read all weight inputs from GAMES_REGISTRY
@@ -1100,21 +1108,58 @@ async function showAdminPage() {
             }
         });
 
-        localStorage.setItem('minigameWeights', JSON.stringify(weights));
+        const message = document.getElementById('weights-message');
+        message.textContent = '⏳ Saving...';
+        message.style.color = '#FF9800';
+
+        try {
+            // Load current config
+            const response = await fetch('/config/minigames.json');
+            let fullConfig = {
+                numbers: { required: 1, numbers: '10-99' },
+                letters: { letters: 'A-Z,Å,Ä,Ö' },
+                pokemonCatching: { nameCase: 'uppercase', alphabetCase: 'lowercase' },
+                legendary: { coinReward: 100, maxErrors: 3 },
+                legendaryNumbers: { coinReward: 100, maxErrors: 3 }
+            };
+            if (response.ok) {
+                fullConfig = await response.json();
+            }
+
+            // Update weights in config
+            fullConfig.weights = weights;
+
+            // Save to server
+            const saveResponse = await fetch('/api/config/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(fullConfig)
+            });
+
+            if (saveResponse.ok) {
+                message.textContent = '✓ Probabilities saved to config file! All devices will use these settings.';
+                message.style.color = '#4CAF50';
+            } else {
+                throw new Error('Server returned error');
+            }
+        } catch (error) {
+            console.error('Failed to save weights:', error);
+            message.textContent = '❌ Failed to save weights. Check console for details.';
+            message.style.color = '#f44336';
+        }
 
         if (window.updateProbabilityChart) {
             window.updateProbabilityChart();
         }
 
-        const message = document.getElementById('weights-message');
-        message.textContent = '✓ Probabilities saved successfully!';
-        message.style.color = '#4CAF50';
         setTimeout(() => {
             message.textContent = '';
-        }, 3000);
+        }, 5000);
     };
 
-    window.resetWeights = function() {
+    window.resetWeights = async function() {
         // Define default weights (most games 10, wordSpelling 40)
         const defaultWeights = {};
         GAMES_REGISTRY.filter(game => game.weightKey).forEach(game => {
@@ -1130,18 +1175,55 @@ async function showAdminPage() {
             }
         });
 
-        localStorage.setItem('minigameWeights', JSON.stringify(defaultWeights));
+        const message = document.getElementById('weights-message');
+        message.textContent = '⏳ Saving...';
+        message.style.color = '#FF9800';
+
+        try {
+            // Load current config
+            const response = await fetch('/config/minigames.json');
+            let fullConfig = {
+                numbers: { required: 1, numbers: '10-99' },
+                letters: { letters: 'A-Z,Å,Ä,Ö' },
+                pokemonCatching: { nameCase: 'uppercase', alphabetCase: 'lowercase' },
+                legendary: { coinReward: 100, maxErrors: 3 },
+                legendaryNumbers: { coinReward: 100, maxErrors: 3 }
+            };
+            if (response.ok) {
+                fullConfig = await response.json();
+            }
+
+            // Update weights to defaults
+            fullConfig.weights = defaultWeights;
+
+            // Save to server
+            const saveResponse = await fetch('/api/config/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(fullConfig)
+            });
+
+            if (saveResponse.ok) {
+                message.textContent = '✓ Reset to default probabilities and saved to config file!';
+                message.style.color = '#FF9800';
+            } else {
+                throw new Error('Server returned error');
+            }
+        } catch (error) {
+            console.error('Failed to reset weights:', error);
+            message.textContent = '❌ Failed to reset weights. Check console for details.';
+            message.style.color = '#f44336';
+        }
 
         if (window.updateProbabilityChart) {
             window.updateProbabilityChart();
         }
 
-        const message = document.getElementById('weights-message');
-        message.textContent = '✓ Reset to default probabilities!';
-        message.style.color = '#FF9800';
         setTimeout(() => {
             message.textContent = '';
-        }, 3000);
+        }, 5000);
     };
 
     window.togglePokemon = function(id) {
