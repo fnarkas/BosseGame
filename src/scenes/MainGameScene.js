@@ -595,6 +595,8 @@ export class MainGameScene extends Phaser.Scene {
             // Show HTML popup instead of canvas popup
             window.showPokemonCaughtPopup(this.currentPokemon.id, () => {
                 this.isAnimating = false;
+                // Explicitly reset hearts before starting new encounter
+                this.attemptsLeft = 3;
                 this.startNewEncounter();
             });
         });
