@@ -347,7 +347,8 @@ export class MainGameScene extends Phaser.Scene {
         const spriteMap = {
             'pokeball': 'pokeball_poke-ball',
             'greatball': 'pokeball_great-ball',
-            'ultraball': 'pokeball_ultra-ball'
+            'ultraball': 'pokeball_ultra-ball',
+            'legendaryball': 'pokeball_legendary-ball'
         };
 
         const spriteKey = spriteMap[this.selectedPokeballType] || 'pokeball_poke-ball';
