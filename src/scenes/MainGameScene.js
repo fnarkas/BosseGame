@@ -174,6 +174,12 @@ export class MainGameScene extends Phaser.Scene {
             this.currentPokemonSprite = null;
         }
 
+        // Clean up rarity indicator (stars)
+        if (this.rarityIndicator) {
+            this.rarityIndicator.destroy();
+            this.rarityIndicator = null;
+        }
+
         // Clean up answer mode UI
         if (this.answerMode) {
             this.answerMode.cleanup(this);
