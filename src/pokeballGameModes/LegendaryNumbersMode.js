@@ -10,7 +10,8 @@ import { showNumberProgressPopup } from './numberProgressPopup.js';
 export class LegendaryNumbersMode extends BasePokeballGameMode {
     constructor() {
         super();
-        this.numbersRange = { min: 0, max: 99 }; // 0-99 = 100 numbers
+        this.numbersRange = { min: 0, max: 99 }; // 0-99 = 100 numbers total
+        this.activeNumbers = new Set(); // Numbers that are part of the challenge
         this.clearedNumbers = new Set();
         this.currentNumber = null;
         this.tensZone = null;
@@ -25,10 +26,41 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
         // Default config (will be loaded from server)
         this.config = {
             coinReward: 200,
-            maxErrors: 5
+            maxErrors: 5,
+            numbers: '0-99' // Default to all numbers
         };
         this.configLoaded = false;
         this.errorsRemaining = 5;
+    }
+
+    parseNumberRange(input) {
+        try {
+            const parts = input.split(',');
+            const numbers = new Set();
+
+            for (const part of parts) {
+                const trimmed = part.trim();
+                if (trimmed.includes('-')) {
+                    const [start, end] = trimmed.split('-').map(n => parseInt(n.trim()));
+                    if (isNaN(start) || isNaN(end) || start > end || start < 0) {
+                        return null; // Invalid
+                    }
+                    for (let i = start; i <= end; i++) {
+                        numbers.add(i);
+                    }
+                } else {
+                    const num = parseInt(trimmed);
+                    if (isNaN(num) || num < 0) {
+                        return null; // Invalid
+                    }
+                    numbers.add(num);
+                }
+            }
+
+            return Array.from(numbers).sort((a, b) => a - b);
+        } catch (error) {
+            return null;
+        }
     }
 
     async loadConfig() {
@@ -39,32 +71,50 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
                 if (serverConfig.legendaryNumbers) {
                     this.config.coinReward = serverConfig.legendaryNumbers.coinReward || this.config.coinReward;
                     this.config.maxErrors = serverConfig.legendaryNumbers.maxErrors || this.config.maxErrors;
+                    this.config.numbers = serverConfig.legendaryNumbers.numbers || this.config.numbers;
                     this.errorsRemaining = this.config.maxErrors;
+
+                    // Parse active numbers
+                    const parsedNumbers = this.parseNumberRange(this.config.numbers);
+                    if (parsedNumbers && parsedNumbers.length > 0) {
+                        this.activeNumbers = new Set(parsedNumbers.filter(n => n >= 0 && n <= 99));
+                    } else {
+                        // Fallback to all numbers 0-99
+                        for (let i = 0; i <= 99; i++) {
+                            this.activeNumbers.add(i);
+                        }
+                    }
+
                     console.log('LegendaryNumbersMode loaded config:', this.config);
+                    console.log('Active numbers count:', this.activeNumbers.size);
                 }
             }
         } catch (error) {
             console.warn('Failed to load legendary numbers config, using defaults:', error);
+            // Fallback to all numbers 0-99
+            for (let i = 0; i <= 99; i++) {
+                this.activeNumbers.add(i);
+            }
         }
         this.configLoaded = true;
     }
 
     getTotalNumbers() {
-        return this.numbersRange.max - this.numbersRange.min + 1; // 100 numbers (0-99)
+        return this.activeNumbers.size; // Count of active numbers
     }
 
     generateChallenge() {
-        // Pick a random number that hasn't been cleared yet
+        // Pick a random number from active numbers that hasn't been cleared yet
         const unclearedNumbers = [];
-        for (let i = this.numbersRange.min; i <= this.numbersRange.max; i++) {
-            if (!this.clearedNumbers.has(i)) {
-                unclearedNumbers.push(i);
+        for (const num of this.activeNumbers) {
+            if (!this.clearedNumbers.has(num)) {
+                unclearedNumbers.push(num);
             }
         }
 
         if (unclearedNumbers.length === 0) {
-            // All numbers cleared - this shouldn't happen as we check completion
-            this.currentNumber = this.numbersRange.min;
+            // All active numbers cleared - this shouldn't happen as we check completion
+            this.currentNumber = Array.from(this.activeNumbers)[0] || 0;
         } else {
             const randomIndex = Math.floor(Math.random() * unclearedNumbers.length);
             this.currentNumber = unclearedNumbers[randomIndex];
@@ -147,16 +197,31 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
                 const x = matrixX - matrixWidth / 2 + col * cellSize + cellSize / 2;
                 const y = matrixY - matrixHeight / 2 + row * cellSize + cellSize / 2;
 
-                // Cell background - just colored squares, no text
+                // Cell background - color based on status
                 const isCleared = this.clearedNumbers.has(number);
-                const cell = scene.add.rectangle(x, y, cellSize - 3, cellSize - 3, isCleared ? 0x27AE60 : 0x555555, 0.9);
+                const isActive = this.activeNumbers.has(number);
+
+                let cellColor;
+                let cellAlpha;
+                if (isCleared) {
+                    cellColor = 0x27AE60; // Green for cleared
+                    cellAlpha = 0.9;
+                } else if (isActive) {
+                    cellColor = 0x555555; // Gray for active but not cleared
+                    cellAlpha = 0.9;
+                } else {
+                    cellColor = 0x0d0d0d; // Very dark for inactive
+                    cellAlpha = 0.35; // More transparent
+                }
+
+                const cell = scene.add.rectangle(x, y, cellSize - 3, cellSize - 3, cellColor, cellAlpha);
                 cell.setInteractive({ useHandCursor: true });
                 cell.on('pointerdown', () => {
                     this.showMatrixPopup();
                 });
                 this.uiElements.push(cell);
 
-                this.numberMatrix.push({ number, cell });
+                this.numberMatrix.push({ number, cell, isActive });
             }
         }
     }
@@ -166,7 +231,8 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
             this.clearedNumbers,
             this.numbersRange.min,
             this.numbersRange.max,
-            'Progress: Numbers 0-99'
+            'Progress: Numbers 0-99',
+            this.activeNumbers
         );
     }
 

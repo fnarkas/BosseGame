@@ -9,8 +9,9 @@
  * @param {number} minNumber - Minimum number in range (inclusive)
  * @param {number} maxNumber - Maximum number in range (inclusive)
  * @param {string} title - Title for the popup
+ * @param {Set} activeNumbers - Optional set of active numbers (others shown as inactive)
  */
-export function showNumberProgressPopup(clearedNumbers, minNumber, maxNumber, title = 'Progress') {
+export function showNumberProgressPopup(clearedNumbers, minNumber, maxNumber, title = 'Progress', activeNumbers = null) {
     // Create HTML popup overlay
     const popup = document.createElement('div');
     popup.id = 'number-progress-popup';
@@ -62,6 +63,25 @@ export function showNumberProgressPopup(clearedNumbers, minNumber, maxNumber, ti
     for (let i = minNumber; i <= maxNumber; i++) {
         const cell = document.createElement('div');
         const isCleared = clearedNumbers.has(i);
+        const isActive = activeNumbers ? activeNumbers.has(i) : true;
+
+        // Determine background color and text color
+        let backgroundColor;
+        let textColor;
+        let opacity;
+        if (isCleared) {
+            backgroundColor = '#27AE60'; // Green for cleared
+            textColor = 'white';
+            opacity = '1';
+        } else if (isActive) {
+            backgroundColor = '#555555'; // Gray for active but not cleared
+            textColor = 'white';
+            opacity = '1';
+        } else {
+            backgroundColor = '#0d0d0d'; // Very dark for inactive
+            textColor = '#777777'; // Dimmed gray text
+            opacity = '0.35';
+        }
 
         cell.textContent = i;
         cell.style.cssText = `
@@ -69,14 +89,15 @@ export function showNumberProgressPopup(clearedNumbers, minNumber, maxNumber, ti
             display: flex;
             align-items: center;
             justify-content: center;
-            background: ${isCleared ? '#27AE60' : '#555555'};
-            color: white;
+            background: ${backgroundColor};
+            color: ${textColor};
             font-family: Arial, sans-serif;
             font-weight: bold;
             font-size: 20px;
             border-radius: 5px;
             min-width: 50px;
             min-height: 50px;
+            opacity: ${opacity};
         `;
         matrix.appendChild(cell);
     }
@@ -85,7 +106,8 @@ export function showNumberProgressPopup(clearedNumbers, minNumber, maxNumber, ti
 
     // Add progress text
     const progressText = document.createElement('div');
-    progressText.textContent = `Cleared: ${clearedNumbers.size} / ${totalNumbers}`;
+    const activeCount = activeNumbers ? activeNumbers.size : totalNumbers;
+    progressText.textContent = `Cleared: ${clearedNumbers.size} / ${activeCount}`;
     progressText.style.cssText = `
         text-align: center;
         font-family: Arial, sans-serif;

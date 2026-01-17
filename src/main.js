@@ -478,9 +478,20 @@ async function showAdminPage() {
                     <h3 style="margin-top: 0;">Legendary Numbers Configuration</h3>
 
                     <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Active Numbers:</label>
+                        <input type="text" id="config-legendary-numbers-range" value="${serverConfig.legendaryNumbers?.numbers || '0-99'}" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace;">
+                        <div style="color: #666; margin-top: 5px; font-size: 14px;">
+                            Format: <code>0-20,30,40,50-59</code> (ranges and individual numbers separated by commas)<br>
+                            Example: <code>0-20,30,40,50,60,70,80,90</code> for easier gameplay
+                        </div>
+                        <div id="legendary-numbers-preview" style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px; min-height: 40px;"></div>
+                        <div id="legendary-numbers-error" style="margin-top: 10px; color: #f44336; font-weight: bold; display: none;"></div>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
                         <label style="display: block; font-weight: bold; margin-bottom: 5px;">Coin Reward:</label>
                         <input type="number" id="config-legendary-numbers-coins" value="${serverConfig.legendaryNumbers?.coinReward || 200}" min="1" max="10000" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-                        <span style="color: #666; margin-left: 10px;">🎁 Coins earned for completing all numbers</span>
+                        <span style="color: #666; margin-left: 10px;">🎁 Coins earned for completing all active numbers</span>
                     </div>
 
                     <div style="margin-bottom: 20px;">
@@ -492,10 +503,10 @@ async function showAdminPage() {
                     <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196F3; margin-bottom: 20px;">
                         <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ About Legendary Numbers:</div>
                         <div style="color: #666; font-size: 14px;">
-                            Players must correctly identify all numbers from 0 to 99 (100 total numbers).<br>
-                            Drag digits to form each number that's played via audio.<br>
-                            Progress is tracked with a compact visual matrix (like Pokedex) showing cleared numbers.<br>
-                            Speaker button (🔊) replays the current number.<br>
+                            Players must correctly identify all active numbers by dragging digits to form each number.<br>
+                            Numbers are played via audio. Speaker button (🔊) replays the current number.<br>
+                            Progress is tracked with a visual matrix showing cleared numbers (green) and remaining numbers (gray).<br>
+                            Inactive numbers are shown in dark gray and are not part of the challenge.<br>
                             Each wrong answer loses one heart. Running out of hearts restarts from scratch.
                         </div>
                     </div>
@@ -766,6 +777,8 @@ async function showAdminPage() {
             window.updateNumbersPreview();
         } else if (value === 'pokemon-catching') {
             window.updatePokemonCatchingPreview();
+        } else if (value === 'legendary-numbers') {
+            window.updateLegendaryNumbersPreview();
         }
     };
 
@@ -824,6 +837,48 @@ async function showAdminPage() {
         preview.innerHTML = `
             <div style="margin-bottom: 8px; font-weight: bold; color: #333;">
                 ✓ ${numbers.length} number${numbers.length !== 1 ? 's' : ''} configured
+            </div>
+            <div style="max-height: 150px; overflow-y: auto;">
+                ${chips}
+            </div>
+        `;
+
+        return true;
+    };
+
+    window.updateLegendaryNumbersPreview = function() {
+        const input = document.getElementById('config-legendary-numbers-range').value;
+        const preview = document.getElementById('legendary-numbers-preview');
+        const error = document.getElementById('legendary-numbers-error');
+
+        const numbers = window.parseNumberRange(input);
+
+        if (numbers === null || numbers.length === 0) {
+            error.textContent = '❌ Invalid format! Please use format like: 0-20,30,40,50-59';
+            error.style.display = 'block';
+            preview.innerHTML = '';
+            return false;
+        }
+
+        // Check that numbers are in 0-99 range
+        const invalidNumbers = numbers.filter(n => n < 0 || n > 99);
+        if (invalidNumbers.length > 0) {
+            error.textContent = '❌ All numbers must be between 0 and 99';
+            error.style.display = 'block';
+            preview.innerHTML = '';
+            return false;
+        }
+
+        error.style.display = 'none';
+
+        // Create visual chips for numbers
+        const chips = numbers.map(num =>
+            `<span style="display: inline-block; padding: 4px 10px; margin: 3px; background: #4CAF50; color: white; border-radius: 12px; font-size: 14px;">${num}</span>`
+        ).join('');
+
+        preview.innerHTML = `
+            <div style="margin-bottom: 8px; font-weight: bold; color: #333;">
+                ✓ ${numbers.length} active number${numbers.length !== 1 ? 's' : ''} (${100 - numbers.length} inactive)
             </div>
             <div style="max-height: 150px; overflow-y: auto;">
                 ${chips}
@@ -1044,6 +1099,12 @@ async function showAdminPage() {
         } else if (game === 'legendary-numbers') {
             const coinReward = parseInt(document.getElementById('config-legendary-numbers-coins').value);
             const maxErrors = parseInt(document.getElementById('config-legendary-numbers-errors').value);
+            const numbersInput = document.getElementById('config-legendary-numbers-range').value;
+
+            // Validate numbers
+            if (!window.updateLegendaryNumbersPreview()) {
+                return;
+            }
 
             const message = document.getElementById('config-legendary-numbers-message');
             message.textContent = '⏳ Saving...';
@@ -1057,7 +1118,7 @@ async function showAdminPage() {
                     letters: { letters: 'A-Z,Å,Ä,Ö' },
                     pokemonCatching: { nameCase: 'uppercase', alphabetCase: 'lowercase' },
                     legendary: { coinReward: 100, maxErrors: 3 },
-                    legendaryNumbers: { coinReward: 200, maxErrors: 5 }
+                    legendaryNumbers: { coinReward: 200, maxErrors: 5, numbers: '0-99' }
                 };
                 if (response.ok) {
                     fullConfig = await response.json();
@@ -1066,7 +1127,8 @@ async function showAdminPage() {
                 // Update legendary numbers config
                 fullConfig.legendaryNumbers = {
                     coinReward: coinReward,
-                    maxErrors: maxErrors
+                    maxErrors: maxErrors,
+                    numbers: numbersInput
                 };
 
                 // Save to server
@@ -1566,6 +1628,14 @@ async function showAdminPage() {
             lettersInput.addEventListener('input', window.updateLettersPreview);
             // Trigger initial preview
             window.updateLettersPreview();
+        }
+
+        // Add event listener for legendary numbers config
+        const legendaryNumbersInput = document.getElementById('config-legendary-numbers-range');
+        if (legendaryNumbersInput) {
+            legendaryNumbersInput.addEventListener('input', window.updateLegendaryNumbersPreview);
+            // Trigger initial preview
+            window.updateLegendaryNumbersPreview();
         }
 
         // Add event listeners for Pokemon catching config
