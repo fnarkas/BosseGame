@@ -580,9 +580,13 @@ export class NumberListeningMode extends BasePokeballGameMode {
     playNumberAudio(scene) {
         const audioKey = `number_audio_${this.currentNumber}`;
 
-        // Stop any currently playing audio
-        if (this.currentAudio && this.currentAudio.isPlaying) {
-            this.currentAudio.stop();
+        // Stop and destroy any currently playing audio
+        if (this.currentAudio) {
+            if (this.currentAudio.isPlaying) {
+                this.currentAudio.stop();
+            }
+            this.currentAudio.destroy();
+            this.currentAudio = null;
         }
 
         // Play the audio (Phaser will handle if it doesn't exist)
@@ -595,11 +599,14 @@ export class NumberListeningMode extends BasePokeballGameMode {
     }
 
     cleanup(scene) {
-        // Stop any playing audio
-        if (this.currentAudio && this.currentAudio.isPlaying) {
-            this.currentAudio.stop();
+        // Stop and destroy any playing audio
+        if (this.currentAudio) {
+            if (this.currentAudio.isPlaying) {
+                this.currentAudio.stop();
+            }
+            this.currentAudio.destroy();
+            this.currentAudio = null;
         }
-        this.currentAudio = null;
 
         // Clear references
         this.tensZone = null;

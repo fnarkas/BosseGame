@@ -122,9 +122,13 @@ export class LeftRightMode extends BasePokeballGameMode {
     playDirectionAudio(scene, direction) {
         const audioKey = `direction_audio_${direction}`;
 
-        // Stop any currently playing audio
-        if (this.currentAudio && this.currentAudio.isPlaying) {
-            this.currentAudio.stop();
+        // Stop and destroy any currently playing audio
+        if (this.currentAudio) {
+            if (this.currentAudio.isPlaying) {
+                this.currentAudio.stop();
+            }
+            this.currentAudio.destroy();
+            this.currentAudio = null;
         }
 
         // Play the audio
@@ -293,11 +297,14 @@ export class LeftRightMode extends BasePokeballGameMode {
     }
 
     cleanup(scene) {
-        // Stop any playing audio
-        if (this.currentAudio && this.currentAudio.isPlaying) {
-            this.currentAudio.stop();
+        // Stop and destroy any playing audio
+        if (this.currentAudio) {
+            if (this.currentAudio.isPlaying) {
+                this.currentAudio.stop();
+            }
+            this.currentAudio.destroy();
+            this.currentAudio = null;
         }
-        this.currentAudio = null;
 
         // Clear ball indicators
         this.ballIndicators = [];

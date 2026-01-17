@@ -545,8 +545,13 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
     }
 
     playNumberAudio(scene) {
-        if (this.currentAudio && this.currentAudio.isPlaying) {
-            this.currentAudio.stop();
+        // Stop and destroy any currently playing audio
+        if (this.currentAudio) {
+            if (this.currentAudio.isPlaying) {
+                this.currentAudio.stop();
+            }
+            this.currentAudio.destroy();
+            this.currentAudio = null;
         }
 
         const audioKey = `number_audio_${this.currentNumber}`;
