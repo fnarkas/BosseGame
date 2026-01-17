@@ -335,6 +335,7 @@ export class PokeballGameScene extends Phaser.Scene {
             'LetterDragMatchMode': 5,
             'SpeechRecognitionMode': 6,
             'NumberListeningMode': 7,
+            'NumberReadingMode': 7, // Shares slice with NumberListeningMode (similar games)
             'WordSpellingMode': 8,
             'LegendaryAlphabetMatchMode': 9,
             'LegendaryNumbersMode': 10

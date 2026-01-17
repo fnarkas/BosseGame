@@ -92,6 +92,7 @@ export class BootScene extends Phaser.Scene {
         this.load.image('game-mode-numbers', 'minigame_icons/number_listening.png');
         this.load.image('game-mode-lettermatch', 'minigame_icons/letter_drag_match.png');
         this.load.image('game-mode-speech', 'minigame_icons/speech_recognition.png');
+        this.load.image('game-mode-numberreading', 'minigame_icons/number_listening.png'); // Placeholder: uses number_listening icon
         this.load.image('game-mode-spelling', 'minigame_icons/word_spelling.png');
         this.load.image('game-mode-legendary', 'minigame_icons/legendary_alphabet.png');
         this.load.image('game-mode-legendary-numbers', 'minigame_icons/legendary_numbers.png');
