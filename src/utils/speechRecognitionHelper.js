@@ -260,9 +260,9 @@ export class SpeechRecognitionHelper {
             this.recognition.start();
             console.log('✅ Recognition started successfully');
 
-            // Safari/iOS workaround: Set timeout to stop recognition after 10 seconds
+            // Safari/iOS workaround: Set timeout to stop recognition after 5 seconds
             // This prevents infinite listening state
-            this.recognitionTimeout = scene.time.delayedCall(10000, () => {
+            this.recognitionTimeout = scene.time.delayedCall(5000, () => {
                 console.log('⏱️ Recognition timeout - stopping');
                 if (this.recognition && this.isListening) {
                     try {
