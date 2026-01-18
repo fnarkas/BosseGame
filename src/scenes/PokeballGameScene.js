@@ -26,7 +26,7 @@ export class PokeballGameScene extends Phaser.Scene {
         this.boosterBarElements = null; // Booster bar UI elements
     }
 
-    create() {
+    async create() {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
 
@@ -102,7 +102,7 @@ export class PokeballGameScene extends Phaser.Scene {
         // Check if we should show the dice animation (not for forced/debug modes)
         if (!forcedMode) {
             // Initialize game mode - this will be shown on the wheel
-            this.selectGameMode();
+            await this.selectGameMode();
 
             // Set up callback for game mode
             this.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
@@ -113,7 +113,7 @@ export class PokeballGameScene extends Phaser.Scene {
             this.showDiceRollAnimation();
         } else {
             // Debug mode: Initialize game mode and start immediately
-            this.selectGameMode();
+            await this.selectGameMode();
 
             // Set up callback for game mode
             this.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
@@ -125,7 +125,7 @@ export class PokeballGameScene extends Phaser.Scene {
         }
     }
 
-    selectGameMode() {
+    async selectGameMode() {
         // Check if a specific mode is forced (for debug paths)
         const forcedMode = this.registry.get('pokeballGameMode');
 
@@ -175,7 +175,7 @@ export class PokeballGameScene extends Phaser.Scene {
             console.log('Selected game mode: Legendary Numbers (forced)');
         } else {
             // Normal mode: Randomly select from all game modes with configurable probabilities
-            this.gameMode = this.selectRandomGameMode();
+            this.gameMode = await this.selectRandomGameMode();
         }
     }
 
@@ -289,8 +289,14 @@ export class PokeballGameScene extends Phaser.Scene {
             return new LegendaryNumbersMode();
         }
 
-        // Default to Word Spelling
-        console.log('Selected game mode: Word Spelling');
+        currentWeight += MODE_WEIGHTS.wordSpelling;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Word Spelling');
+            return new WordSpellingMode();
+        }
+
+        // Fallback (should never reach here if weights are configured properly)
+        console.warn('Weighted selection failed, defaulting to Word Spelling');
         return new WordSpellingMode();
     }
 
@@ -491,7 +497,7 @@ export class PokeballGameScene extends Phaser.Scene {
             this.showSuccessFeedback(x, y);
 
             // Show reward animation (gift box for normal, treasure chest for legendary)
-            showGiftBoxReward(this, finalCoinReward, isLegendaryMode ? null : multiplier, isLegendaryMode, () => {
+            showGiftBoxReward(this, finalCoinReward, isLegendaryMode ? null : multiplier, isLegendaryMode, async () => {
                 // Animation complete - update coin count
                 this.coinCount = addCoins(finalCoinReward);
                 this.coinCounterText.setText(`${this.coinCount}`);
@@ -501,7 +507,7 @@ export class PokeballGameScene extends Phaser.Scene {
 
                 // Increment challenge count and switch mode
                 this.challengeCount++;
-                this.selectGameMode();
+                await this.selectGameMode();
 
                 // Set up callback for new mode
                 this.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {

@@ -171,7 +171,7 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
                 if (!isCorrect) {
                     // Wrong answer - show error feedback then highlight correct answer
                     this.showWrongAnswerFeedback(scene, button);
-                } else if (this.answerCallback) {
+                } else {
                     // Correct answer - proceed as normal
                     this.answerCallback(isCorrect, emoji, x, y);
                 }
