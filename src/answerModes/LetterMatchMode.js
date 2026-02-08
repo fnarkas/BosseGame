@@ -496,7 +496,9 @@ export class LetterMatchMode extends BaseAnswerMode {
     updateUI(scene, attemptsLeft, usedData) {
         // Update hearts display
         const heartsText = '❤️'.repeat(attemptsLeft) + '🖤'.repeat(3 - attemptsLeft);
-        this.attemptsDisplay.setText(heartsText);
+        if (this.attemptsDisplay) {
+            this.attemptsDisplay.setText(heartsText);
+        }
 
         // Store scene reference
         this.scene = scene;

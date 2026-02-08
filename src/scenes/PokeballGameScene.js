@@ -10,6 +10,8 @@ import { NumberReadingMode } from '../pokeballGameModes/NumberReadingMode.js';
 import { WordSpellingMode } from '../pokeballGameModes/WordSpellingMode.js';
 import { LegendaryAlphabetMatchMode } from '../pokeballGameModes/LegendaryAlphabetMatchMode.js';
 import { LegendaryNumbersMode } from '../pokeballGameModes/LegendaryNumbersMode.js';
+import { DayMatchMode } from '../pokeballGameModes/DayMatchMode.js';
+import { AdditionMode } from '../pokeballGameModes/AdditionMode.js';
 import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier } from '../streak.js';
@@ -173,6 +175,14 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /legendarynumbers - legendary numbers challenge
             this.gameMode = new LegendaryNumbersMode();
             console.log('Selected game mode: Legendary Numbers (forced)');
+        } else if (forcedMode === 'dayofweek-only') {
+            // Debug path: /dayofweek - day of week matching
+            this.gameMode = new DayMatchMode();
+            console.log('Selected game mode: Day Match (forced)');
+        } else if (forcedMode === 'addition-only') {
+            // Debug path: /addition - simple addition
+            this.gameMode = new AdditionMode();
+            console.log('Selected game mode: Addition (forced)');
         } else {
             // Normal mode: Randomly select from all game modes with configurable probabilities
             this.gameMode = await this.selectRandomGameMode();
@@ -193,7 +203,9 @@ export class PokeballGameScene extends Phaser.Scene {
             numberReading: 10,
             wordSpelling: 40,
             legendary: 10,
-            legendaryNumbers: 10
+            legendaryNumbers: 10,
+            dayMatch: 10,
+            addition: 10
         };
 
         // Load weights from config file, fall back to defaults
@@ -221,7 +233,9 @@ export class PokeballGameScene extends Phaser.Scene {
                           MODE_WEIGHTS.numberReading +
                           MODE_WEIGHTS.wordSpelling +
                           MODE_WEIGHTS.legendary +
-                          MODE_WEIGHTS.legendaryNumbers;
+                          MODE_WEIGHTS.legendaryNumbers +
+                          MODE_WEIGHTS.dayMatch +
+                          MODE_WEIGHTS.addition;
 
         // Generate random number between 0 and total weight
         const random = Math.random() * totalWeight;
@@ -289,6 +303,18 @@ export class PokeballGameScene extends Phaser.Scene {
             return new LegendaryNumbersMode();
         }
 
+        currentWeight += MODE_WEIGHTS.dayMatch;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Day Match');
+            return new DayMatchMode();
+        }
+
+        currentWeight += MODE_WEIGHTS.addition;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Addition');
+            return new AdditionMode();
+        }
+
         currentWeight += MODE_WEIGHTS.wordSpelling;
         if (random < currentWeight) {
             console.log('Selected game mode: Word Spelling');
@@ -332,7 +358,7 @@ export class PokeballGameScene extends Phaser.Scene {
             this.scene.start('MainGameScene');
         });
 
-        // Map game mode to slice number (1-10)
+        // Map game mode to slice number (1-12)
         const gameModeMap = {
             'LetterListeningMode': 1,
             'WordEmojiMatchMode': 2,
@@ -344,7 +370,9 @@ export class PokeballGameScene extends Phaser.Scene {
             'NumberReadingMode': 7, // Shares slice with NumberListeningMode (similar games)
             'WordSpellingMode': 8,
             'LegendaryAlphabetMatchMode': 9,
-            'LegendaryNumbersMode': 10
+            'LegendaryNumbersMode': 10,
+            'DayMatchMode': 11,
+            'AdditionMode': 12
         };
 
         const selectedSlice = gameModeMap[this.gameMode.constructor.name];

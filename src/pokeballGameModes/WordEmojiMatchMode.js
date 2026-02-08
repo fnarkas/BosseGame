@@ -1,5 +1,5 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
-import { getEmojiWordDictionary, getLetterFilterEnabled } from '../emojiWordDictionary.js';
+import { getEmojiWordDictionary, getLetterFilterEnabled, transformWordCase } from '../emojiWordDictionary.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
 import { resetStreak } from '../streak.js';
 import { updateBoosterBar } from '../boosterBar.js';
@@ -105,12 +105,13 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
         return this.challengeData;
     }
 
-    createChallengeUI(scene) {
+    async createChallengeUI(scene) {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
 
-        // Display the word
-        const wordText = scene.add.text(width / 2, 250, this.challengeData.word, {
+        // Display the word with text case transformation
+        const displayWord = await transformWordCase(this.challengeData.word);
+        const wordText = scene.add.text(width / 2, 250, displayWord, {
             font: 'bold 96px Arial',
             fill: '#2C3E50',
             stroke: '#FFFFFF',

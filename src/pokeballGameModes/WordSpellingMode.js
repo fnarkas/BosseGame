@@ -27,6 +27,30 @@ export class WordSpellingMode extends BasePokeballGameMode {
         this.ballIndicators = [];
         this.livesRemaining = 2; // Start with 2 hearts
         this.heartsDisplay = null;
+
+        // Multi-word progress tracking
+        this.wordsCompleted = 0;
+        this.requiredWords = 3; // Default, will be loaded from config
+        this.wordBallIndicators = [];
+        this.configLoaded = false;
+    }
+
+    async loadConfig() {
+        try {
+            const response = await fetch('/config/minigames.json');
+            if (response.ok) {
+                const serverConfig = await response.json();
+                if (serverConfig.wordSpelling) {
+                    this.requiredWords = serverConfig.wordSpelling.requiredWords || this.requiredWords;
+                    console.log('WordSpellingMode loaded config:', {
+                        requiredWords: this.requiredWords
+                    });
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to load WordSpelling config, using defaults:', error);
+        }
+        this.configLoaded = true;
     }
 
     generateChallenge() {
@@ -111,40 +135,41 @@ export class WordSpellingMode extends BasePokeballGameMode {
     createBallIndicators(scene) {
         const width = scene.cameras.main.width;
         const y = 480;
-        const spacing = 50;
+        const spacing = 60;
 
-        const numLetters = this.validIndices.length;
-        const totalWidth = numLetters * spacing;
+        // Show word-based progress (not letter-based)
+        const totalWidth = this.requiredWords * spacing;
         const startX = width / 2 - totalWidth / 2 + spacing / 2;
 
-        this.ballIndicators = [];
+        this.wordBallIndicators = [];
 
-        for (let i = 0; i < numLetters; i++) {
+        for (let i = 0; i < this.requiredWords; i++) {
             const x = startX + i * spacing;
 
-            const circle = scene.add.circle(x, y, 15,
-                i < this.collectedIndices.size ? 0x27AE60 : 0xffffff, 1);
-            circle.setStrokeStyle(2, 0x000000);
+            const circle = scene.add.circle(x, y, 20,
+                i < this.wordsCompleted ? 0x27AE60 : 0xffffff, 1);
+            circle.setStrokeStyle(3, 0x000000);
 
-            this.ballIndicators.push(circle);
+            this.wordBallIndicators.push(circle);
             this.uiElements.push(circle);
         }
 
         // Add gift emoji at the end
-        const giftX = startX + numLetters * spacing;
+        const giftX = startX + this.requiredWords * spacing;
         const giftEmoji = scene.add.text(giftX, y, '🎁', {
-            fontSize: '40px',
-            padding: { y: 8 }
+            fontSize: '48px',
+            padding: { y: 10 }
         }).setOrigin(0.5);
         this.uiElements.push(giftEmoji);
     }
 
     updateBallIndicators() {
-        for (let i = 0; i < this.ballIndicators.length; i++) {
-            if (i < this.collectedIndices.size) {
-                this.ballIndicators[i].setFillStyle(0x27AE60); // Green
+        // Update word progress indicators
+        for (let i = 0; i < this.wordBallIndicators.length; i++) {
+            if (i < this.wordsCompleted) {
+                this.wordBallIndicators[i].setFillStyle(0x27AE60); // Green
             } else {
-                this.ballIndicators[i].setFillStyle(0xffffff); // White
+                this.wordBallIndicators[i].setFillStyle(0xffffff); // White
             }
         }
     }
@@ -168,7 +193,6 @@ export class WordSpellingMode extends BasePokeballGameMode {
     handleCorrectLetter(scene, selectedLetter, currentIndex) {
         // Add to collected
         this.collectedIndices.add(currentIndex);
-        this.updateBallIndicators();
 
         // Play letter audio
         const audioKey = `letter_audio_${selectedLetter.toLowerCase()}`;
@@ -292,6 +316,7 @@ export class WordSpellingMode extends BasePokeballGameMode {
             // Reset state
             this.hasError = false;
             this.isRevealing = false;
+            this.wordsCompleted = 0; // Reset word progress on game over
 
             // Reset streak since player made an error
             resetStreak();
@@ -309,6 +334,10 @@ export class WordSpellingMode extends BasePokeballGameMode {
 
     handleWordComplete(scene) {
         // All letters collected!
+        // Increment word progress
+        this.wordsCompleted++;
+        this.updateBallIndicators();
+
         // Wait for last letter audio to finish before playing word audio
         scene.time.delayedCall(800, () => {
             playWordAudio(scene, this.challengeData.word);
@@ -331,23 +360,88 @@ export class WordSpellingMode extends BasePokeballGameMode {
         const centerY = 350;
         showSlotParticleEffect(scene, centerX, centerY);
 
-        // Wait for word audio to complete, then trigger reward
-        // Since word audio starts after 800ms delay, we need to wait for it
-        scene.time.delayedCall(900, () => {
-            const audioKey = getWordAudioKey(this.challengeData.word);
-            const wordAudio = scene.sound.get(audioKey);
+        // Check if we've completed all required words
+        if (this.wordsCompleted >= this.requiredWords) {
+            // All words complete! Trigger reward
+            scene.time.delayedCall(900, () => {
+                const audioKey = getWordAudioKey(this.challengeData.word);
+                const wordAudio = scene.sound.get(audioKey);
 
-            if (wordAudio && wordAudio.isPlaying) {
-                wordAudio.once('complete', () => {
-                    this.answerCallback(true, this.challengeData.word, centerX, centerY);
-                });
-            } else {
-                // Fallback: wait 1 second
-                scene.time.delayedCall(1000, () => {
-                    this.answerCallback(true, this.challengeData.word, centerX, centerY);
-                });
-            }
+                if (wordAudio && wordAudio.isPlaying) {
+                    wordAudio.once('complete', () => {
+                        this.answerCallback(true, this.challengeData.word, centerX, centerY);
+                    });
+                } else {
+                    // Fallback: wait 1 second
+                    scene.time.delayedCall(1000, () => {
+                        this.answerCallback(true, this.challengeData.word, centerX, centerY);
+                    });
+                }
+            });
+        } else {
+            // More words needed - load next word after audio completes
+            scene.time.delayedCall(900, () => {
+                const audioKey = getWordAudioKey(this.challengeData.word);
+                const wordAudio = scene.sound.get(audioKey);
+
+                if (wordAudio && wordAudio.isPlaying) {
+                    wordAudio.once('complete', () => {
+                        this.loadNextWord(scene);
+                    });
+                } else {
+                    // Fallback: wait 1 second
+                    scene.time.delayedCall(1000, () => {
+                        this.loadNextWord(scene);
+                    });
+                }
+            });
+        }
+    }
+
+    loadNextWord(scene) {
+        // Clean up current word UI
+        destroyLetterKeyboard(this.keyboardData.elements);
+        destroyLetterSlots(this.slotsData.elements);
+
+        // Reset letter tracking for new word
+        this.currentLetterIndex = 0;
+        this.collectedIndices = new Set();
+        this.usedLetters = [];
+        this.livesRemaining = 2; // Reset hearts for new word
+
+        // Generate new challenge
+        this.generateChallenge();
+
+        // Recreate UI with new word
+        // Hearts display
+        const heartsText = '❤️❤️';
+        this.heartsDisplay = scene.add.text(scene.cameras.main.width / 2, 50, heartsText, {
+            fontSize: '48px',
+            align: 'center'
+        }).setOrigin(0.5);
+        this.uiElements.push(this.heartsDisplay);
+
+        // Letter slots
+        this.slotsData = createLetterSlots(scene, this.challengeData.word, {
+            y: 350,
+            showWord: false,
+            highlightIndex: this.validIndices[this.currentLetterIndex],
+            collectedIndices: this.collectedIndices,
+            nameCase: 'lowercase'
         });
+        this.uiElements.push(...this.slotsData.elements);
+
+        // Letter keyboard
+        this.keyboardData = createLetterKeyboard(scene, {
+            startY: 550,
+            usedLetters: this.usedLetters,
+            onLetterClick: (letter) => this.handleLetterClick(scene, letter),
+            alphabetCase: 'uppercase'
+        });
+        this.uiElements.push(...this.keyboardData.elements);
+
+        // Play word audio for new word
+        playWordAudio(scene, this.challengeData.word);
     }
 
     updateLetterDisplay(scene) {
@@ -400,7 +494,7 @@ export class WordSpellingMode extends BasePokeballGameMode {
         // Clean up component data
         this.keyboardData = null;
         this.slotsData = null;
-        this.ballIndicators = [];
+        this.wordBallIndicators = [];
         this.heartsDisplay = null;
     }
 }

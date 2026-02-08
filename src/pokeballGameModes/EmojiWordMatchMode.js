@@ -1,5 +1,5 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
-import { getEmojiWordDictionary, getLetterFilterEnabled } from '../emojiWordDictionary.js';
+import { getEmojiWordDictionary, getLetterFilterEnabled, transformWordCase } from '../emojiWordDictionary.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
 import { resetStreak } from '../streak.js';
 import { updateBoosterBar } from '../boosterBar.js';
@@ -105,7 +105,7 @@ export class EmojiWordMatchMode extends BasePokeballGameMode {
         return this.challengeData;
     }
 
-    createChallengeUI(scene) {
+    async createChallengeUI(scene) {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
 
@@ -122,6 +122,11 @@ export class EmojiWordMatchMode extends BasePokeballGameMode {
         const spacing = 20;
         const wordsPerRow = 3;
         const rows = Math.ceil(this.challengeData.words.length / wordsPerRow);
+
+        // Pre-fetch all transformed words
+        const transformedWords = await Promise.all(
+            this.challengeData.words.map(word => transformWordCase(word))
+        );
 
         this.challengeData.words.forEach((word, index) => {
             const row = Math.floor(index / wordsPerRow);
@@ -143,15 +148,16 @@ export class EmojiWordMatchMode extends BasePokeballGameMode {
             button.setData('word', word);
             this.uiElements.push(button);
 
-            // Word text
-            const wordText = scene.add.text(x, y, word, {
+            // Word text with text case transformation (use pre-fetched transformed word)
+            const displayWord = transformedWords[index];
+            const wordText = scene.add.text(x, y, displayWord, {
                 font: 'bold 36px Arial',
                 fill: '#2C3E50'
             }).setOrigin(0.5);
             wordText.setData('clearOnNewChallenge', true);
             this.uiElements.push(wordText);
 
-            // Store button reference
+            // Store button reference (keep original word for answer checking)
             this.wordButtons.push({ button, wordText, word, x, y });
 
             // Hover effects

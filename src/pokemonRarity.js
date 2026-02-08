@@ -87,8 +87,8 @@ export function calculateCatchProbability(pokemon, pokeballMultiplier, ballType 
     return 1.0;
   }
 
-  // Legendary Ball always catches 3-star (legendary) Pokemon
-  if (ballType === 'legendaryball' && rarityInfo.stars === 3) {
+  // Legendary Ball always catches all Pokemon (guaranteed)
+  if (ballType === 'legendaryball') {
     return 1.0;
   }
 

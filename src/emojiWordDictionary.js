@@ -126,6 +126,68 @@ export function setLetterFilterEnabled(enabled) {
     localStorage.setItem('emojiWordLetterFilter', enabled ? 'true' : 'false');
 }
 
+// Cache for config to avoid repeated fetches
+let cachedConfig = null;
+let configPromise = null;
+
+/**
+ * Load minigames config from server
+ * @returns {Promise<Object>} The config object
+ */
+async function loadConfig() {
+    if (cachedConfig) {
+        return cachedConfig;
+    }
+
+    if (configPromise) {
+        return configPromise;
+    }
+
+    configPromise = fetch('/config/minigames.json')
+        .then(response => response.json())
+        .then(config => {
+            cachedConfig = config;
+            configPromise = null;
+            return config;
+        })
+        .catch(error => {
+            console.error('Failed to load config:', error);
+            configPromise = null;
+            return { emojiWord: { textCase: 'uppercase' } }; // Default
+        });
+
+    return configPromise;
+}
+
+/**
+ * Get text case setting for word display from server config
+ * @returns {Promise<string>} 'uppercase' | 'lowercase' | 'titlecase'
+ */
+export async function getWordTextCase() {
+    const config = await loadConfig();
+    return config.emojiWord?.textCase || 'uppercase'; // Default to uppercase
+}
+
+/**
+ * Transform a word to the specified text case
+ * @param {string} word - The word to transform
+ * @param {string} textCase - Optional: 'uppercase' | 'lowercase' | 'titlecase'. If not provided, fetches from config
+ * @returns {Promise<string>|string} The transformed word
+ */
+export async function transformWordCase(word, textCase = null) {
+    const caseToUse = textCase || await getWordTextCase();
+
+    switch (caseToUse) {
+        case 'lowercase':
+            return word.toLowerCase();
+        case 'titlecase':
+            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        case 'uppercase':
+        default:
+            return word.toUpperCase();
+    }
+}
+
 /**
  * Get all unique starting letters in dictionary
  */

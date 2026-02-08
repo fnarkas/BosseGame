@@ -14,6 +14,7 @@ export class NumberListeningMode extends BasePokeballGameMode {
         this.clearedNumbers = new Set(); // Track which numbers have been cleared
 
         this.currentNumber = null;
+        this.hundredsZone = null;
         this.tensZone = null;
         this.onesZone = null;
         this.digitBoxes = []; // 0-9 draggable boxes
@@ -88,7 +89,8 @@ export class NumberListeningMode extends BasePokeballGameMode {
 
         this.challengeData = {
             number: this.currentNumber,
-            tens: Math.floor(this.currentNumber / 10),
+            hundreds: Math.floor(this.currentNumber / 100),
+            tens: Math.floor((this.currentNumber % 100) / 10),
             ones: this.currentNumber % 10
         };
 
@@ -117,14 +119,54 @@ export class NumberListeningMode extends BasePokeballGameMode {
         // Play number audio automatically when challenge loads
         this.playNumberAudio(scene);
 
-        // Create two drop zones for tens and ones (side by side)
+        // Create drop zones (2 or 3 depending on number size)
         const dropZoneY = 320;
         const dropZoneSize = 120;
         const dropZoneSpacing = 20;
+        const needsHundreds = this.currentNumber >= 100;
+        const numZones = needsHundreds ? 3 : 2;
 
-        // Tens place (left)
+        // Calculate positions to center the zones
+        const totalWidth = numZones * dropZoneSize + (numZones - 1) * dropZoneSpacing;
+        const startX = (width - totalWidth) / 2 + dropZoneSize / 2;
+
+        if (needsHundreds) {
+            // Hundreds place (left)
+            this.hundredsZone = scene.add.rectangle(
+                startX,
+                dropZoneY,
+                dropZoneSize,
+                dropZoneSize,
+                0xFFFFFF,
+                0.2
+            );
+            this.hundredsZone.setStrokeStyle(4, 0x000000, 1);
+            this.hundredsZone.setInteractive();
+            this.hundredsZone.setData('value', null);
+            this.hundredsZone.setData('place', 'hundreds');
+            this.uiElements.push(this.hundredsZone);
+
+            // Hundreds label
+            const hundredsLabel = scene.add.text(
+                this.hundredsZone.x,
+                this.hundredsZone.y,
+                '',
+                {
+                    fontSize: '72px',
+                    fontFamily: 'Arial',
+                    color: '#000000',
+                    fontStyle: 'bold'
+                }
+            );
+            hundredsLabel.setOrigin(0.5);
+            this.hundredsZone.setData('label', hundredsLabel);
+            this.uiElements.push(hundredsLabel);
+        }
+
+        // Tens place (middle or left if no hundreds)
+        const tensX = needsHundreds ? startX + dropZoneSize + dropZoneSpacing : startX;
         this.tensZone = scene.add.rectangle(
-            width / 2 - dropZoneSize / 2 - dropZoneSpacing / 2,
+            tensX,
             dropZoneY,
             dropZoneSize,
             dropZoneSize,
@@ -154,8 +196,11 @@ export class NumberListeningMode extends BasePokeballGameMode {
         this.uiElements.push(tensLabel);
 
         // Ones place (right)
+        const onesX = needsHundreds ?
+            startX + 2 * (dropZoneSize + dropZoneSpacing) :
+            startX + dropZoneSize + dropZoneSpacing;
         this.onesZone = scene.add.rectangle(
-            width / 2 + dropZoneSize / 2 + dropZoneSpacing / 2,
+            onesX,
             dropZoneY,
             dropZoneSize,
             dropZoneSize,
@@ -197,8 +242,9 @@ export class NumberListeningMode extends BasePokeballGameMode {
     createMatrixIcon(scene, dropZoneY) {
         const width = scene.cameras.main.width;
 
-        // Position to the right of the drop zones
-        const iconX = width / 2 + 180;
+        // Position to the right of the drop zones (adjust for 3 zones if needed)
+        const needsHundreds = this.currentNumber >= 100;
+        const iconX = needsHundreds ? width / 2 + 260 : width / 2 + 180;
         const iconY = dropZoneY;
         const iconSize = 60;
 
@@ -337,7 +383,8 @@ export class NumberListeningMode extends BasePokeballGameMode {
     }
 
     checkHoverOverZones(scene, pointer) {
-        [this.tensZone, this.onesZone].forEach(zone => {
+        const zones = this.hundredsZone ? [this.hundredsZone, this.tensZone, this.onesZone] : [this.tensZone, this.onesZone];
+        zones.forEach(zone => {
             const bounds = zone.getBounds();
             const isOver = Phaser.Geom.Rectangle.Contains(bounds, pointer.x, pointer.y);
 
@@ -356,8 +403,9 @@ export class NumberListeningMode extends BasePokeballGameMode {
         const digitText = draggedBox.getData('text');
         let dropped = false;
 
-        // Check if dropped on tens or ones zone
-        [this.tensZone, this.onesZone].forEach(zone => {
+        // Check if dropped on any zone
+        const zones = this.hundredsZone ? [this.hundredsZone, this.tensZone, this.onesZone] : [this.tensZone, this.onesZone];
+        zones.forEach(zone => {
             const bounds = zone.getBounds();
             if (Phaser.Geom.Rectangle.Contains(bounds, pointer.x, pointer.y)) {
                 // Update zone value and label
@@ -380,8 +428,16 @@ export class NumberListeningMode extends BasePokeballGameMode {
             ease: 'Back.easeOut'
         });
 
-        // Check if both zones are filled
-        if (this.tensZone.getData('value') !== null && this.onesZone.getData('value') !== null) {
+        // Check if all required zones are filled
+        const tensValue = this.tensZone.getData('value');
+        const onesValue = this.onesZone.getData('value');
+        const hundredsValue = this.hundredsZone ? this.hundredsZone.getData('value') : null;
+
+        const allFilled = this.hundredsZone ?
+            (hundredsValue !== null && tensValue !== null && onesValue !== null) :
+            (tensValue !== null && onesValue !== null);
+
+        if (allFilled) {
             this.checkAnswer(scene);
         }
     }
@@ -389,7 +445,8 @@ export class NumberListeningMode extends BasePokeballGameMode {
     checkAnswer(scene) {
         const tensValue = this.tensZone.getData('value');
         const onesValue = this.onesZone.getData('value');
-        const playerNumber = tensValue * 10 + onesValue;
+        const hundredsValue = this.hundredsZone ? this.hundredsZone.getData('value') : 0;
+        const playerNumber = hundredsValue * 100 + tensValue * 10 + onesValue;
 
         if (playerNumber === this.currentNumber) {
             // Correct!
@@ -436,6 +493,7 @@ export class NumberListeningMode extends BasePokeballGameMode {
 
     showCorrectFeedback(scene) {
         // Green flash on zones
+        if (this.hundredsZone) this.hundredsZone.setFillStyle(0x27AE60, 0.5);
         this.tensZone.setFillStyle(0x27AE60, 0.5);
         this.onesZone.setFillStyle(0x27AE60, 0.5);
 
@@ -447,10 +505,22 @@ export class NumberListeningMode extends BasePokeballGameMode {
         this.isRevealing = true;
 
         // Red flash on zones
+        if (this.hundredsZone) this.hundredsZone.setFillStyle(0xFF0000, 0.5);
         this.tensZone.setFillStyle(0xFF0000, 0.5);
         this.onesZone.setFillStyle(0xFF0000, 0.5);
 
         // Shake animation
+        if (this.hundredsZone) {
+            const originalHundredsX = this.hundredsZone.x;
+            scene.tweens.add({
+                targets: [this.hundredsZone, this.hundredsZone.getData('label')],
+                x: originalHundredsX - 10,
+                duration: 50,
+                yoyo: true,
+                repeat: 3
+            });
+        }
+
         const originalTensX = this.tensZone.x;
         const originalOnesX = this.onesZone.x;
 
@@ -480,6 +550,13 @@ export class NumberListeningMode extends BasePokeballGameMode {
         this.clearZones();
 
         // Show correct answer in gold
+        if (this.hundredsZone && this.challengeData.hundreds > 0) {
+            this.hundredsZone.setData('value', this.challengeData.hundreds);
+            this.hundredsZone.getData('label').setText(this.challengeData.hundreds.toString());
+            this.hundredsZone.getData('label').setColor('#FFD700');
+            this.hundredsZone.setFillStyle(0xFFD700, 0.5);
+        }
+
         this.tensZone.setData('value', this.challengeData.tens);
         this.tensZone.getData('label').setText(this.challengeData.tens.toString());
         this.tensZone.getData('label').setColor('#FFD700');
@@ -492,8 +569,13 @@ export class NumberListeningMode extends BasePokeballGameMode {
         this.onesZone.setFillStyle(0xFFD700, 0.5);
 
         // Pulse animation
+        const targets = [this.tensZone, this.onesZone, this.tensZone.getData('label'), this.onesZone.getData('label')];
+        if (this.hundredsZone && this.challengeData.hundreds > 0) {
+            targets.push(this.hundredsZone, this.hundredsZone.getData('label'));
+        }
+
         scene.tweens.add({
-            targets: [this.tensZone, this.onesZone, this.tensZone.getData('label'), this.onesZone.getData('label')],
+            targets: targets,
             scaleX: 1.2,
             scaleY: 1.2,
             duration: 500,
@@ -505,6 +587,13 @@ export class NumberListeningMode extends BasePokeballGameMode {
 
     clearZones() {
         // Reset zones
+        if (this.hundredsZone) {
+            this.hundredsZone.setData('value', null);
+            this.hundredsZone.getData('label').setText('');
+            this.hundredsZone.getData('label').setColor('#000000');
+            this.hundredsZone.setFillStyle(0xFFFFFF, 0.2);
+        }
+
         this.tensZone.setData('value', null);
         this.tensZone.getData('label').setText('');
         this.tensZone.getData('label').setColor('#000000');
@@ -517,14 +606,15 @@ export class NumberListeningMode extends BasePokeballGameMode {
     }
 
     loadNextChallenge(scene) {
-        this.clearZones();
+        // Clean up current UI
+        this.cleanup(scene);
         this.isRevealing = false;
 
         // Generate new challenge
         this.generateChallenge();
 
-        // Play new audio
-        this.playNumberAudio(scene);
+        // Recreate UI for new challenge (may have different number of zones)
+        this.createChallengeUI(scene);
     }
 
     showSuccessParticles(scene, x, y) {
@@ -609,6 +699,7 @@ export class NumberListeningMode extends BasePokeballGameMode {
         }
 
         // Clear references
+        this.hundredsZone = null;
         this.tensZone = null;
         this.onesZone = null;
         this.digitBoxes = [];

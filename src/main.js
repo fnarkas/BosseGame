@@ -35,8 +35,10 @@ const GAMES_REGISTRY = [
     { path: '/numbers', name: '🔢 Number Listening', mode: 'numbers-only', scene: 'PokeballGameScene', weightKey: 'numberListening' },
     { path: '/numberreading', name: '👀🔢 Number Reading', mode: 'numberreading-only', scene: 'PokeballGameScene', weightKey: 'numberReading' },
     { path: '/wordspelling', name: '⌨️ Word Spelling', mode: 'wordspelling-only', scene: 'PokeballGameScene', weightKey: 'wordSpelling' },
+    { path: '/addition', name: '➕ Addition', mode: 'addition-only', scene: 'PokeballGameScene', weightKey: 'addition' },
     { path: '/legendary', name: '👑 Legendary Challenge', mode: 'legendary-only', scene: 'PokeballGameScene', weightKey: 'legendary' },
     { path: '/legendarynumbers', name: '🔢👑 Legendary Numbers', mode: 'legendary-numbers-only', scene: 'PokeballGameScene', weightKey: 'legendaryNumbers' },
+    { path: '/dayofweek', name: '📅 Day of Week', mode: 'dayofweek-only', scene: 'PokeballGameScene', weightKey: 'dayMatch' },
     { path: '/pokeballs', name: '🎲 Random Mix', mode: null, scene: 'PokeballGameScene', weightKey: null }
 ];
 
@@ -365,6 +367,9 @@ async function showAdminPage() {
                         <option value="pokemon-catching">🎯 Pokemon Catching (Letter Match)</option>
                         <option value="legendary">👑 Legendary Challenge</option>
                         <option value="legendary-numbers">🔢👑 Legendary Numbers</option>
+                        <option value="word-spelling">⌨️ Word Spelling</option>
+                        <option value="dayofweek">📅 Day of Week</option>
+                        <option value="addition">➕ Addition</option>
                     </select>
                 </div>
 
@@ -514,6 +519,89 @@ async function showAdminPage() {
                     <button onclick="saveMinigameConfig('legendary-numbers')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Legendary Numbers Config</button>
                     <div id="config-legendary-numbers-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
                 </div>
+
+                <div id="config-word-spelling" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                    <h3 style="margin-top: 0;">Word Spelling Configuration</h3>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Words Required for Gift:</label>
+                        <input type="number" id="config-wordspelling-required" value="${serverConfig.wordSpelling?.requiredWords || 3}" min="1" max="10" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">How many words player must spell correctly to earn coins</span>
+                    </div>
+
+                    <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196F3; margin-bottom: 20px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ About Word Spelling:</div>
+                        <div style="color: #666; font-size: 14px;">
+                            Players hear Swedish words and must spell them using a letter keyboard.<br>
+                            Each word allows 2 mistakes (❤️❤️) before showing the correct answer and restarting.<br>
+                            Progress is shown with balls (○ ○ ○ → 🎁) representing completed words.<br>
+                            Running out of hearts resets word progress back to 0.
+                        </div>
+                    </div>
+
+                    <button onclick="saveMinigameConfig('word-spelling')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Word Spelling Config</button>
+                    <div id="config-wordspelling-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
+                </div>
+
+                <div id="config-dayofweek" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                    <h3 style="margin-top: 0;">Day of Week Configuration</h3>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Max Errors (Hearts):</label>
+                        <input type="number" id="config-dayofweek-errors" value="${serverConfig.dayMatch?.maxErrors || 3}" min="1" max="10" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">❤️ Number of mistakes allowed before restarting</span>
+                    </div>
+
+                    <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196F3; margin-bottom: 20px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ About Day of Week:</div>
+                        <div style="color: #666; font-size: 14px;">
+                            Players drag Swedish day names (Måndag, Tisdag, etc.) to their matching numbers (1-7).<br>
+                            Each wrong match loses a heart (❤️). When all hearts are lost, the game restarts with a new scrambled layout.
+                        </div>
+                    </div>
+
+                    <button onclick="saveMinigameConfig('dayofweek')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Day of Week Config</button>
+                    <div id="config-dayofweek-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
+                </div>
+
+                <div id="config-addition" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                    <h3 style="margin-top: 0;">Addition Configuration</h3>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Number of Terms:</label>
+                        <input type="number" id="config-addition-terms" value="${serverConfig.addition?.numberOfTerms || 2}" min="2" max="5" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">How many numbers to add together (e.g., 2 = a+b, 3 = a+b+c)</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Maximum Sum:</label>
+                        <input type="number" id="config-addition-maxsum" value="${serverConfig.addition?.maxSum || 99}" min="10" max="999" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">The highest possible answer (e.g., 99 for numbers under 100)</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="config-addition-onlyone" ${serverConfig.addition?.onlyOneMultiDigit !== false ? 'checked' : ''} style="width: 24px; height: 24px; margin-right: 10px; cursor: pointer;">
+                            <span style="font-weight: bold;">Only One Multi-Digit Term</span>
+                        </label>
+                        <div style="color: #666; margin-top: 5px; font-size: 14px; margin-left: 34px;">
+                            When checked, only one number can have multiple digits (e.g., 45 + 3 + 2 ✓, but not 45 + 23 ✗)<br>
+                            Makes problems easier to solve mentally
+                        </div>
+                    </div>
+
+                    <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196F3; margin-bottom: 20px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ About Addition:</div>
+                        <div style="color: #666; font-size: 14px;">
+                            Players solve simple addition problems and select the correct answer from 4 choices.<br>
+                            Each problem is randomly generated based on your settings.<br>
+                            Progress is shown with balls (○ ○ ○ → 🎁). Players need 3 correct answers to earn a Pokemon.
+                        </div>
+                    </div>
+
+                    <button onclick="saveMinigameConfig('addition')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Addition Config</button>
+                    <div id="config-addition-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
+                </div>
             </div>
 
             <div style="background: #f5f5f5; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
@@ -531,6 +619,25 @@ async function showAdminPage() {
                     <div style="color: #666; font-size: 14px; padding: 10px; background: #e3f2fd; border-radius: 4px;">
                         When enabled, all 5 words in each round will start with the same letter (e.g., all B words: BIL, BOLL, BOK, BLOMMA, BANAN)
                     </div>
+                </div>
+
+                <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 20px;">
+                    <div style="margin-bottom: 15px;">
+                        <h3 style="margin: 0;">Text Case</h3>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Word display format:</label>
+                        <select id="text-case-select" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 14px; width: 100%; max-width: 300px;">
+                            <option value="uppercase" ${serverConfig.emojiWord?.textCase === 'uppercase' ? 'selected' : ''}>UPPERCASE</option>
+                            <option value="titlecase" ${serverConfig.emojiWord?.textCase === 'titlecase' ? 'selected' : ''}>Titlecase</option>
+                            <option value="lowercase" ${serverConfig.emojiWord?.textCase === 'lowercase' ? 'selected' : ''}>lowercase</option>
+                        </select>
+                    </div>
+                    <div style="color: #666; font-size: 14px; padding: 10px; background: #fff3e0; border-radius: 4px; margin-bottom: 20px;">
+                        Controls how words appear in Word-Emoji and Emoji-Word matching games
+                    </div>
+                    <button onclick="saveMinigameConfig('emoji-word')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Text Case</button>
+                    <div id="config-emojiword-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
                 </div>
 
                 <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
@@ -766,6 +873,9 @@ async function showAdminPage() {
         document.getElementById('config-pokemon-catching').style.display = 'none';
         document.getElementById('config-legendary').style.display = 'none';
         document.getElementById('config-legendary-numbers').style.display = 'none';
+        document.getElementById('config-word-spelling').style.display = 'none';
+        document.getElementById('config-dayofweek').style.display = 'none';
+        document.getElementById('config-addition').style.display = 'none';
 
         // Show selected config
         document.getElementById('config-' + value).style.display = 'block';
@@ -932,6 +1042,54 @@ async function showAdminPage() {
                 }
             } catch (error) {
                 console.error('Failed to save catching config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
+        } else if (game === 'emoji-word') {
+            const textCase = document.getElementById('text-case-select').value;
+
+            const message = document.getElementById('config-emojiword-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                // Load current config
+                const response = await fetch('/config/minigames.json');
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' },
+                    emojiWord: { textCase: 'uppercase' }
+                };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                // Update emoji word config
+                fullConfig.emojiWord = {
+                    textCase: textCase
+                };
+
+                // Save to server
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Text case saved to minigames.json! All devices will use this setting.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save emoji-word config:', error);
                 message.textContent = '❌ Failed to save config. Check console for details.';
                 message.style.color = '#f44336';
             }
@@ -1148,6 +1306,161 @@ async function showAdminPage() {
                 }
             } catch (error) {
                 console.error('Failed to save legendary numbers config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
+        } else if (game === 'word-spelling') {
+            const requiredWords = parseInt(document.getElementById('config-wordspelling-required').value);
+
+            const message = document.getElementById('config-wordspelling-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                // Load current config
+                const response = await fetch('/config/minigames.json');
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' },
+                    pokemonCatching: { nameCase: 'uppercase', alphabetCase: 'lowercase' },
+                    legendary: { coinReward: 100, maxErrors: 3 },
+                    legendaryNumbers: { coinReward: 200, maxErrors: 5, numbers: '0-99' },
+                    wordSpelling: { requiredWords: 3 }
+                };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                // Update word spelling config
+                fullConfig.wordSpelling = {
+                    requiredWords: requiredWords
+                };
+
+                // Save to server
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Word Spelling config saved to server! All devices will use these settings.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save word spelling config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
+        } else if (game === 'dayofweek') {
+            const maxErrors = parseInt(document.getElementById('config-dayofweek-errors').value);
+
+            const message = document.getElementById('config-dayofweek-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                // Load current config
+                const response = await fetch('/config/minigames.json');
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' },
+                    pokemonCatching: { nameCase: 'uppercase', alphabetCase: 'lowercase' },
+                    legendary: { coinReward: 100, maxErrors: 3 },
+                    legendaryNumbers: { coinReward: 200, maxErrors: 5, numbers: '0-99' },
+                    wordSpelling: { requiredWords: 3 },
+                    dayMatch: { maxErrors: 3 }
+                };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                // Update day match config
+                fullConfig.dayMatch = {
+                    maxErrors: maxErrors
+                };
+
+                // Save to server
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Day of Week config saved to server! All devices will use these settings.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save day of week config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
+        } else if (game === 'addition') {
+            const numberOfTerms = parseInt(document.getElementById('config-addition-terms').value);
+            const maxSum = parseInt(document.getElementById('config-addition-maxsum').value);
+            const onlyOneMultiDigit = document.getElementById('config-addition-onlyone').checked;
+
+            const message = document.getElementById('config-addition-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                // Load current config
+                const response = await fetch('/config/minigames.json');
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' },
+                    addition: { numberOfTerms: 2, maxSum: 99, onlyOneMultiDigit: true }
+                };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                // Update addition config
+                fullConfig.addition = {
+                    numberOfTerms: numberOfTerms,
+                    maxSum: maxSum,
+                    onlyOneMultiDigit: onlyOneMultiDigit
+                };
+
+                // Save to server
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Addition config saved to server! All devices will use these settings.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save addition config:', error);
                 message.textContent = '❌ Failed to save config. Check console for details.';
                 message.style.color = '#f44336';
             }
@@ -1441,6 +1754,7 @@ async function showAdminPage() {
             setTimeout(() => { msgDiv.textContent = ''; }, 2000);
         });
     };
+
 
     window.addEmojiWordEntry = function() {
         const word = document.getElementById('new-word').value.trim().toUpperCase();
