@@ -76,6 +76,26 @@ export class PokeballGameScene extends Phaser.Scene {
             window.openStore();
         });
 
+        // Settings button (gear icon, before store button)
+        const settingsBtn = this.add.text(width - 230, 52, '⚙️', {
+            fontSize: '48px',
+            padding: { x: 10, y: 5 }
+        }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
+        settingsBtn.setDepth(1002); // Above overlay
+
+        settingsBtn.on('pointerdown', () => {
+            this.scene.pause();
+            this.scene.launch('SettingsScene', { previousScene: 'PokeballGameScene' });
+        });
+
+        // Hover effect for settings button
+        settingsBtn.on('pointerover', () => {
+            settingsBtn.setScale(1.1);
+        });
+        settingsBtn.on('pointerout', () => {
+            settingsBtn.setScale(1);
+        });
+
         // Coin counter (top right)
         // Coin sprite (using tiny version for better quality)
         const coinIcon = this.add.image(width - 110, 40, 'coin-tiny');

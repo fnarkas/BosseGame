@@ -4,6 +4,7 @@ import { BootScene } from './scenes/BootScene.js';
 import { MainGameScene } from './scenes/MainGameScene.js';
 import { PokedexScene } from './scenes/PokedexScene.js';
 import { PokeballGameScene } from './scenes/PokeballGameScene.js';
+import SettingsScene from './scenes/SettingsScene.js';
 import { initPokedex, showPokedex } from './pokedex.js';
 import { initPokemonCaughtPopup, showPokemonCaughtPopup } from './pokemonCaughtPopup.js';
 import { initStore, openStore } from './store.js';
@@ -95,7 +96,7 @@ if (showGamesMenu) {
         height: 768,
         parent: 'game-container',
         backgroundColor: '#87CEEB',
-        scene: [BootScene, MainGameScene, PokedexScene, PokeballGameScene],
+        scene: [BootScene, MainGameScene, PokedexScene, PokeballGameScene, SettingsScene],
         physics: {
             default: 'arcade',
             arcade: {

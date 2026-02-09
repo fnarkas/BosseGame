@@ -259,6 +259,12 @@ export class BootScene extends Phaser.Scene {
     }
 
     create() {
+        // Load and apply saved volume
+        const savedVolume = localStorage.getItem('gameVolume');
+        if (savedVolume !== null) {
+            this.sound.volume = parseFloat(savedVolume);
+        }
+
         // Generate dice face textures
         this.generateDiceFaces();
 

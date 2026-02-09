@@ -78,6 +78,25 @@ export class MainGameScene extends Phaser.Scene {
             window.openStore();
         });
 
+        // Settings button (gear icon)
+        const settingsBtn = this.add.text(width - 230, 52, '⚙️', {
+            fontSize: '48px',
+            padding: { x: 10, y: 5 }
+        }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
+
+        settingsBtn.on('pointerdown', () => {
+            this.scene.pause();
+            this.scene.launch('SettingsScene', { previousScene: 'MainGameScene' });
+        });
+
+        // Hover effect for settings button
+        settingsBtn.on('pointerover', () => {
+            settingsBtn.setScale(1.1);
+        });
+        settingsBtn.on('pointerout', () => {
+            settingsBtn.setScale(1);
+        });
+
         // Mini-game button (dice icon sprite)
         const diceBtn = this.add.image(width - 90, 52, 'dice-icon');
         diceBtn.setOrigin(1, 0.5);

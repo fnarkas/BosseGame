@@ -1,9 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(magick:*)",
-      "Bash(npm install:*)",
-      "Bash(python3:*)"
+      "Bash(do edge-tts --voice sv-SE-MattiasNeural --text \"$i\" --write-media \"public/number_audio/$i.mp3\")",
+      "Bash(do ffmpeg -i \"$i.mp3\" -af \"silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.05:stop_periods=-1:stop_threshold=-50dB:stop_silence=0.05\" -y \"$i.tmp.mp3\")",
+      "Bash(/dev/null)",
+      "Bash(do [ -f \"$i.tmp.mp3\" ])",
+      "Bash(do:*)",
+      "Bash(for i in {101..199})",
+      "Bash(bash -c 'rm -v 1{01..99}.mp3 2>&1 | head -5')",
+      "Bash(for i in {11..19})",
+      "Bash(for:*)"
     ],
     "deny": [],
     "ask": []
