@@ -24,3 +24,6 @@
 
 # 2026-01-16
 * Det var några dagar sedan Bosse spelade sist. Idag klarade han dels att matcha alla små bokstäver med stora (legendary alphabet game) OCH att skriva in alla siffror 0-99. Det gick mycket bra med siffrorna, men det var ett gäng han hade återkommande problem med: 12-20, 40-49 samt 30, 50, 60, 70, 80, 90.
+
+# 2026-02-09
+* Bosse har spelat ett par gånger till, men idag var första gången jag ändrade några spel. Han fick lyssna efter 100-199, samt spela det nya höger/vänster spelet. Samt enkel addition. Han klarade alla spelen förvånansvärt bra!
