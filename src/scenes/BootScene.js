@@ -188,12 +188,22 @@ export class BootScene extends Phaser.Scene {
     }
 
     loadNumberAudio() {
-        // Load number audio for numbers 0-200
-        for (let num = 0; num <= 200; num++) {
+        // Load number audio for numbers 0-99 (individual files)
+        for (let num = 0; num <= 99; num++) {
             const audioKey = `number_audio_${num}`;
             const audioFilename = `${num}.mp3`;
             this.load.audio(audioKey, `number_audio/${audioFilename}`);
         }
+
+        // Load hundreds markers (100, 200, 300) for runtime stitching
+        // Numbers 100-399 will be composed by playing hundreds + remainder
+        // e.g., 245 = play "200" + "45"
+        const hundreds = [100, 200, 300];
+        hundreds.forEach(num => {
+            const audioKey = `number_audio_${num}`;
+            const audioFilename = `${num}.mp3`;
+            this.load.audio(audioKey, `number_audio/${audioFilename}`);
+        });
     }
 
     loadWordAudio() {

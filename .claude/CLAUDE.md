@@ -372,3 +372,45 @@ The rarity system uses total stats:
 ✅ **Do use loops over POKEMON_DATA** - Automatically scales
 ✅ **Do test admin panel after changes** - Easiest way to verify all Pokemon
 ✅ **Do update comments from specific numbers** - Keep docs accurate
+
+## TTS Audio Trimming
+
+**CRITICAL: Always trim Edge-TTS files - they have ~240ms start + ~930ms end silence!**
+
+### Quick Guide
+
+1. Generate audio with edge-tts
+2. **Trim silence** using script below
+3. Result: ~55% smaller files, perfect for audio stitching
+
+### Trimming Script
+
+Use `trim_audio_silence.py`:
+```python
+import subprocess, os
+from pathlib import Path
+
+def trim_audio_file(filepath):
+    temp = str(filepath) + ".tmp.mp3"
+    subprocess.run([
+        'ffmpeg', '-i', str(filepath),
+        '-af', 'silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.05:stop_periods=-1:stop_threshold=-50dB:stop_silence=0.05',
+        '-y', temp
+    ], capture_output=True, check=True)
+    os.replace(temp, filepath)
+
+audio_dir = Path('public/YOUR_FOLDER')  # Change this
+for f in audio_dir.glob('*.mp3'):
+    trim_audio_file(f)
+```
+
+### Audio Stitching Timing
+
+After trimming, use 50ms gap for natural speech:
+```javascript
+const gapMs = 50;
+const delayMs = this.firstAudio.duration * 1000 + gapMs;
+scene.time.delayedCall(delayMs, () => this.secondAudio.play());
+```
+
+Gap guide: 0-50ms = tight, 50-100ms = natural, 100ms+ = slow

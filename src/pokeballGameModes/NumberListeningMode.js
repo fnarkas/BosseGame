@@ -20,6 +20,8 @@ export class NumberListeningMode extends BasePokeballGameMode {
         this.digitBoxes = []; // 0-9 draggable boxes
         this.ballIndicators = [];
         this.currentAudio = null;
+        this.hundredsAudio = null; // Pre-created audio for hundreds (100, 200, 300)
+        this.remainderAudio = null; // Pre-created audio for remainder (0-99)
         this.isRevealing = false;
         this.configLoaded = false;
     }
@@ -115,6 +117,17 @@ export class NumberListeningMode extends BasePokeballGameMode {
             this.playNumberAudio(scene);
         });
         this.uiElements.push(speakerBtn);
+
+        // Pre-create audio instances for instant playback (eliminates pause in stitching)
+        if (this.currentNumber >= 100 && this.currentNumber < 400) {
+            const hundreds = Math.floor(this.currentNumber / 100) * 100;
+            const remainder = this.currentNumber % 100;
+
+            this.hundredsAudio = scene.sound.add(`number_audio_${hundreds}`);
+            if (remainder > 0) {
+                this.remainderAudio = scene.sound.add(`number_audio_${remainder}`);
+            }
+        }
 
         // Play number audio automatically when challenge loads
         this.playNumberAudio(scene);
@@ -668,23 +681,40 @@ export class NumberListeningMode extends BasePokeballGameMode {
     }
 
     playNumberAudio(scene) {
-        const audioKey = `number_audio_${this.currentNumber}`;
-
-        // Stop and destroy any currently playing audio
-        if (this.currentAudio) {
-            if (this.currentAudio.isPlaying) {
-                this.currentAudio.stop();
-            }
-            this.currentAudio.destroy();
-            this.currentAudio = null;
+        // Stop any currently playing audio
+        if (this.currentAudio && this.currentAudio.isPlaying) {
+            this.currentAudio.stop();
         }
 
-        // Play the audio (Phaser will handle if it doesn't exist)
-        try {
-            this.currentAudio = scene.sound.add(audioKey);
-            this.currentAudio.play();
-        } catch (error) {
-            console.warn(`Audio not found for number: ${this.currentNumber} (key: ${audioKey})`);
+        // For numbers >= 100, use pre-created audio instances with overlapping playback
+        // e.g., 245 = play "200" + "45" with 150ms overlap for natural flow
+        if (this.currentNumber >= 100 && this.currentNumber < 400) {
+            const remainder = this.currentNumber % 100;
+
+            // Use pre-created hundreds audio
+            this.currentAudio = this.hundredsAudio;
+            this.hundredsAudio.play();
+
+            // If there's a remainder, start it when hundreds finishes (no overlap)
+            if (remainder > 0 && this.remainderAudio) {
+                const gapMs = 50; // 50ms gap between audio parts for natural pause
+                const hundredsDuration = this.hundredsAudio.duration * 1000; // Convert to ms
+                const delayMs = hundredsDuration + gapMs;
+
+                scene.time.delayedCall(delayMs, () => {
+                    this.currentAudio = this.remainderAudio;
+                    this.remainderAudio.play();
+                });
+            }
+        } else {
+            // For numbers < 100, play directly
+            const audioKey = `number_audio_${this.currentNumber}`;
+            try {
+                this.currentAudio = scene.sound.add(audioKey);
+                this.currentAudio.play();
+            } catch (error) {
+                console.warn(`Audio not found for number: ${this.currentNumber} (key: ${audioKey})`);
+            }
         }
     }
 
@@ -696,6 +726,23 @@ export class NumberListeningMode extends BasePokeballGameMode {
             }
             this.currentAudio.destroy();
             this.currentAudio = null;
+        }
+
+        // Destroy pre-created audio instances
+        if (this.hundredsAudio) {
+            if (this.hundredsAudio.isPlaying) {
+                this.hundredsAudio.stop();
+            }
+            this.hundredsAudio.destroy();
+            this.hundredsAudio = null;
+        }
+
+        if (this.remainderAudio) {
+            if (this.remainderAudio.isPlaying) {
+                this.remainderAudio.stop();
+            }
+            this.remainderAudio.destroy();
+            this.remainderAudio = null;
         }
 
         // Clear references
