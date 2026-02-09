@@ -11,7 +11,8 @@
     "wordSpelling": 40,
     "legendary": 5,
     "legendaryNumbers": 0,
-    "addition": 40
+    "addition": 40,
+    "shapeDirections": 10
   },
   "numbers": {
     "required": 5,

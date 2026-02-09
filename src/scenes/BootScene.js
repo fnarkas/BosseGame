@@ -87,6 +87,9 @@ export class BootScene extends Phaser.Scene {
         // Load day audio
         this.loadDayAudio();
 
+        // Load shape directions audio
+        this.loadShapeDirectionsAudio();
+
         // Load minigame icons (256x256 PNG with transparent backgrounds)
         this.load.image('game-mode-letter', 'minigame_icons/letter_listening.png');
         this.load.image('game-mode-word', 'minigame_icons/word_emoji_match.png');
@@ -101,6 +104,7 @@ export class BootScene extends Phaser.Scene {
         this.load.image('game-mode-legendary-numbers', 'minigame_icons/legendary_numbers.png');
         this.load.image('game-mode-dayofweek', 'minigame_icons/day_of_week.png');
         this.load.image('game-mode-addition', 'minigame_icons/addition.png');
+        this.load.image('game-mode-shapedirections', 'minigame_icons/shape_directions.png');
     }
 
     loadPokemonImages() {
@@ -219,6 +223,28 @@ export class BootScene extends Phaser.Scene {
             const audioKey = `day_${day.num}_${day.name}`;
             const audioFilename = `day_${day.num}_${day.name}.mp3`;
             this.load.audio(audioKey, `day_audio/${audioFilename}`);
+        });
+    }
+
+    loadShapeDirectionsAudio() {
+        // Load prefix audio files
+        const prefixes = ['hoger', 'vanster'];
+        prefixes.forEach(direction => {
+            const audioKey = `shapedir_prefix_${direction}`;
+            const audioFilename = `shapedir_prefix_${direction}.mp3`;
+            this.load.audio(audioKey, `shapedir_audio/${audioFilename}`);
+        });
+
+        // Load color-shape combination audio files
+        const colors = ['blue', 'red', 'yellow', 'green', 'orange', 'purple'];
+        const shapes = ['circle', 'square', 'triangle', 'star'];
+
+        colors.forEach(color => {
+            shapes.forEach(shape => {
+                const audioKey = `shapedir_${color}_${shape}`;
+                const audioFilename = `shapedir_${color}_${shape}.mp3`;
+                this.load.audio(audioKey, `shapedir_audio/${audioFilename}`);
+            });
         });
     }
 

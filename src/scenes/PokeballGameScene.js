@@ -12,6 +12,7 @@ import { LegendaryAlphabetMatchMode } from '../pokeballGameModes/LegendaryAlphab
 import { LegendaryNumbersMode } from '../pokeballGameModes/LegendaryNumbersMode.js';
 import { DayMatchMode } from '../pokeballGameModes/DayMatchMode.js';
 import { AdditionMode } from '../pokeballGameModes/AdditionMode.js';
+import { ShapeDirectionsMode } from '../pokeballGameModes/ShapeDirectionsMode.js';
 import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier } from '../streak.js';
@@ -183,6 +184,10 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /addition - simple addition
             this.gameMode = new AdditionMode();
             console.log('Selected game mode: Addition (forced)');
+        } else if (forcedMode === 'shapedirections-only') {
+            // Debug path: /shapedirections - shape directions game
+            this.gameMode = new ShapeDirectionsMode();
+            console.log('Selected game mode: Shape Directions (forced)');
         } else {
             // Normal mode: Randomly select from all game modes with configurable probabilities
             this.gameMode = await this.selectRandomGameMode();
@@ -205,7 +210,8 @@ export class PokeballGameScene extends Phaser.Scene {
             legendary: 10,
             legendaryNumbers: 10,
             dayMatch: 10,
-            addition: 10
+            addition: 10,
+            shapeDirections: 10
         };
 
         // Load weights from config file, fall back to defaults
@@ -235,7 +241,8 @@ export class PokeballGameScene extends Phaser.Scene {
                           MODE_WEIGHTS.legendary +
                           MODE_WEIGHTS.legendaryNumbers +
                           MODE_WEIGHTS.dayMatch +
-                          MODE_WEIGHTS.addition;
+                          MODE_WEIGHTS.addition +
+                          MODE_WEIGHTS.shapeDirections;
 
         // Generate random number between 0 and total weight
         const random = Math.random() * totalWeight;
@@ -313,6 +320,12 @@ export class PokeballGameScene extends Phaser.Scene {
         if (random < currentWeight) {
             console.log('Selected game mode: Addition');
             return new AdditionMode();
+        }
+
+        currentWeight += MODE_WEIGHTS.shapeDirections;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Shape Directions');
+            return new ShapeDirectionsMode();
         }
 
         currentWeight += MODE_WEIGHTS.wordSpelling;
