@@ -38,6 +38,8 @@ const GAMES_REGISTRY = [
     { path: '/wordspelling', name: '⌨️ Word Spelling', mode: 'wordspelling-only', scene: 'PokeballGameScene', weightKey: 'wordSpelling' },
     { path: '/addition', name: '➕ Addition', mode: 'addition-only', scene: 'PokeballGameScene', weightKey: 'addition' },
     { path: '/shapedirections', name: '🔷➡️ Shape Directions', mode: 'shapedirections-only', scene: 'PokeballGameScene', weightKey: 'shapeDirections' },
+    { path: '/clocklistening', name: '🕐🔊 Clock Listening', mode: 'clocklistening-only', scene: 'PokeballGameScene', weightKey: 'clockListening' },
+    { path: '/clockreading', name: '🕐👀 Clock Reading', mode: 'clockreading-only', scene: 'PokeballGameScene', weightKey: 'clockReading' },
     { path: '/legendary', name: '👑 Legendary Challenge', mode: 'legendary-only', scene: 'PokeballGameScene', weightKey: 'legendary' },
     { path: '/legendarynumbers', name: '🔢👑 Legendary Numbers', mode: 'legendary-numbers-only', scene: 'PokeballGameScene', weightKey: 'legendaryNumbers' },
     { path: '/dayofweek', name: '📅 Day of Week', mode: 'dayofweek-only', scene: 'PokeballGameScene', weightKey: 'dayMatch' },

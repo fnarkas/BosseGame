@@ -13,7 +13,9 @@
     "shapeDirections": 10,
     "legendary": 5,
     "legendaryNumbers": 10,
-    "dayMatch": 10
+    "dayMatch": 10,
+    "clockListening": 0,
+    "clockReading": 10
   },
   "numbers": {
     "required": 5,
@@ -48,5 +50,13 @@
     "numberOfTerms": 2,
     "maxSum": 99,
     "onlyOneMultiDigit": true
+  },
+  "clockListening": {
+    "required": 3,
+    "includeHalfHours": true
+  },
+  "clockReading": {
+    "required": 3,
+    "includeHalfHours": true
   }
 }

@@ -13,6 +13,8 @@ import { LegendaryNumbersMode } from '../pokeballGameModes/LegendaryNumbersMode.
 import { DayMatchMode } from '../pokeballGameModes/DayMatchMode.js';
 import { AdditionMode } from '../pokeballGameModes/AdditionMode.js';
 import { ShapeDirectionsMode } from '../pokeballGameModes/ShapeDirectionsMode.js';
+import { ClockListeningMode } from '../pokeballGameModes/ClockListeningMode.js';
+import { ClockReadingMode } from '../pokeballGameModes/ClockReadingMode.js';
 import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier } from '../streak.js';
@@ -208,6 +210,14 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /shapedirections - shape directions game
             this.gameMode = new ShapeDirectionsMode();
             console.log('Selected game mode: Shape Directions (forced)');
+        } else if (forcedMode === 'clocklistening-only') {
+            // Debug path: /clocklistening - clock listening game
+            this.gameMode = new ClockListeningMode();
+            console.log('Selected game mode: Clock Listening (forced)');
+        } else if (forcedMode === 'clockreading-only') {
+            // Debug path: /clockreading - clock reading game
+            this.gameMode = new ClockReadingMode();
+            console.log('Selected game mode: Clock Reading (forced)');
         } else {
             // Normal mode: Randomly select from all game modes with configurable probabilities
             this.gameMode = await this.selectRandomGameMode();
@@ -231,7 +241,9 @@ export class PokeballGameScene extends Phaser.Scene {
             legendaryNumbers: 10,
             dayMatch: 10,
             addition: 10,
-            shapeDirections: 10
+            shapeDirections: 10,
+            clockListening: 10,
+            clockReading: 10
         };
 
         // Load weights from config file, fall back to defaults
@@ -262,7 +274,9 @@ export class PokeballGameScene extends Phaser.Scene {
                           MODE_WEIGHTS.legendaryNumbers +
                           MODE_WEIGHTS.dayMatch +
                           MODE_WEIGHTS.addition +
-                          MODE_WEIGHTS.shapeDirections;
+                          MODE_WEIGHTS.shapeDirections +
+                          MODE_WEIGHTS.clockListening +
+                          MODE_WEIGHTS.clockReading;
 
         // Generate random number between 0 and total weight
         const random = Math.random() * totalWeight;
@@ -348,6 +362,18 @@ export class PokeballGameScene extends Phaser.Scene {
             return new ShapeDirectionsMode();
         }
 
+        currentWeight += MODE_WEIGHTS.clockListening;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Clock Listening');
+            return new ClockListeningMode();
+        }
+
+        currentWeight += MODE_WEIGHTS.clockReading;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Clock Reading');
+            return new ClockReadingMode();
+        }
+
         currentWeight += MODE_WEIGHTS.wordSpelling;
         if (random < currentWeight) {
             console.log('Selected game mode: Word Spelling');
@@ -391,7 +417,7 @@ export class PokeballGameScene extends Phaser.Scene {
             this.scene.start('MainGameScene');
         });
 
-        // Map game mode to slice number (1-12)
+        // Map game mode to slice number (1-14)
         const gameModeMap = {
             'LetterListeningMode': 1,
             'WordEmojiMatchMode': 2,
@@ -405,7 +431,10 @@ export class PokeballGameScene extends Phaser.Scene {
             'LegendaryAlphabetMatchMode': 9,
             'LegendaryNumbersMode': 10,
             'DayMatchMode': 11,
-            'AdditionMode': 12
+            'AdditionMode': 12,
+            'ShapeDirectionsMode': 13,
+            'ClockListeningMode': 14,
+            'ClockReadingMode': 14 // Shares slice with ClockListeningMode (similar games)
         };
 
         const selectedSlice = gameModeMap[this.gameMode.constructor.name];

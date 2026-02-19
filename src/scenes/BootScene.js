@@ -90,6 +90,9 @@ export class BootScene extends Phaser.Scene {
         // Load shape directions audio
         this.loadShapeDirectionsAudio();
 
+        // Load clock audio
+        this.loadClockAudio();
+
         // Load minigame icons (256x256 PNG with transparent backgrounds)
         this.load.image('game-mode-letter', 'minigame_icons/letter_listening.png');
         this.load.image('game-mode-word', 'minigame_icons/word_emoji_match.png');
@@ -105,6 +108,7 @@ export class BootScene extends Phaser.Scene {
         this.load.image('game-mode-dayofweek', 'minigame_icons/day_of_week.png');
         this.load.image('game-mode-addition', 'minigame_icons/addition.png');
         this.load.image('game-mode-shapedirections', 'minigame_icons/shape_directions.png');
+        this.load.image('game-mode-clock', 'minigame_icons/clock.png');
     }
 
     loadPokemonImages() {
@@ -258,6 +262,22 @@ export class BootScene extends Phaser.Scene {
         });
     }
 
+    loadClockAudio() {
+        // Load whole hours (1:00 - 12:00)
+        for (let hour = 1; hour <= 12; hour++) {
+            const audioKey = `clock_audio_${hour}`;
+            const audioFilename = `klockan_${hour.toString().padStart(2, '0')}.mp3`;
+            this.load.audio(audioKey, `clock_audio/${audioFilename}`);
+        }
+
+        // Load half hours (1:30 - 12:30)
+        for (let hour = 1; hour <= 12; hour++) {
+            const audioKey = `clock_audio_${hour}_30`;
+            const audioFilename = `klockan_${hour.toString().padStart(2, '0')}_30.mp3`;
+            this.load.audio(audioKey, `clock_audio/${audioFilename}`);
+        }
+    }
+
     create() {
         // Load and apply saved volume
         const savedVolume = localStorage.getItem('gameVolume');
@@ -280,8 +300,8 @@ export class BootScene extends Phaser.Scene {
     }
 
     generateDiceFaces() {
-        // Create 11 dice faces with different colored dots representing each game mode
-        const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xA78BFA, 0xFF8C42, 0x26A69A, 0xFFC107, 0xFFD700, 0x00BCD4, 0xE91E63]; // Red, Cyan, Yellow, Mint, Purple, Orange, Teal, Amber, Gold, Cyan Blue, Pink
+        // Create 14 dice faces with different colored dots representing each game mode
+        const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xA78BFA, 0xFF8C42, 0x26A69A, 0xFFC107, 0xFFD700, 0x00BCD4, 0xE91E63, 0x4CAF50, 0x9C27B0, 0xFF5722]; // Red, Cyan, Yellow, Mint, Purple, Orange, Teal, Amber, Gold, Cyan Blue, Pink, Green, Deep Purple, Deep Orange
         const dotPatterns = [
             [{ x: 0.5, y: 0.5 }], // 1 dot (center)
             [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.7 }], // 2 dots (diagonal)
@@ -293,10 +313,13 @@ export class BootScene extends Phaser.Scene {
             [{ x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.3, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.3, y: 0.7 }, { x: 0.7, y: 0.7 }, { x: 0.5, y: 0.2 }, { x: 0.5, y: 0.8 }], // 8 dots
             [{ x: 0.25, y: 0.25 }, { x: 0.5, y: 0.25 }, { x: 0.75, y: 0.25 }, { x: 0.25, y: 0.5 }, { x: 0.5, y: 0.5 }, { x: 0.75, y: 0.5 }, { x: 0.25, y: 0.75 }, { x: 0.5, y: 0.75 }, { x: 0.75, y: 0.75 }], // 9 dots (3x3 grid)
             [{ x: 0.2, y: 0.2 }, { x: 0.4, y: 0.2 }, { x: 0.6, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.3, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.2, y: 0.8 }, { x: 0.4, y: 0.8 }, { x: 0.6, y: 0.8 }, { x: 0.8, y: 0.8 }], // 10 dots
-            [{ x: 0.2, y: 0.2 }, { x: 0.4, y: 0.2 }, { x: 0.6, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.5, y: 0.4 }, { x: 0.2, y: 0.6 }, { x: 0.8, y: 0.6 }, { x: 0.2, y: 0.8 }, { x: 0.4, y: 0.8 }, { x: 0.6, y: 0.8 }, { x: 0.8, y: 0.8 }] // 11 dots
+            [{ x: 0.2, y: 0.2 }, { x: 0.4, y: 0.2 }, { x: 0.6, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.5, y: 0.4 }, { x: 0.2, y: 0.6 }, { x: 0.8, y: 0.6 }, { x: 0.2, y: 0.8 }, { x: 0.4, y: 0.8 }, { x: 0.6, y: 0.8 }, { x: 0.8, y: 0.8 }], // 11 dots
+            [{ x: 0.2, y: 0.2 }, { x: 0.4, y: 0.2 }, { x: 0.6, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.2, y: 0.5 }, { x: 0.8, y: 0.5 }, { x: 0.2, y: 0.8 }, { x: 0.4, y: 0.8 }, { x: 0.6, y: 0.8 }, { x: 0.8, y: 0.8 }, { x: 0.5, y: 0.35 }, { x: 0.5, y: 0.65 }], // 12 dots
+            [{ x: 0.2, y: 0.2 }, { x: 0.4, y: 0.2 }, { x: 0.6, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.2, y: 0.5 }, { x: 0.5, y: 0.5 }, { x: 0.8, y: 0.5 }, { x: 0.2, y: 0.8 }, { x: 0.4, y: 0.8 }, { x: 0.6, y: 0.8 }, { x: 0.8, y: 0.8 }, { x: 0.3, y: 0.35 }, { x: 0.7, y: 0.65 }], // 13 dots
+            [{ x: 0.2, y: 0.2 }, { x: 0.4, y: 0.2 }, { x: 0.6, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.2, y: 0.45 }, { x: 0.8, y: 0.45 }, { x: 0.2, y: 0.55 }, { x: 0.8, y: 0.55 }, { x: 0.2, y: 0.8 }, { x: 0.4, y: 0.8 }, { x: 0.6, y: 0.8 }, { x: 0.8, y: 0.8 }, { x: 0.5, y: 0.35 }, { x: 0.5, y: 0.65 }] // 14 dots
         ];
 
-        for (let i = 0; i < 11; i++) {
+        for (let i = 0; i < 14; i++) {
             const graphics = this.add.graphics();
 
             // Draw white rounded rectangle background
@@ -330,11 +353,11 @@ export class BootScene extends Phaser.Scene {
         const centerX = size / 2;
         const centerY = size / 2;
         const radius = size / 2 - 10;
-        const slices = 11;
+        const slices = 14;
         const anglePerSlice = (Math.PI * 2) / slices;
 
         // Slice colors (matching dice colors)
-        const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xA78BFA, 0xFF8C42, 0x26A69A, 0xFFC107, 0xFFD700, 0x00BCD4, 0xE91E63];
+        const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xA78BFA, 0xFF8C42, 0x26A69A, 0xFFC107, 0xFFD700, 0x00BCD4, 0xE91E63, 0x4CAF50, 0x9C27B0, 0xFF5722];
 
         // Icon keys in order (matching gameModeMap face order)
         const iconKeys = [
@@ -348,7 +371,10 @@ export class BootScene extends Phaser.Scene {
             'game-mode-spelling',
             'game-mode-legendary',
             'game-mode-legendary-numbers',
-            'game-mode-dayofweek'
+            'game-mode-dayofweek',
+            'game-mode-addition',
+            'game-mode-shapedirections',
+            'game-mode-clock'
         ];
 
         const graphics = this.add.graphics();
