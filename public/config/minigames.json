@@ -3,20 +3,21 @@
     "letterListening": 10,
     "wordEmoji": 10,
     "emojiWord": 10,
-    "leftRight": 10,
+    "leftRight": 0,
     "letterDragMatch": 10,
     "speechRecognition": 10,
-    "numberListening": 10,
+    "numberListening": 160,
     "numberReading": 10,
     "wordSpelling": 40,
-    "legendary": 5,
-    "legendaryNumbers": 0,
     "addition": 40,
-    "shapeDirections": 10
+    "shapeDirections": 10,
+    "legendary": 5,
+    "legendaryNumbers": 10,
+    "dayMatch": 10
   },
   "numbers": {
     "required": 5,
-    "numbers": "10-20,30,40-49,50,60,70,80,90,100-399"
+    "numbers": "456, 234, 788, 945, 982, 644, 777, 199"
   },
   "letters": {
     "letters": "a-z"

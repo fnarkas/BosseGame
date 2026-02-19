@@ -195,10 +195,10 @@ export class BootScene extends Phaser.Scene {
             this.load.audio(audioKey, `number_audio/${audioFilename}`);
         }
 
-        // Load hundreds markers (100, 200, 300) for runtime stitching
-        // Numbers 100-399 will be composed by playing hundreds + remainder
-        // e.g., 245 = play "200" + "45"
-        const hundreds = [100, 200, 300];
+        // Load hundreds markers (100-1000) for runtime stitching
+        // Numbers 100-999 will be composed by playing hundreds + remainder
+        // e.g., 245 = play "200" + "45", 645 = play "600" + "45"
+        const hundreds = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
         hundreds.forEach(num => {
             const audioKey = `number_audio_${num}`;
             const audioFilename = `${num}.mp3`;

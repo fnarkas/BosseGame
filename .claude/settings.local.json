@@ -9,7 +9,14 @@
       "Bash(for i in {101..199})",
       "Bash(bash -c 'rm -v 1{01..99}.mp3 2>&1 | head -5')",
       "Bash(for i in {11..19})",
-      "Bash(for:*)"
+      "Bash(for:*)",
+      "Bash(done)",
+      "Bash(mv:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(if [ -f \"public/number_audio/$i.tmp.mp3\" ])",
+      "Bash(then)",
+      "Bash(fi)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []
