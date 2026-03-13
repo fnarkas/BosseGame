@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { POKEMON_DATA } from './pokemonData.js';
+import { POKEMON_DATA, getAvailablePokemon } from './pokemonData.js';
 import { BootScene } from './scenes/BootScene.js';
 import { MainGameScene } from './scenes/MainGameScene.js';
 import { PokedexScene } from './scenes/PokedexScene.js';
@@ -40,6 +40,7 @@ const GAMES_REGISTRY = [
     { path: '/shapedirections', name: '🔷➡️ Shape Directions', mode: 'shapedirections-only', scene: 'PokeballGameScene', weightKey: 'shapeDirections' },
     { path: '/clocklistening', name: '🕐🔊 Clock Listening', mode: 'clocklistening-only', scene: 'PokeballGameScene', weightKey: 'clockListening' },
     { path: '/clockreading', name: '🕐👀 Clock Reading', mode: 'clockreading-only', scene: 'PokeballGameScene', weightKey: 'clockReading' },
+    { path: '/piano', name: '🎹 Piano Learning', mode: 'piano-only', scene: 'PokeballGameScene', weightKey: 'pianoLearning' },
     { path: '/legendary', name: '👑 Legendary Challenge', mode: 'legendary-only', scene: 'PokeballGameScene', weightKey: 'legendary' },
     { path: '/legendarynumbers', name: '🔢👑 Legendary Numbers', mode: 'legendary-numbers-only', scene: 'PokeballGameScene', weightKey: 'legendaryNumbers' },
     { path: '/dayofweek', name: '📅 Day of Week', mode: 'dayofweek-only', scene: 'PokeballGameScene', weightKey: 'dayMatch' },
@@ -303,8 +304,9 @@ async function showAdminPage() {
     // Load current caught Pokemon
     const caughtPokemon = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
 
-    // Generate Pokemon grid
-    const pokemonGrid = POKEMON_DATA.map(pokemon => {
+    // Generate Pokemon grid (Gen 1 only)
+    const availablePokemon = getAvailablePokemon();
+    const pokemonGrid = availablePokemon.map(pokemon => {
         // Handle both object format and plain ID format
         const isCaught = caughtPokemon.some(p => (p.id || p) === pokemon.id);
         return `
@@ -749,7 +751,7 @@ async function showAdminPage() {
 
             <div style="background: #f5f5f5; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
                 <h2 style="margin-top: 0;">Pokemon Manager</h2>
-                <p style="color: #666;">Total caught: <strong id="caught-count">${caughtPokemon.length}</strong> / ${POKEMON_DATA.length}</p>
+                <p style="color: #666;">Total caught: <strong id="caught-count">${caughtPokemon.filter(p => (p.id || p) <= 151).length}</strong> / ${availablePokemon.length}</p>
                 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
                     <button onclick="catchAll()" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">✓ Catch All</button>
                     <button onclick="releaseAll()" style="padding: 12px 24px; background: #f44336; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">✗ Release All</button>
@@ -1625,7 +1627,7 @@ async function showAdminPage() {
     };
 
     window.catchAll = function() {
-        const allPokemon = POKEMON_DATA.map(p => ({
+        const allPokemon = getAvailablePokemon().map(p => ({
             id: p.id,
             name: p.name,
             caughtDate: new Date().toISOString()
@@ -1674,9 +1676,10 @@ async function showAdminPage() {
 
     function updateUI() {
         const caughtList = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
-        document.getElementById('caught-count').textContent = caughtList.length;
+        const gen1CaughtCount = caughtList.filter(p => (p.id || p) <= 151).length;
+        document.getElementById('caught-count').textContent = gen1CaughtCount;
 
-        POKEMON_DATA.forEach(p => {
+        getAvailablePokemon().forEach(p => {
             const elem = document.getElementById(`pokemon-${p.id}`);
             if (!elem) return;
 

@@ -58,5 +58,8 @@
   "clockReading": {
     "required": 3,
     "includeHalfHours": true
+  },
+  "pianoLearning": {
+    "measuresPerPattern": 1
   }
 }

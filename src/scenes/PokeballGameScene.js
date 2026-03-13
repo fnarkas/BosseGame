@@ -15,6 +15,7 @@ import { AdditionMode } from '../pokeballGameModes/AdditionMode.js';
 import { ShapeDirectionsMode } from '../pokeballGameModes/ShapeDirectionsMode.js';
 import { ClockListeningMode } from '../pokeballGameModes/ClockListeningMode.js';
 import { ClockReadingMode } from '../pokeballGameModes/ClockReadingMode.js';
+import { PianoLearningMode } from '../pokeballGameModes/PianoLearningMode.js';
 import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier } from '../streak.js';
@@ -218,6 +219,10 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /clockreading - clock reading game
             this.gameMode = new ClockReadingMode();
             console.log('Selected game mode: Clock Reading (forced)');
+        } else if (forcedMode === 'piano-only') {
+            // Debug path: /piano - piano learning game
+            this.gameMode = new PianoLearningMode();
+            console.log('Selected game mode: Piano Learning (forced)');
         } else {
             // Normal mode: Randomly select from all game modes with configurable probabilities
             this.gameMode = await this.selectRandomGameMode();
@@ -243,7 +248,8 @@ export class PokeballGameScene extends Phaser.Scene {
             addition: 10,
             shapeDirections: 10,
             clockListening: 10,
-            clockReading: 10
+            clockReading: 10,
+            pianoLearning: 10
         };
 
         // Load weights from config file, fall back to defaults
@@ -276,7 +282,8 @@ export class PokeballGameScene extends Phaser.Scene {
                           MODE_WEIGHTS.addition +
                           MODE_WEIGHTS.shapeDirections +
                           MODE_WEIGHTS.clockListening +
-                          MODE_WEIGHTS.clockReading;
+                          MODE_WEIGHTS.clockReading +
+                          MODE_WEIGHTS.pianoLearning;
 
         // Generate random number between 0 and total weight
         const random = Math.random() * totalWeight;
@@ -374,6 +381,12 @@ export class PokeballGameScene extends Phaser.Scene {
             return new ClockReadingMode();
         }
 
+        currentWeight += MODE_WEIGHTS.pianoLearning;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Piano Learning');
+            return new PianoLearningMode();
+        }
+
         currentWeight += MODE_WEIGHTS.wordSpelling;
         if (random < currentWeight) {
             console.log('Selected game mode: Word Spelling');
@@ -417,7 +430,7 @@ export class PokeballGameScene extends Phaser.Scene {
             this.scene.start('MainGameScene');
         });
 
-        // Map game mode to slice number (1-14)
+        // Map game mode to slice number (1-15)
         const gameModeMap = {
             'LetterListeningMode': 1,
             'WordEmojiMatchMode': 2,
@@ -434,7 +447,8 @@ export class PokeballGameScene extends Phaser.Scene {
             'AdditionMode': 12,
             'ShapeDirectionsMode': 13,
             'ClockListeningMode': 14,
-            'ClockReadingMode': 14 // Shares slice with ClockListeningMode (similar games)
+            'ClockReadingMode': 14, // Shares slice with ClockListeningMode (similar games)
+            'PianoLearningMode': 15
         };
 
         const selectedSlice = gameModeMap[this.gameMode.constructor.name];
