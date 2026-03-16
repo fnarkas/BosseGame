@@ -376,6 +376,7 @@ async function showAdminPage() {
                         <option value="word-spelling">⌨️ Word Spelling</option>
                         <option value="dayofweek">📅 Day of Week</option>
                         <option value="addition">➕ Addition</option>
+                        <option value="piano">🎹 Piano Learning</option>
                     </select>
                 </div>
 
@@ -607,6 +608,40 @@ async function showAdminPage() {
 
                     <button onclick="saveMinigameConfig('addition')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Addition Config</button>
                     <div id="config-addition-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
+                </div>
+
+                <div id="config-piano" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                    <h3 style="margin-top: 0;">Piano Learning Configuration</h3>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Measures Per Pattern:</label>
+                        <input type="number" id="config-piano-measures" value="${serverConfig.pianoLearning?.measuresPerPattern || 1}" min="1" max="8" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">How many measures to play per pattern (1 = easier, 4 = harder)</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="config-piano-shownotes" ${serverConfig.pianoLearning?.showNotes !== false ? 'checked' : ''} style="width: 24px; height: 24px; margin-right: 10px; cursor: pointer;">
+                            <span style="font-weight: bold;">Show Notes on Keys</span>
+                        </label>
+                        <div style="color: #666; margin-top: 5px; font-size: 14px; margin-left: 34px;">
+                            When checked, circles will appear on piano keys showing which notes to play.<br>
+                            Multiple circles stack vertically if a note is played multiple times.
+                        </div>
+                    </div>
+
+                    <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196F3; margin-bottom: 20px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ About Piano Learning:</div>
+                        <div style="color: #666; font-size: 14px;">
+                            Players learn simple melodies by listening and repeating patterns.<br>
+                            Click 🔊 to hear the pattern, then play it back on the piano keyboard.<br>
+                            Progress is shown with balls (○ ○ ○) representing completed patterns.<br>
+                            When all patterns are complete, the full melody plays and rewards are given.
+                        </div>
+                    </div>
+
+                    <button onclick="saveMinigameConfig('piano')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Piano Config</button>
+                    <div id="config-piano-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
                 </div>
             </div>
 
@@ -882,6 +917,7 @@ async function showAdminPage() {
         document.getElementById('config-word-spelling').style.display = 'none';
         document.getElementById('config-dayofweek').style.display = 'none';
         document.getElementById('config-addition').style.display = 'none';
+        document.getElementById('config-piano').style.display = 'none';
 
         // Show selected config
         document.getElementById('config-' + value).style.display = 'block';
@@ -1467,6 +1503,56 @@ async function showAdminPage() {
                 }
             } catch (error) {
                 console.error('Failed to save addition config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
+        } else if (game === 'piano') {
+            const measuresPerPattern = parseInt(document.getElementById('config-piano-measures').value);
+            const showNotes = document.getElementById('config-piano-shownotes').checked;
+
+            const message = document.getElementById('config-piano-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                // Load current config
+                const response = await fetch('/config/minigames.json');
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' },
+                    pianoLearning: { measuresPerPattern: 1, showNotes: true }
+                };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                // Update piano learning config
+                fullConfig.pianoLearning = {
+                    measuresPerPattern: measuresPerPattern,
+                    showNotes: showNotes
+                };
+
+                // Save to server
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Piano config saved to server! All devices will use these settings.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save piano config:', error);
                 message.textContent = '❌ Failed to save config. Check console for details.';
                 message.style.color = '#f44336';
             }

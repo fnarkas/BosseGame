@@ -6,7 +6,7 @@
     "leftRight": 0,
     "letterDragMatch": 10,
     "speechRecognition": 10,
-    "numberListening": 160,
+    "numberListening": 100,
     "numberReading": 10,
     "wordSpelling": 40,
     "addition": 40,
@@ -15,7 +15,8 @@
     "legendaryNumbers": 10,
     "dayMatch": 10,
     "clockListening": 0,
-    "clockReading": 10
+    "clockReading": 10,
+    "pianoLearning": 100
   },
   "numbers": {
     "required": 5,
@@ -60,6 +61,7 @@
     "includeHalfHours": true
   },
   "pianoLearning": {
-    "measuresPerPattern": 1
+    "measuresPerPattern": 1,
+    "showNotes": true
   }
 }

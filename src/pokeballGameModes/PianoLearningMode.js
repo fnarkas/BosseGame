@@ -22,9 +22,11 @@ export class PianoLearningMode extends BasePokeballGameMode {
         this.isPlayingDemo = false;
         this.ballIndicators = [];
         this.progressText = null;
+        this.noteMarkers = []; // Visual circles on piano keys
 
         // Default configuration (will be overridden by loadConfig)
         this.measuresPerPattern = 1;
+        this.showNotes = true;
         this.configLoaded = false;
     }
 
@@ -33,11 +35,13 @@ export class PianoLearningMode extends BasePokeballGameMode {
             const response = await fetch('/config/minigames.json');
             if (response.ok) {
                 const serverConfig = await response.json();
-                const config = serverConfig.pianoLearning || { measuresPerPattern: 1 };
+                const config = serverConfig.pianoLearning || { measuresPerPattern: 1, showNotes: true };
                 this.measuresPerPattern = config.measuresPerPattern || 1;
+                this.showNotes = config.showNotes !== false; // Default to true
 
                 console.log('PianoLearningMode config loaded from server:', {
-                    measuresPerPattern: this.measuresPerPattern
+                    measuresPerPattern: this.measuresPerPattern,
+                    showNotes: this.showNotes
                 });
             } else {
                 throw new Error('Config not found');
@@ -45,6 +49,7 @@ export class PianoLearningMode extends BasePokeballGameMode {
         } catch (error) {
             console.warn('Failed to load server config, using defaults:', error);
             this.measuresPerPattern = 1;
+            this.showNotes = true;
         }
 
         this.configLoaded = true;
@@ -98,6 +103,11 @@ export class PianoLearningMode extends BasePokeballGameMode {
         // Create ball indicators showing progress through patterns
         this.createBallIndicators(scene);
 
+        // Create note markers (hidden initially, shown during playback)
+        if (this.showNotes) {
+            this.displayNoteMarkers(scene);
+        }
+
         // Don't auto-play - wait for user to click speaker button
         // This avoids browser autoplay restrictions
     }
@@ -107,9 +117,9 @@ export class PianoLearningMode extends BasePokeballGameMode {
         const height = scene.cameras.main.height;
 
         // Piano dimensions
-        const whiteKeyWidth = 50;
+        const whiteKeyWidth = 80;
         const whiteKeyHeight = 200;
-        const blackKeyWidth = 30;
+        const blackKeyWidth = 50;
         const blackKeyHeight = 120;
 
         // Count white keys for centering
@@ -219,6 +229,70 @@ export class PianoLearningMode extends BasePokeballGameMode {
         }
     }
 
+    displayNoteMarkers(scene) {
+        // Clear existing markers
+        this.noteMarkers.forEach(marker => marker.destroy());
+        this.noteMarkers = [];
+
+        // Get the notes for the current pattern (in order)
+        const noteObjects = this.getCurrentPatternNotes();
+
+        // Create circles for each note in sequence (not grouped by note name)
+        noteObjects.forEach((noteObj, index) => {
+            const note = noteObj.note;
+            const keyInfo = this.pianoKeys[note];
+            if (!keyInfo) return;
+
+            const keyRect = keyInfo.graphic;
+
+            // Circle properties
+            const circleRadius = 8;
+            const circleSpacing = 4;
+
+            // Position circles near the bottom of the key
+            const keyX = keyRect.x + (keyInfo.data.type === 'white' ? keyRect.width / 2 : 0);
+            const keyY = keyRect.y + keyRect.height - 15; // 15px from bottom (smaller margin)
+
+            // Count how many circles are already on this key
+            const existingCirclesOnKey = this.noteMarkers.filter(m =>
+                m.getData('note') === note
+            ).length;
+
+            // Stack circles vertically from bottom up
+            const circleY = keyY - (existingCirclesOnKey * (circleRadius * 2 + circleSpacing));
+
+            const circle = scene.add.circle(keyX, circleY, circleRadius, 0x999999); // Grey
+            circle.setStrokeStyle(2, 0x666666);
+            circle.setDepth(200); // Above piano keys
+            circle.setAlpha(0); // Start hidden
+            circle.setData('note', note);
+            circle.setData('index', index); // Track order in sequence
+
+            this.noteMarkers.push(circle);
+            this.uiElements.push(circle);
+        });
+    }
+
+    showNextMarker(index) {
+        // Show the marker at the given index
+        const marker = this.noteMarkers.find(m => m.getData('index') === index);
+        if (marker) {
+            marker.setAlpha(1);
+        }
+    }
+
+    removeNextPlayerMarker() {
+        // Find the first visible marker and remove it
+        const visibleMarker = this.noteMarkers.find(m => m.alpha === 1);
+        if (visibleMarker) {
+            visibleMarker.destroy();
+            const index = this.noteMarkers.indexOf(visibleMarker);
+            if (index > -1) {
+                this.noteMarkers.splice(index, 1);
+            }
+        }
+    }
+
     getCurrentPatternNotes() {
         // Get the measures for this pattern
         const startMeasure = this.currentPatternIndex * this.measuresPerPattern;
@@ -250,6 +324,11 @@ export class PianoLearningMode extends BasePokeballGameMode {
 
             // Calculate actual duration based on note value
             const noteDurationMs = quarterNoteDuration * duration;
+
+            // Show the marker for this note
+            if (this.showNotes) {
+                this.showNextMarker(i);
+            }
 
             // Highlight the key
             this.highlightKey(noteName, true);
@@ -297,77 +376,114 @@ export class PianoLearningMode extends BasePokeballGameMode {
 
         console.log(`Player pressed: ${note}`);
 
-        // Highlight the pressed key briefly
-        this.highlightKey(note, true);
-
-        // Play the note
-        const audio = this.audioCache[note];
-        if (audio) {
-            audio.play();
-        }
-
-        // Reset highlight after a moment
-        scene.time.delayedCall(300, () => {
-            this.highlightKey(note, false);
-        });
-
-        // Add to player's notes for current pattern
-        this.playerNotes.push(note);
-
-        // Check if player has played enough notes for current pattern
+        // Check if this is the correct note
         const expectedNotes = this.getCurrentPatternNotes();
-        if (this.playerNotes.length >= expectedNotes.length) {
-            this.checkPlayerAnswer(scene);
+        const expectedNote = expectedNotes[this.playerNotes.length]?.note;
+        const isCorrectNote = (note === expectedNote);
+
+        if (isCorrectNote) {
+            // Correct note! Remove marker and continue
+            if (this.showNotes) {
+                this.removeNextPlayerMarker();
+            }
+
+            // Highlight the pressed key briefly
+            this.highlightKey(note, true);
+
+            // Play the note
+            const audio = this.audioCache[note];
+            if (audio) {
+                audio.play();
+            }
+
+            // Reset highlight after a moment
+            scene.time.delayedCall(300, () => {
+                this.highlightKey(note, false);
+            });
+
+            // Add to player's notes for current pattern
+            this.playerNotes.push(note);
+
+            // Check if pattern is complete
+            if (this.playerNotes.length >= expectedNotes.length) {
+                this.checkPlayerAnswer(scene);
+            }
+        } else {
+            // Wrong note! Show error immediately
+            console.log(`Wrong note! Expected: ${expectedNote}, Got: ${note}`);
+
+            // Highlight wrong key in red
+            this.highlightKey(note, true, 0xFF0000);
+
+            // Play the note (so they hear what they pressed)
+            const audio = this.audioCache[note];
+            if (audio) {
+                audio.play();
+            }
+
+            // Reset highlight after a moment
+            scene.time.delayedCall(300, () => {
+                this.highlightKey(note, false);
+            });
+
+            // Show error feedback immediately
+            this.showErrorAndReplay(scene);
         }
     }
 
+    showErrorAndReplay(scene) {
+        // Reset player notes
+        this.playerNotes = [];
+
+        // Reset markers - destroy and recreate them all
+        if (this.showNotes) {
+            this.displayNoteMarkers(scene);
+        }
+
+        // Visual feedback (flash screen red briefly)
+        const width = scene.cameras.main.width;
+        const height = scene.cameras.main.height;
+        const errorFlash = scene.add.rectangle(0, 0, width, height, 0xFF0000, 0.3);
+        errorFlash.setOrigin(0);
+        errorFlash.setDepth(1000);
+        this.uiElements.push(errorFlash);
+
+        scene.time.delayedCall(200, () => {
+            errorFlash.destroy();
+        });
+
+        // Replay the current pattern after a moment
+        scene.time.delayedCall(800, () => {
+            this.playCurrentPattern(scene);
+        });
+    }
+
     checkPlayerAnswer(scene) {
-        const expectedNoteObjects = this.getCurrentPatternNotes();
-        const expectedNotes = expectedNoteObjects.map(n => n.note);
-        const isCorrect = this.playerNotes.every((note, i) => note === expectedNotes[i]);
+        // This method is only called when the pattern is complete and all notes were correct
+        // (errors are caught immediately in handleKeyPress)
+        console.log(`Pattern complete! Player played: ${this.playerNotes.join(', ')}`);
 
-        console.log(`Player played: ${this.playerNotes.join(', ')}`);
-        console.log(`Expected: ${expectedNotes.join(', ')}`);
-        console.log(`Result: ${isCorrect ? 'CORRECT' : 'WRONG'}`);
+        // Move to next pattern
+        this.currentPatternIndex++;
+        this.playerNotes = [];
 
-        if (isCorrect) {
-            // Move to next pattern
-            this.currentPatternIndex++;
-            this.playerNotes = [];
+        // Update progress
+        this.updateBallIndicators();
 
-            // Update progress
-            this.updateBallIndicators();
+        // Update note markers for new pattern
+        if (this.showNotes && this.currentPatternIndex < this.challengeData.totalPatterns) {
+            this.displayNoteMarkers(scene);
+        }
 
-            // Check if song is complete
-            if (this.currentPatternIndex >= this.challengeData.totalPatterns) {
-                // Song complete! Play entire melody then give reward
-                scene.time.delayedCall(500, async () => {
-                    await this.playEntireMelody(scene);
-                    this.answerCallback(true, 'complete', scene.cameras.main.width / 2, scene.cameras.main.height / 2);
-                });
-            } else {
-                // Play next pattern after short delay
-                scene.time.delayedCall(800, () => {
-                    this.playCurrentPattern(scene);
-                });
-            }
-        } else {
-            // Wrong answer - reset and replay
-            this.playerNotes = [];
-
-            // Visual feedback (flash screen red briefly)
-            const width = scene.cameras.main.width;
-            const height = scene.cameras.main.height;
-            const errorFlash = scene.add.rectangle(0, 0, width, height, 0xFF0000, 0.3);
-            errorFlash.setOrigin(0);
-            errorFlash.setDepth(1000);
-            this.uiElements.push(errorFlash);
-
-            scene.time.delayedCall(200, () => {
-                errorFlash.destroy();
+        // Check if song is complete
+        if (this.currentPatternIndex >= this.challengeData.totalPatterns) {
+            // Song complete! Play entire melody then give reward
+            scene.time.delayedCall(500, async () => {
+                await this.playEntireMelody(scene);
+                this.answerCallback(true, 'complete', scene.cameras.main.width / 2, scene.cameras.main.height / 2);
             });
-
-            // Replay the current pattern after a moment
+        } else {
+            // Play next pattern after short delay
             scene.time.delayedCall(800, () => {
                 this.playCurrentPattern(scene);
             });
