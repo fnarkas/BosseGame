@@ -21,6 +21,29 @@ import { showGiftBoxReward } from '../rewardAnimation.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier } from '../streak.js';
 import { createBoosterBar, updateBoosterBar, destroyBoosterBar, hideBoosterBar, showBoosterBar } from '../boosterBar.js';
 import { loadModeWeights } from '../minigameWheel.js';
+import { saveActiveMinigame, loadActiveMinigame, clearActiveMinigame } from '../minigameSession.js';
+
+// Map of game-mode class names to their constructors, used to restore the
+// in-progress minigame by name after a page reload.
+const MODE_CLASSES = {
+    LetterListeningMode,
+    WordEmojiMatchMode,
+    EmojiWordMatchMode,
+    LeftRightMode,
+    LetterDragMatchMode,
+    SpeechRecognitionMode,
+    NumberListeningMode,
+    NumberReadingMode,
+    WordSpellingMode,
+    LegendaryAlphabetMatchMode,
+    LegendaryNumbersMode,
+    DayMatchMode,
+    AdditionMode,
+    ShapeDirectionsMode,
+    ClockListeningMode,
+    ClockReadingMode,
+    PianoLearningMode
+};
 
 export class PokeballGameScene extends Phaser.Scene {
     constructor() {
@@ -128,16 +151,32 @@ export class PokeballGameScene extends Phaser.Scene {
 
         // Check if we should show the dice animation (not for forced/debug modes)
         if (!forcedMode) {
-            // Initialize game mode - this will be shown on the wheel
-            await this.selectGameMode();
+            // If a minigame is already in progress (e.g. the page was reloaded),
+            // resume that exact game instead of rolling a new one. This stops a
+            // child from reloading to re-roll until they get the game they want.
+            const savedModeName = loadActiveMinigame();
+            const RestoreClass = savedModeName ? MODE_CLASSES[savedModeName] : null;
 
-            // Set up callback for game mode
-            this.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
-                this.handleAnswer(isCorrect, answer, x, y);
-            });
+            if (RestoreClass) {
+                this.gameMode = new RestoreClass();
+                this.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
+                    this.handleAnswer(isCorrect, answer, x, y);
+                });
 
-            // Show dice rolling animation before starting the game
-            this.showDiceRollAnimation();
+                // Skip the wheel and drop straight back into the game.
+                this.loadNextChallenge();
+            } else {
+                // Fresh round: roll a random mode, remember it, then show the wheel.
+                await this.selectGameMode();
+                saveActiveMinigame(this.gameMode.constructor.name);
+
+                this.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
+                    this.handleAnswer(isCorrect, answer, x, y);
+                });
+
+                // Show dice rolling animation before starting the game
+                this.showDiceRollAnimation();
+            }
         } else {
             // Debug mode: Initialize game mode and start immediately
             await this.selectGameMode();
@@ -395,6 +434,9 @@ export class PokeballGameScene extends Phaser.Scene {
             pokeballBtn.destroy();
             destroyBoosterBar(wheelBoosterBar);
 
+            // Declined at the wheel — clear the session so we don't resume it.
+            clearActiveMinigame();
+
             // Clean up game mode and return to Pokemon catching
             this.gameMode.cleanup(this);
             this.scene.start('MainGameScene');
@@ -569,6 +611,9 @@ export class PokeballGameScene extends Phaser.Scene {
                 // Clean up and load next challenge
                 this.gameMode.cleanup(this);
 
+                // This game is finished — forget it so a reload doesn't resume it.
+                clearActiveMinigame();
+
                 // Increment challenge count and switch mode
                 this.challengeCount++;
                 await this.selectGameMode();
@@ -581,6 +626,9 @@ export class PokeballGameScene extends Phaser.Scene {
                 // Check if we should show dice animation (not for forced/debug modes)
                 const forcedMode = this.registry.get('pokeballGameMode');
                 if (!forcedMode) {
+                    // Remember the newly rolled mode so a reload resumes it.
+                    saveActiveMinigame(this.gameMode.constructor.name);
+
                     // Show dice rolling animation before next challenge
                     this.showDiceRollAnimation();
                 } else {

@@ -9,6 +9,7 @@ import { initPokedex, showPokedex } from './pokedex.js';
 import { initPokemonCaughtPopup, showPokemonCaughtPopup } from './pokemonCaughtPopup.js';
 import { initStore, openStore } from './store.js';
 import { migrateOldInventory } from './inventory.js';
+import { loadActiveMinigame } from './minigameSession.js';
 
 // Make POKEMON_DATA globally available
 window.POKEMON_DATA = POKEMON_DATA;
@@ -84,6 +85,17 @@ if (gameConfig) {
 } else {
     answerMode = 'letter';
     console.log('Running in LETTER MATCH mode');
+}
+
+// If a minigame was left unfinished, resume it on load instead of the main
+// scene. This makes a reload return the player to the game they were in rather
+// than letting them re-roll or back out. Explicit routes (a specific game,
+// store, games menu, admin) take precedence and are left untouched.
+if (startScene === 'MainGameScene' && !pokeballGameMode && !showStoreOnLoad && !showGamesMenu && !showAdmin) {
+    if (loadActiveMinigame()) {
+        startScene = 'PokeballGameScene';
+        console.log('Resuming unfinished minigame');
+    }
 }
 
 // Show games menu if /games route
