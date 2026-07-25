@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { SWEDISH_LETTERS } from '../letterData.js';
-import { getAllWords } from '../speechVocabulary.js';
+import { getAllWords, getAllSentences } from '../speechVocabulary.js';
 import { getAvailablePokemon } from '../pokemonData.js';
+import { loadModeWeights, getEnabledSlices } from '../minigameWheel.js';
 
 export class BootScene extends Phaser.Scene {
     constructor() {
@@ -113,7 +114,7 @@ export class BootScene extends Phaser.Scene {
         this.load.image('game-mode-addition', 'minigame_icons/addition.png');
         this.load.image('game-mode-shapedirections', 'minigame_icons/shape_directions.png');
         this.load.image('game-mode-clock', 'minigame_icons/clock.png');
-        this.load.image('game-mode-piano', 'minigame_icons/piano_mode.jpeg');
+        this.load.image('game-mode-piano', 'minigame_icons/piano_mode.png');
     }
 
     loadPokemonImages() {
@@ -224,6 +225,26 @@ export class BootScene extends Phaser.Scene {
             const audioFilename = `${wordObj.word}.mp3`;
             this.load.audio(audioKey, `word_audio/${audioFilename}`);
         });
+
+        // Load audio for all words used in sentences
+        const sentences = getAllSentences();
+        const sentenceWords = new Set();
+        sentences.forEach(sentenceObj => {
+            sentenceObj.sentence.split(' ').forEach(word => {
+                sentenceWords.add(word.toLowerCase());
+            });
+        });
+
+        console.log(`Loading ${sentenceWords.size} sentence word audio files...`);
+        sentenceWords.forEach(word => {
+            const audioKey = `word_audio_${word}`;
+            // Only load if not already loaded from getAllWords
+            if (!words.some(w => w.word === word)) {
+                const audioFilename = `${word}.mp3`;
+                this.load.audio(audioKey, `word_audio/${audioFilename}`);
+            }
+        });
+
         console.log('Word audio loading queued');
     }
 
@@ -302,7 +323,7 @@ export class BootScene extends Phaser.Scene {
         });
     }
 
-    create() {
+    async create() {
         // Load and apply saved volume
         const savedVolume = localStorage.getItem('gameVolume');
         if (savedVolume !== null) {
@@ -312,8 +333,13 @@ export class BootScene extends Phaser.Scene {
         // Generate dice face textures
         this.generateDiceFaces();
 
-        // Generate wheel texture
-        this.generateWheelTexture();
+        // Build the wheel from the configured weights so that modes set to
+        // probability 0 don't appear as slices. Store the enabled slice order so
+        // PokeballGameScene can map the selected mode to its slice on the wheel.
+        const weights = await loadModeWeights();
+        const enabledSlices = getEnabledSlices(weights);
+        this.registry.set('wheelSlices', enabledSlices);
+        this.generateWheelTexture(enabledSlices);
 
         // Store game data globally
         this.registry.set('caughtPokemon', this.loadCaughtPokemon());
@@ -373,35 +399,18 @@ export class BootScene extends Phaser.Scene {
         }
     }
 
-    generateWheelTexture() {
+    generateWheelTexture(enabledSlices) {
         const size = 600;
         const centerX = size / 2;
         const centerY = size / 2;
         const radius = size / 2 - 10;
-        const slices = 15;
+        const slices = enabledSlices.length;
         const anglePerSlice = (Math.PI * 2) / slices;
 
-        // Slice colors (matching dice colors)
-        const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xA78BFA, 0xFF8C42, 0x26A69A, 0xFFC107, 0xFFD700, 0x00BCD4, 0xE91E63, 0x4CAF50, 0x9C27B0, 0xFF5722, 0x9b59b6];
-
-        // Icon keys in order (matching gameModeMap face order)
-        const iconKeys = [
-            'game-mode-letter',
-            'game-mode-word',
-            'game-mode-emojiword',
-            'game-mode-directions',
-            'game-mode-lettermatch',
-            'game-mode-speech',
-            'game-mode-numbers',
-            'game-mode-spelling',
-            'game-mode-legendary',
-            'game-mode-legendary-numbers',
-            'game-mode-dayofweek',
-            'game-mode-addition',
-            'game-mode-shapedirections',
-            'game-mode-clock',
-            'game-mode-piano'
-        ];
+        // Per-slice color and icon come from the shared wheel definition, so the
+        // wheel only contains the modes that are actually enabled in the config.
+        const colors = enabledSlices.map(slice => slice.color);
+        const iconKeys = enabledSlices.map(slice => slice.iconKey);
 
         const graphics = this.add.graphics();
 

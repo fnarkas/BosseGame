@@ -20,6 +20,7 @@ import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier } from '../streak.js';
 import { createBoosterBar, updateBoosterBar, destroyBoosterBar, hideBoosterBar, showBoosterBar } from '../boosterBar.js';
+import { loadModeWeights } from '../minigameWheel.js';
 
 export class PokeballGameScene extends Phaser.Scene {
     constructor() {
@@ -230,41 +231,10 @@ export class PokeballGameScene extends Phaser.Scene {
     }
 
     async selectRandomGameMode() {
-        // Configurable weights for each game mode
-        // Higher weight = higher probability of being selected
-        const DEFAULT_MODE_WEIGHTS = {
-            letterListening: 10,
-            wordEmoji: 10,
-            emojiWord: 10,
-            leftRight: 10,
-            letterDragMatch: 10,
-            speechRecognition: 10,
-            numberListening: 10,
-            numberReading: 10,
-            wordSpelling: 40,
-            legendary: 10,
-            legendaryNumbers: 10,
-            dayMatch: 10,
-            addition: 10,
-            shapeDirections: 10,
-            clockListening: 10,
-            clockReading: 10,
-            pianoLearning: 10
-        };
-
-        // Load weights from config file, fall back to defaults
-        let MODE_WEIGHTS = DEFAULT_MODE_WEIGHTS;
-        try {
-            const response = await fetch('/config/minigames.json');
-            if (response.ok) {
-                const config = await response.json();
-                if (config.weights) {
-                    MODE_WEIGHTS = { ...DEFAULT_MODE_WEIGHTS, ...config.weights };
-                }
-            }
-        } catch (error) {
-            console.warn('Failed to load weights from config, using defaults:', error);
-        }
+        // Load weights (config merged over defaults) from the shared wheel module,
+        // so mode selection and the wheel graphic always agree. Higher weight =
+        // higher probability of being selected; weight 0 = never selected.
+        const MODE_WEIGHTS = await loadModeWeights();
 
         // Calculate total weight
         const totalWeight = MODE_WEIGHTS.letterListening +
@@ -430,28 +400,17 @@ export class PokeballGameScene extends Phaser.Scene {
             this.scene.start('MainGameScene');
         });
 
-        // Map game mode to slice number (1-15)
-        const gameModeMap = {
-            'LetterListeningMode': 1,
-            'WordEmojiMatchMode': 2,
-            'EmojiWordMatchMode': 3,
-            'LeftRightMode': 4,
-            'LetterDragMatchMode': 5,
-            'SpeechRecognitionMode': 6,
-            'NumberListeningMode': 7,
-            'NumberReadingMode': 7, // Shares slice with NumberListeningMode (similar games)
-            'WordSpellingMode': 8,
-            'LegendaryAlphabetMatchMode': 9,
-            'LegendaryNumbersMode': 10,
-            'DayMatchMode': 11,
-            'AdditionMode': 12,
-            'ShapeDirectionsMode': 13,
-            'ClockListeningMode': 14,
-            'ClockReadingMode': 14, // Shares slice with ClockListeningMode (similar games)
-            'PianoLearningMode': 15
-        };
-
-        const selectedSlice = gameModeMap[this.gameMode.constructor.name];
+        // Map the selected mode to its slice on the wheel. The wheel is built in
+        // BootScene from the enabled (weight > 0) slices, so we look up the slice
+        // by class name in that same ordered list rather than a fixed map.
+        const wheelSlices = this.registry.get('wheelSlices') || [];
+        const modeName = this.gameMode.constructor.name;
+        let selectedSlice = wheelSlices.findIndex(slice => slice.classNames.includes(modeName)) + 1;
+        if (selectedSlice === 0) {
+            // Mode isn't on the wheel (e.g. a forced/debug mode whose weight is 0).
+            // Land on a random slice so the animation still works.
+            selectedSlice = Phaser.Math.Between(1, Math.max(1, wheelSlices.length));
+        }
 
         // Create wheel sprite in center
         const wheelSprite = this.add.image(width / 2, height / 2, 'game-wheel');
@@ -489,26 +448,27 @@ export class PokeballGameScene extends Phaser.Scene {
     }
 
     startWheelSpin(wheelSprite, pointerSprite, selectedSlice, overlay, wheelBoosterBar) {
-        // Calculate target rotation
-        // The wheel is generated in BootScene with 10 slices
-        // Slices are drawn starting at index 0 at the TOP (-90° in canvas coordinates)
-        // They proceed clockwise: index 0, 1, 2, ... 9
-        // The pointer is FIXED at the top pointing down
-        // selectedSlice is 1-10, so convert to index 0-9
+        // Calculate target rotation.
+        // The wheel is generated in BootScene from the enabled slices. Slices are
+        // drawn starting at index 0 at the TOP (-90° in canvas coordinates) and
+        // proceed clockwise. The pointer is FIXED at the top pointing down.
+        // selectedSlice is 1-based, so convert to a 0-based index.
+        const wheelSlices = this.registry.get('wheelSlices') || [];
+        const sliceCount = Math.max(1, wheelSlices.length);
+        const sliceIndex = selectedSlice - 1;
+        const sliceAngle = 360 / sliceCount; // Degrees per slice, based on the actual slice count
 
-        const sliceIndex = selectedSlice - 1; // Convert 1-10 to 0-9
-        const sliceAngle = 36; // 360 / 10 slices
-
-        // Index 0 is already at top (0° rotation needed)
-        // To bring index 1 to top, rotate -36° (counterclockwise)
-        // To bring index N to top, rotate -(N * 36)°
+        // Index 0 is already at top (0° rotation needed).
+        // To bring index N to the top, rotate -(N * sliceAngle)°.
         const targetRotation = -sliceIndex * sliceAngle;
 
         // Add 3-5 full rotations (clockwise, positive degrees) for spinning effect
         const fullRotations = Phaser.Math.Between(3, 5) * 360;
 
-        // Add random offset within the slice for natural feel (±12 degrees)
-        const randomOffset = Phaser.Math.Between(-12, 12);
+        // Add a random offset within the slice for a natural feel, kept inside the
+        // slice bounds so the pointer never lands on a neighbouring slice.
+        const maxOffset = Math.floor(sliceAngle * 0.35);
+        const randomOffset = Phaser.Math.Between(-maxOffset, maxOffset);
 
         // Total rotation: spin clockwise multiple times, then settle on target
         const totalRotation = fullRotations + targetRotation + randomOffset;
