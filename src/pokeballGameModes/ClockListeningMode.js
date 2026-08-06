@@ -17,6 +17,11 @@ export class ClockListeningMode extends BasePokeballGameMode {
 
         this.currentHour = null;
         this.currentMinute = null;
+        // The time the player has currently dialled in on the clock. The hour
+        // hand is always drawn from these so it drifts with the minute hand
+        // (e.g. at 5:30 the hour hand sits halfway between 5 and 6).
+        this.setHour = 12;
+        this.setMinute = 0;
         this.clockGraphics = null;
         this.hourHand = null;
         this.minuteHand = null;
@@ -164,14 +169,24 @@ export class ClockListeningMode extends BasePokeballGameMode {
         this.uiElements.push(centerDot);
 
         // Set initial hand positions to 12:00
-        this.hourHand.angle = 0;
-        this.minuteHand.angle = 0;
-        this.hourHitbox.angle = 0;
-        this.minuteHitbox.angle = 0;
+        this.setHour = 12;
+        this.setMinute = 0;
+        this.updateHandVisuals();
 
         // Set up drag events for hitboxes
         this.setupHandDragging(scene, this.hourHitbox);
         this.setupHandDragging(scene, this.minuteHitbox);
+    }
+
+    // Draw both hands from the dialled-in time. The hour hand includes the
+    // minute fraction so it moves gradually as the minute hand is set.
+    updateHandVisuals() {
+        const minuteAngle = this.setMinute * 6;                       // 6° per minute
+        const hourAngle = (this.setHour % 12) * 30 + (this.setMinute / 60) * 30;
+        if (this.hourHand) this.hourHand.angle = hourAngle;
+        if (this.hourHitbox) this.hourHitbox.angle = hourAngle;
+        if (this.minuteHand) this.minuteHand.angle = minuteAngle;
+        if (this.minuteHitbox) this.minuteHitbox.angle = minuteAngle;
     }
 
     setupHandDragging(scene, hitbox) {
@@ -191,21 +206,24 @@ export class ClockListeningMode extends BasePokeballGameMode {
             const dy = pointer.y - this.clockCenter.y;
             let angle = Math.atan2(dy, dx) * 180 / Math.PI;
             angle += 90; // Adjust so 0 degrees is at top (12 o'clock)
+            angle = ((angle % 360) + 360) % 360;
 
-            // Snap to nearest appropriate increment
             if (hitbox.getData('handType') === 'hour') {
-                // Snap to 30-degree increments (each hour)
-                angle = Math.round(angle / 30) * 30;
+                // Pick the whole hour, subtracting the minute-hand offset the
+                // hour hand currently carries so the choice isn't skewed by it.
+                const minuteOffset = (this.setMinute / 60) * 30;
+                let hour = Math.round((angle - minuteOffset) / 30);
+                hour = ((hour % 12) + 12) % 12;
+                if (hour === 0) hour = 12;
+                this.setHour = hour;
             } else {
-                // Snap to 6-degree increments (each 5 minutes)
-                angle = Math.round(angle / 6) * 6;
+                // Snap the minute hand to 5-minute increments (each 5 min = 30°).
+                let minute = Math.round(angle / 30) * 5;
+                this.setMinute = ((minute % 60) + 60) % 60;
             }
 
-            // Update both hitbox and visible hand
-            hitbox.angle = angle;
-            if (targetHand) {
-                targetHand.angle = angle;
-            }
+            // Redraw both hands so the hour hand follows the minute hand.
+            this.updateHandVisuals();
         });
 
         hitbox.on('dragend', () => {
@@ -279,17 +297,10 @@ export class ClockListeningMode extends BasePokeballGameMode {
     }
 
     checkAnswer(scene) {
-        // Get current hand positions
-        const hourAngle = ((this.hourHand.angle % 360) + 360) % 360; // Normalize to 0-360
-        const minuteAngle = ((this.minuteHand.angle % 360) + 360) % 360;
-
-        // Convert angles to hours and minutes
-        // Hour hand: 0° = 12, 30° = 1, 60° = 2, etc.
-        let playerHour = Math.round(hourAngle / 30);
-        if (playerHour === 0) playerHour = 12;
-
-        // Minute hand: 0° = 0, 6° = 5, 180° = 30, etc.
-        const playerMinute = Math.round(minuteAngle / 6) * 5; // Snap to 5-minute increments
+        // The dialled-in time is tracked directly as state (the hour hand's
+        // visual offset from the minute hand is already baked into setHour).
+        const playerHour = this.setHour;
+        const playerMinute = this.setMinute;
 
         console.log(`Player: ${playerHour}:${playerMinute.toString().padStart(2, '0')}, Correct: ${this.currentHour}:${this.currentMinute.toString().padStart(2, '0')}`);
 
@@ -395,11 +406,10 @@ export class ClockListeningMode extends BasePokeballGameMode {
     }
 
     resetHands() {
-        // Reset hands and hitboxes to 12:00
-        this.hourHand.angle = 0;
-        this.minuteHand.angle = 0;
-        this.hourHitbox.angle = 0;
-        this.minuteHitbox.angle = 0;
+        // Reset the dialled-in time to 12:00 and redraw.
+        this.setHour = 12;
+        this.setMinute = 0;
+        this.updateHandVisuals();
         this.hourHand.setFillStyle(0x2C3E50);
         this.minuteHand.setFillStyle(0xE74C3C);
     }
