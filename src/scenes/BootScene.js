@@ -115,6 +115,7 @@ export class BootScene extends Phaser.Scene {
         this.load.image('game-mode-shapedirections', 'minigame_icons/shape_directions.png');
         this.load.image('game-mode-clock', 'minigame_icons/clock.png');
         this.load.image('game-mode-piano', 'minigame_icons/piano_mode.png');
+        this.load.image('game-mode-speedreading', 'minigame_icons/speed_reading.png');
     }
 
     loadPokemonImages() {

@@ -25,7 +25,8 @@ export const WHEEL_SLICES = [
     { classNames: ['AdditionMode'],                              iconKey: 'game-mode-addition',          color: 0x4CAF50, weightKeys: ['addition'] },
     { classNames: ['ShapeDirectionsMode'],                       iconKey: 'game-mode-shapedirections',   color: 0xFF5722, weightKeys: ['shapeDirections'] },
     { classNames: ['ClockListeningMode', 'ClockReadingMode'],    iconKey: 'game-mode-clock',             color: 0x9C27B0, weightKeys: ['clockListening', 'clockReading'] },
-    { classNames: ['PianoLearningMode'],                         iconKey: 'game-mode-piano',             color: 0x9b59b6, weightKeys: ['pianoLearning'] }
+    { classNames: ['PianoLearningMode'],                         iconKey: 'game-mode-piano',             color: 0x9b59b6, weightKeys: ['pianoLearning'] },
+    { classNames: ['SpeedReadingMode'],                          iconKey: 'game-mode-speedreading',      color: 0x3498DB, weightKeys: ['speedReading'] }
 ];
 
 // Default weight for every mode key. Config values in minigames.json are merged
@@ -47,7 +48,8 @@ export const DEFAULT_MODE_WEIGHTS = {
     shapeDirections: 10,
     clockListening: 10,
     clockReading: 10,
-    pianoLearning: 3
+    pianoLearning: 3,
+    speedReading: 10
 };
 
 // Fetch the configured weights, merged over the defaults. Never throws.

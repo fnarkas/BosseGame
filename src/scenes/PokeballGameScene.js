@@ -16,6 +16,7 @@ import { ShapeDirectionsMode } from '../pokeballGameModes/ShapeDirectionsMode.js
 import { ClockListeningMode } from '../pokeballGameModes/ClockListeningMode.js';
 import { ClockReadingMode } from '../pokeballGameModes/ClockReadingMode.js';
 import { PianoLearningMode } from '../pokeballGameModes/PianoLearningMode.js';
+import { SpeedReadingMode } from '../pokeballGameModes/SpeedReadingMode.js';
 import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier } from '../streak.js';
@@ -42,7 +43,8 @@ const MODE_CLASSES = {
     ShapeDirectionsMode,
     ClockListeningMode,
     ClockReadingMode,
-    PianoLearningMode
+    PianoLearningMode,
+    SpeedReadingMode
 };
 
 export class PokeballGameScene extends Phaser.Scene {
@@ -263,6 +265,10 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /piano - piano learning game
             this.gameMode = new PianoLearningMode();
             console.log('Selected game mode: Piano Learning (forced)');
+        } else if (forcedMode === 'speedreading-only') {
+            // Debug path: /speedreading - timed speed reading game
+            this.gameMode = new SpeedReadingMode();
+            console.log('Selected game mode: Speed Reading (forced)');
         } else {
             // Normal mode: Randomly select from all game modes with configurable probabilities
             this.gameMode = await this.selectRandomGameMode();
@@ -292,7 +298,8 @@ export class PokeballGameScene extends Phaser.Scene {
                           MODE_WEIGHTS.shapeDirections +
                           MODE_WEIGHTS.clockListening +
                           MODE_WEIGHTS.clockReading +
-                          MODE_WEIGHTS.pianoLearning;
+                          MODE_WEIGHTS.pianoLearning +
+                          MODE_WEIGHTS.speedReading;
 
         // Generate random number between 0 and total weight
         const random = Math.random() * totalWeight;
@@ -394,6 +401,12 @@ export class PokeballGameScene extends Phaser.Scene {
         if (random < currentWeight) {
             console.log('Selected game mode: Piano Learning');
             return new PianoLearningMode();
+        }
+
+        currentWeight += MODE_WEIGHTS.speedReading;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Speed Reading');
+            return new SpeedReadingMode();
         }
 
         currentWeight += MODE_WEIGHTS.wordSpelling;
@@ -579,11 +592,14 @@ export class PokeballGameScene extends Phaser.Scene {
             // Check if this is legendary mode
             const modeName = this.gameMode.constructor.name;
             const isLegendaryMode = modeName === 'LegendaryAlphabetMatchMode' || modeName === 'LegendaryNumbersMode';
+            // Speed reading pays out a variable amount it computed itself, with no
+            // streak/multiplier (like legendary, but with a normal gift box).
+            const isSpeedReading = modeName === 'SpeedReadingMode';
 
-            // Increment streak and get multiplier (only for non-legendary modes)
+            // Increment streak and get multiplier (only for streak-based modes)
             let newStreak, multiplier, baseCoinReward, finalCoinReward;
 
-            if (!isLegendaryMode) {
+            if (!isLegendaryMode && !isSpeedReading) {
                 newStreak = incrementStreak();
                 multiplier = getMultiplier();
 
@@ -593,6 +609,10 @@ export class PokeballGameScene extends Phaser.Scene {
                 // Generate random coin reward (1-3)
                 baseCoinReward = getRandomCoinReward();
                 finalCoinReward = baseCoinReward * multiplier;
+            } else if (isSpeedReading) {
+                // Speed reading: 1 coin per word read, computed by the mode.
+                multiplier = null;
+                finalCoinReward = this.gameMode.earnedCoins;
             } else {
                 // Legendary mode: use configured coin reward, no multiplier
                 multiplier = null;
@@ -603,7 +623,7 @@ export class PokeballGameScene extends Phaser.Scene {
             this.showSuccessFeedback(x, y);
 
             // Show reward animation (gift box for normal, treasure chest for legendary)
-            showGiftBoxReward(this, finalCoinReward, isLegendaryMode ? null : multiplier, isLegendaryMode, async () => {
+            showGiftBoxReward(this, finalCoinReward, (isLegendaryMode || isSpeedReading) ? null : multiplier, isLegendaryMode, async () => {
                 // Animation complete - update coin count
                 this.coinCount = addCoins(finalCoinReward);
                 this.coinCounterText.setText(`${this.coinCount}`);

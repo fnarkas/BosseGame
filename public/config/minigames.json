@@ -1,22 +1,23 @@
 {
   "weights": {
-    "letterListening": 10,
+    "letterListening": 0,
     "wordEmoji": 10,
-    "emojiWord": 10,
+    "emojiWord": 0,
     "leftRight": 0,
-    "letterDragMatch": 10,
+    "letterDragMatch": 0,
     "speechRecognition": 10,
-    "numberListening": 100,
+    "numberListening": 0,
     "numberReading": 10,
     "wordSpelling": 40,
     "addition": 40,
     "shapeDirections": 10,
-    "legendary": 5,
-    "legendaryNumbers": 10,
-    "dayMatch": 10,
-    "clockListening": 0,
-    "clockReading": 10,
-    "pianoLearning": 100
+    "clockListening": 10,
+    "clockReading": 0,
+    "pianoLearning": 10,
+    "speedReading": 10,
+    "legendary": 0,
+    "legendaryNumbers": 0,
+    "dayMatch": 10
   },
   "numbers": {
     "required": 5,
@@ -63,5 +64,10 @@
   "pianoLearning": {
     "measuresPerPattern": 1,
     "showNotes": true
+  },
+  "speedReading": {
+    "wordCount": 100,
+    "durationSeconds": 60,
+    "maxCoins": 50
   }
 }
