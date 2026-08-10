@@ -38,6 +38,7 @@ const GAMES_REGISTRY = [
     { path: '/numberreading', name: '👀🔢 Number Reading', mode: 'numberreading-only', scene: 'PokeballGameScene', weightKey: 'numberReading' },
     { path: '/wordspelling', name: '⌨️ Word Spelling', mode: 'wordspelling-only', scene: 'PokeballGameScene', weightKey: 'wordSpelling' },
     { path: '/addition', name: '➕ Addition', mode: 'addition-only', scene: 'PokeballGameScene', weightKey: 'addition' },
+    { path: '/multiplication', name: '✖️ Multiplikation', mode: 'multiplication-only', scene: 'PokeballGameScene', weightKey: 'multiplication' },
     { path: '/shapedirections', name: '🔷➡️ Shape Directions', mode: 'shapedirections-only', scene: 'PokeballGameScene', weightKey: 'shapeDirections' },
     { path: '/clocklistening', name: '🕐🔊 Clock Listening', mode: 'clocklistening-only', scene: 'PokeballGameScene', weightKey: 'clockListening' },
     { path: '/clockreading', name: '🕐👀 Clock Reading', mode: 'clockreading-only', scene: 'PokeballGameScene', weightKey: 'clockReading' },
@@ -389,6 +390,7 @@ async function showAdminPage() {
                         <option value="word-spelling">⌨️ Word Spelling</option>
                         <option value="dayofweek">📅 Day of Week</option>
                         <option value="addition">➕ Addition</option>
+                        <option value="multiplication">✖️ Multiplication</option>
                         <option value="piano">🎹 Piano Learning</option>
                         <option value="speedreading">📖⏱️ Speed Reading</option>
                     </select>
@@ -624,6 +626,52 @@ async function showAdminPage() {
                     <div id="config-addition-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
                 </div>
 
+                <div id="config-multiplication" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                    <h3 style="margin-top: 0;">Multiplication Configuration</h3>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Tables to Practise:</label>
+                        <input type="text" id="config-multiplication-tables" value="${serverConfig.multiplication?.tables || '2,5,10'}" style="width: 300px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">Comma-separated, ranges allowed (e.g. "2,5,10" or "2-5"). The table is the group size.</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Highest Factor:</label>
+                        <input type="number" id="config-multiplication-maxfactor" value="${serverConfig.multiplication?.maxFactor || 10}" min="2" max="10" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">How many groups at most, i.e. the number of rows in the array (2-10).</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Correct Answers Needed:</label>
+                        <input type="number" id="config-multiplication-required" value="${serverConfig.multiplication?.required || 3}" min="1" max="10" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">Problems to solve before the reward. A miss does not reset progress.</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="config-multiplication-commutativity" ${serverConfig.multiplication?.showCommutativity !== false ? 'checked' : ''} style="width: 24px; height: 24px; margin-right: 10px; cursor: pointer;">
+                            <span style="font-weight: bold;">Show Commutativity</span>
+                        </label>
+                        <div style="color: #666; margin-top: 5px; font-size: 14px; margin-left: 34px;">
+                            After a correct answer the array rotates so 3 × 10 becomes 10 × 3 with the same balls.<br>
+                            Turn off to make each round about 1.3 seconds shorter.
+                        </div>
+                    </div>
+
+                    <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196F3; margin-bottom: 20px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ About Multiplication:</div>
+                        <div style="color: #666; font-size: 14px;">
+                            The problem is drawn as an array of pokeballs — 3 × 10 is 3 rows of 10 — so the answer can always be counted by hand.<br>
+                            After every answer, right or wrong, the rows light up one at a time while the voice skip-counts (10, 20, 30).<br>
+                            The answer is given by dragging digits into the tens and ones slots, as in Addition.<br>
+                            Answers are capped below 100 because there are only two slots, so 10 × 10 never appears.
+                        </div>
+                    </div>
+
+                    <button onclick="saveMinigameConfig('multiplication')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Multiplication Config</button>
+                    <div id="config-multiplication-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
+                </div>
+
                 <div id="config-piano" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
                     <h3 style="margin-top: 0;">Piano Learning Configuration</h3>
 
@@ -674,9 +722,15 @@ async function showAdminPage() {
                     </div>
 
                     <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Words for Full Reward:</label>
+                        <input type="number" id="config-speedreading-targetwords" value="${serverConfig.speedReading?.targetWords || 20}" min="5" max="100" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">Reading this many words pays the max coins and ends the round.</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
                         <label style="display: block; font-weight: bold; margin-bottom: 5px;">Max Coins:</label>
-                        <input type="number" id="config-speedreading-maxcoins" value="${serverConfig.speedReading?.maxCoins || 50}" min="1" max="200" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-                        <span style="color: #666; margin-left: 10px;">1 word = 1 coin, capped at this amount.</span>
+                        <input type="number" id="config-speedreading-maxcoins" value="${serverConfig.speedReading?.maxCoins || 100}" min="1" max="200" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">Reward at the target. Fewer words pay less, on an accelerating curve.</span>
                     </div>
 
                     <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196F3; margin-bottom: 20px;">
@@ -684,7 +738,8 @@ async function showAdminPage() {
                         <div style="color: #666; font-size: 14px;">
                             One word shows at a time and the microphone listens continuously.<br>
                             The child reads as many of the most common Swedish words as possible before time runs out.<br>
-                            Each word read correctly is worth 1 coin, up to the max. A progress bar shows coins earned and a timer bar shows time left.<br>
+                            The coin reward accelerates with the number of words read: coins = maxCoins × (words / target)², so the last words are worth far more than the first. Hitting the target pays the max and ends the round.<br>
+                            A progress bar tracks words read toward the target and a timer bar shows time left.<br>
                             The word list comes from the 1000 most common Swedish words (profanity filtered).
                         </div>
                     </div>
@@ -966,6 +1021,7 @@ async function showAdminPage() {
         document.getElementById('config-word-spelling').style.display = 'none';
         document.getElementById('config-dayofweek').style.display = 'none';
         document.getElementById('config-addition').style.display = 'none';
+        document.getElementById('config-multiplication').style.display = 'none';
         document.getElementById('config-piano').style.display = 'none';
         document.getElementById('config-speedreading').style.display = 'none';
 
@@ -1560,6 +1616,62 @@ async function showAdminPage() {
             setTimeout(() => {
                 message.textContent = '';
             }, 5000);
+        } else if (game === 'multiplication') {
+            const tables = document.getElementById('config-multiplication-tables').value;
+            const maxFactor = parseInt(document.getElementById('config-multiplication-maxfactor').value);
+            const required = parseInt(document.getElementById('config-multiplication-required').value);
+            const showCommutativity = document.getElementById('config-multiplication-commutativity').checked;
+
+            const message = document.getElementById('config-multiplication-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                // Load current config
+                const response = await fetch('/config/minigames.json', { cache: 'no-store' });
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' },
+                    multiplication: { required: 3, tables: '2,5,10', maxFactor: 10, maxProduct: 99, showCommutativity: true }
+                };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                // Update multiplication config. maxProduct stays at 99 — the answer
+                // only has a tens and a ones slot.
+                fullConfig.multiplication = {
+                    required: required,
+                    tables: tables,
+                    maxFactor: maxFactor,
+                    maxProduct: 99,
+                    showCommutativity: showCommutativity
+                };
+
+                // Save to server
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Multiplication config saved to server! All devices will use these settings.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save multiplication config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
         } else if (game === 'piano') {
             const measuresPerPattern = parseInt(document.getElementById('config-piano-measures').value);
             const showNotes = document.getElementById('config-piano-shownotes').checked;
@@ -1613,6 +1725,7 @@ async function showAdminPage() {
         } else if (game === 'speedreading') {
             const wordCount = parseInt(document.getElementById('config-speedreading-wordcount').value);
             const durationSeconds = parseInt(document.getElementById('config-speedreading-duration').value);
+            const targetWords = parseInt(document.getElementById('config-speedreading-targetwords').value);
             const maxCoins = parseInt(document.getElementById('config-speedreading-maxcoins').value);
 
             const message = document.getElementById('config-speedreading-message');
@@ -1625,7 +1738,7 @@ async function showAdminPage() {
                 let fullConfig = {
                     numbers: { required: 1, numbers: '10-99' },
                     letters: { letters: 'A-Z,Å,Ä,Ö' },
-                    speedReading: { wordCount: 100, durationSeconds: 60, maxCoins: 50 }
+                    speedReading: { wordCount: 100, durationSeconds: 60, targetWords: 20, maxCoins: 100 }
                 };
                 if (response.ok) {
                     fullConfig = await response.json();
@@ -1635,6 +1748,7 @@ async function showAdminPage() {
                 fullConfig.speedReading = {
                     wordCount: wordCount,
                     durationSeconds: durationSeconds,
+                    targetWords: targetWords,
                     maxCoins: maxCoins
                 };
 

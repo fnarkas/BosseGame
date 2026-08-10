@@ -12,6 +12,7 @@ import { LegendaryAlphabetMatchMode } from '../pokeballGameModes/LegendaryAlphab
 import { LegendaryNumbersMode } from '../pokeballGameModes/LegendaryNumbersMode.js';
 import { DayMatchMode } from '../pokeballGameModes/DayMatchMode.js';
 import { AdditionMode } from '../pokeballGameModes/AdditionMode.js';
+import { MultiplicationMode } from '../pokeballGameModes/MultiplicationMode.js';
 import { ShapeDirectionsMode } from '../pokeballGameModes/ShapeDirectionsMode.js';
 import { ClockListeningMode } from '../pokeballGameModes/ClockListeningMode.js';
 import { ClockReadingMode } from '../pokeballGameModes/ClockReadingMode.js';
@@ -40,6 +41,7 @@ const MODE_CLASSES = {
     LegendaryNumbersMode,
     DayMatchMode,
     AdditionMode,
+    MultiplicationMode,
     ShapeDirectionsMode,
     ClockListeningMode,
     ClockReadingMode,
@@ -249,6 +251,10 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /addition - simple addition
             this.gameMode = new AdditionMode();
             console.log('Selected game mode: Addition (forced)');
+        } else if (forcedMode === 'multiplication-only') {
+            // Debug path: /multiplication - multiplication with array visualisation
+            this.gameMode = new MultiplicationMode();
+            console.log('Selected game mode: Multiplication (forced)');
         } else if (forcedMode === 'shapedirections-only') {
             // Debug path: /shapedirections - shape directions game
             this.gameMode = new ShapeDirectionsMode();
@@ -295,6 +301,7 @@ export class PokeballGameScene extends Phaser.Scene {
                           MODE_WEIGHTS.legendaryNumbers +
                           MODE_WEIGHTS.dayMatch +
                           MODE_WEIGHTS.addition +
+                          MODE_WEIGHTS.multiplication +
                           MODE_WEIGHTS.shapeDirections +
                           MODE_WEIGHTS.clockListening +
                           MODE_WEIGHTS.clockReading +
@@ -377,6 +384,12 @@ export class PokeballGameScene extends Phaser.Scene {
         if (random < currentWeight) {
             console.log('Selected game mode: Addition');
             return new AdditionMode();
+        }
+
+        currentWeight += MODE_WEIGHTS.multiplication;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Multiplication');
+            return new MultiplicationMode();
         }
 
         currentWeight += MODE_WEIGHTS.shapeDirections;

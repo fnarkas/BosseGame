@@ -7,17 +7,18 @@
     "letterDragMatch": 0,
     "speechRecognition": 10,
     "numberListening": 0,
-    "numberReading": 10,
+    "numberReading": 0,
     "wordSpelling": 40,
-    "addition": 40,
-    "shapeDirections": 10,
-    "clockListening": 10,
+    "addition": 10,
+    "multiplication": 10,
+    "shapeDirections": 0,
+    "clockListening": 0,
     "clockReading": 0,
     "pianoLearning": 10,
     "speedReading": 10,
     "legendary": 0,
     "legendaryNumbers": 0,
-    "dayMatch": 10
+    "dayMatch": 0
   },
   "numbers": {
     "required": 5,
@@ -53,6 +54,13 @@
     "maxSum": 99,
     "onlyOneMultiDigit": true
   },
+  "multiplication": {
+    "required": 3,
+    "tables": "2,5,10",
+    "maxFactor": 10,
+    "maxProduct": 99,
+    "showCommutativity": true
+  },
   "clockListening": {
     "required": 3,
     "includeHalfHours": true
@@ -68,6 +76,7 @@
   "speedReading": {
     "wordCount": 100,
     "durationSeconds": 60,
-    "maxCoins": 50
+    "targetWords": 20,
+    "maxCoins": 100
   }
 }

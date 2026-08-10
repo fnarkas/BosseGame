@@ -3,9 +3,10 @@ import { getTopCommonWords } from '../commonSwedishWords.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
 
 // ⚙️ DEFAULTS (overridable from public/config/minigames.json → speedReading)
-const DEFAULT_WORD_COUNT = 100;   // How many of the most common words are in play
-const DEFAULT_DURATION = 60;      // Seconds on the clock
-const DEFAULT_MAX_COINS = 50;     // 1 word = 1 coin, capped here
+const DEFAULT_WORD_COUNT = 100;    // How many of the most common words are in play
+const DEFAULT_DURATION = 60;       // Seconds on the clock
+const DEFAULT_TARGET_WORDS = 20;   // Words needed for the full reward
+const DEFAULT_MAX_COINS = 100;     // Reward at (and capped to) the target
 
 // Swedish homophones: words that sound the same but are spelled differently, so
 // the speech recognizer may return a different spelling than the shown word.
@@ -60,6 +61,7 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         // Config (loaded from server, falls back to defaults)
         this.wordCount = DEFAULT_WORD_COUNT;
         this.durationSeconds = DEFAULT_DURATION;
+        this.targetWords = DEFAULT_TARGET_WORDS;
         this.maxCoins = DEFAULT_MAX_COINS;
         this.configLoaded = false;
 
@@ -76,6 +78,7 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         this.finished = false;
 
         // Scoring / timing
+        this.correctWords = 0;      // Drives both the ramp and the progress bar
         this.earnedCoins = 0;       // Read by PokeballGameScene for the reward
         this.timeLeft = DEFAULT_DURATION;
         this.timerEvent = null;
@@ -104,10 +107,12 @@ export class SpeedReadingMode extends BasePokeballGameMode {
                 if (serverConfig.speedReading) {
                     this.wordCount = serverConfig.speedReading.wordCount || this.wordCount;
                     this.durationSeconds = serverConfig.speedReading.durationSeconds || this.durationSeconds;
+                    this.targetWords = serverConfig.speedReading.targetWords || this.targetWords;
                     this.maxCoins = serverConfig.speedReading.maxCoins || this.maxCoins;
                     console.log('SpeedReadingMode loaded config:', {
                         wordCount: this.wordCount,
                         durationSeconds: this.durationSeconds,
+                        targetWords: this.targetWords,
                         maxCoins: this.maxCoins
                     });
                 }
@@ -181,10 +186,10 @@ export class SpeedReadingMode extends BasePokeballGameMode {
             .setOrigin(0, 0.5);
         this.uiElements.push(this.progressBarFill);
 
-        // Tick marks every 10 coins as coin thresholds.
-        const tickStep = 10;
-        for (let c = tickStep; c < this.maxCoins; c += tickStep) {
-            const tx = this.progressBarX + (c / this.maxCoins) * this.progressBarWidth;
+        // Tick marks every 5 words on the way to the target.
+        const tickStep = 5;
+        for (let w = tickStep; w < this.targetWords; w += tickStep) {
+            const tx = this.progressBarX + (w / this.targetWords) * this.progressBarWidth;
             const tick = scene.add.rectangle(tx, coinY, 3, 40, 0xB8860B).setOrigin(0.5);
             this.uiElements.push(tick);
         }
@@ -506,8 +511,16 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         return false;
     }
 
+    // Reward accelerates with the number of words: quadratic up to targetWords.
+    coinsForWords(words) {
+        if (words <= 0) return 0;
+        const fraction = Math.min(1, words / this.targetWords);
+        return Math.max(1, Math.round(this.maxCoins * fraction * fraction));
+    }
+
     handleCorrectWord(scene) {
-        this.earnedCoins = Math.min(this.earnedCoins + 1, this.maxCoins);
+        this.correctWords += 1;
+        this.earnedCoins = this.coinsForWords(this.correctWords);
         this.updateProgressBar();
 
         if (this.statusText) {
@@ -516,8 +529,8 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         }
         this.showSuccessParticles(scene, scene.cameras.main.width / 2, 470);
 
-        // Reached the maximum reward — end early on a high note.
-        if (this.earnedCoins >= this.maxCoins) {
+        // Reached the target — end early on a high note.
+        if (this.correctWords >= this.targetWords) {
             this.finishGame(scene);
             return;
         }
@@ -573,7 +586,8 @@ export class SpeedReadingMode extends BasePokeballGameMode {
 
     updateProgressBar() {
         if (!this.progressBarFill) return;
-        const fraction = Math.min(1, this.earnedCoins / this.maxCoins);
+        // The bar tracks words (steady progress); the number shows the accelerating coins.
+        const fraction = Math.min(1, this.correctWords / this.targetWords);
         this.progressBarFill.width = this.progressBarWidth * fraction;
         if (this.coinCountText) this.coinCountText.setText(`${this.earnedCoins}`);
     }

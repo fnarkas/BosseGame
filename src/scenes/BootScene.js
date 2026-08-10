@@ -83,6 +83,9 @@ export class BootScene extends Phaser.Scene {
         // Load number audio
         this.loadNumberAudio();
 
+        // Load math word audio
+        this.loadMathAudio();
+
         // Load word audio
         this.loadWordAudio();
 
@@ -112,6 +115,7 @@ export class BootScene extends Phaser.Scene {
         this.load.image('game-mode-legendary-numbers', 'minigame_icons/legendary_numbers.png');
         this.load.image('game-mode-dayofweek', 'minigame_icons/day_of_week.png');
         this.load.image('game-mode-addition', 'minigame_icons/addition.png');
+        this.load.image('game-mode-multiplication', 'minigame_icons/multiplication.png');
         this.load.image('game-mode-shapedirections', 'minigame_icons/shape_directions.png');
         this.load.image('game-mode-clock', 'minigame_icons/clock.png');
         this.load.image('game-mode-piano', 'minigame_icons/piano_mode.png');
@@ -215,6 +219,11 @@ export class BootScene extends Phaser.Scene {
             const audioFilename = `${num}.mp3`;
             this.load.audio(audioKey, `number_audio/${audioFilename}`);
         });
+    }
+
+    loadMathAudio() {
+        // Spoken math words, stitched between number audio (e.g. "tre gånger tio")
+        this.load.audio('math_audio_ganger', 'math_audio/ganger.mp3');
     }
 
     loadWordAudio() {
