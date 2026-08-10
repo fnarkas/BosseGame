@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { SWEDISH_LETTERS } from '../letterData.js';
 import { getAllWords, getAllSentences } from '../speechVocabulary.js';
+import { SPELLING_WORDS } from '../spellingWords.js';
 import { getAvailablePokemon } from '../pokemonData.js';
 import { loadModeWeights, getEnabledSlices } from '../minigameWheel.js';
 
@@ -37,15 +38,15 @@ export class BootScene extends Phaser.Scene {
             progressBox.destroy();
             loadingEmoji.destroy();
             console.log('All assets loaded. Checking word audio cache...');
-            const words = getAllWords();
-            words.forEach(wordObj => {
-                const audioKey = `word_audio_${wordObj.word}`;
-                if (this.cache.audio.exists(audioKey)) {
-                    console.log(`✓ ${audioKey} in cache`);
-                } else {
-                    console.error(`✗ ${audioKey} NOT IN CACHE`);
-                }
-            });
+            // Only the misses are worth printing - a word without audio is an
+            // unsolvable puzzle in the spelling game, which never shows the word.
+            const expected = [...getAllWords().map(w => w.word), ...SPELLING_WORDS];
+            const missing = expected.filter(word => !this.cache.audio.exists(`word_audio_${word}`));
+            if (missing.length === 0) {
+                console.log(`✓ All ${expected.length} word audio files in cache`);
+            } else {
+                console.error(`✗ ${missing.length}/${expected.length} word audio files NOT IN CACHE:`, missing.join(', '));
+            }
         });
 
         // Load all Pokemon images
@@ -253,6 +254,16 @@ export class BootScene extends Phaser.Scene {
                 const audioFilename = `${word}.mp3`;
                 this.load.audio(audioKey, `word_audio/${audioFilename}`);
             }
+        });
+
+        // Load audio for the spelling minigame's word pool. The spelling game
+        // never shows the word, so a missing file makes the puzzle unsolvable -
+        // the cache check in preload() reports any that failed to load.
+        const alreadyQueued = new Set([...words.map(w => w.word), ...sentenceWords]);
+        const spellingWords = SPELLING_WORDS.filter(word => !alreadyQueued.has(word));
+        console.log(`Loading ${spellingWords.length} spelling word audio files...`);
+        spellingWords.forEach(word => {
+            this.load.audio(`word_audio_${word}`, `word_audio/${word}.mp3`);
         });
 
         console.log('Word audio loading queued');

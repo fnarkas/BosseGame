@@ -44,7 +44,8 @@
     "numbers": "12-20,30,40,50,60,70,80,90"
   },
   "wordSpelling": {
-    "requiredWords": 3
+    "requiredWords": 3,
+    "wordCount": 447
   },
   "dayMatch": {
     "maxErrors": 3

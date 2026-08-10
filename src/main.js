@@ -552,10 +552,20 @@ async function showAdminPage() {
                         <span style="color: #666; margin-left: 10px;">How many words player must spell correctly to earn coins</span>
                     </div>
 
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Size of Word Pool:</label>
+                        <input type="number" id="config-wordspelling-wordcount" value="${serverConfig.wordSpelling?.wordCount || 447}" min="5" max="447" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">Draw from the N most common words (5–447). Lower it to drill the very commonest.</span>
+                    </div>
+
                     <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196F3; margin-bottom: 20px;">
                         <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ About Word Spelling:</div>
                         <div style="color: #666; font-size: 14px;">
                             Players hear Swedish words and must spell them using a letter keyboard.<br>
+                            The words are the 447 most common Swedish words, in frequency order. Words that would
+                            teach the wrong thing are filtered out — subtitle junk, spoken forms (nåt, dom, va),
+                            words that cannot be sounded out (och, är, jag, mig, säger) and silent opening
+                            consonants (hjälp, gjorde, själv). See generate_spelling_words.py to change the list.<br>
                             Each word allows 2 mistakes (❤️❤️) before showing the correct answer and restarting.<br>
                             Progress is shown with balls (○ ○ ○ → 🎁) representing completed words.<br>
                             Running out of hearts resets word progress back to 0.
@@ -1463,6 +1473,7 @@ async function showAdminPage() {
             }, 5000);
         } else if (game === 'word-spelling') {
             const requiredWords = parseInt(document.getElementById('config-wordspelling-required').value);
+            const wordCount = parseInt(document.getElementById('config-wordspelling-wordcount').value);
 
             const message = document.getElementById('config-wordspelling-message');
             message.textContent = '⏳ Saving...';
@@ -1477,7 +1488,7 @@ async function showAdminPage() {
                     pokemonCatching: { nameCase: 'uppercase', alphabetCase: 'lowercase' },
                     legendary: { coinReward: 100, maxErrors: 3 },
                     legendaryNumbers: { coinReward: 200, maxErrors: 5, numbers: '0-99' },
-                    wordSpelling: { requiredWords: 3 }
+                    wordSpelling: { requiredWords: 3, wordCount: 447 }
                 };
                 if (response.ok) {
                     fullConfig = await response.json();
@@ -1485,7 +1496,8 @@ async function showAdminPage() {
 
                 // Update word spelling config
                 fullConfig.wordSpelling = {
-                    requiredWords: requiredWords
+                    requiredWords: requiredWords,
+                    wordCount: wordCount
                 };
 
                 // Save to server

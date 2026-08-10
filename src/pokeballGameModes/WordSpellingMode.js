@@ -1,5 +1,5 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
-import { getRandomWord } from '../speechVocabulary.js';
+import { getSpellingWords } from '../spellingWords.js';
 import { playWordAudio, getWordAudioKey } from '../wordAudioData.js';
 import { createLetterKeyboard, updateLetterKeyboard, destroyLetterKeyboard } from '../components/LetterKeyboard.js';
 import { createLetterSlots, showSlotParticleEffect, showSlotErrorEffect, destroyLetterSlots } from '../components/LetterSlots.js';
@@ -9,6 +9,27 @@ import { updateBoosterBar } from '../boosterBar.js';
 
 const SWEDISH_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ'.split('');
 
+// Swedish words that sound identical, so the child hears the word but cannot
+// possibly know which spelling was meant. Any spelling in a group is accepted;
+// the slot still reveals the spelling the game asked for, so the correct form is
+// what the child sees and hears. Mirrors HOMOPHONE_GROUPS in SpeedReadingMode.js,
+// which solves the same problem for speech recognition.
+// Groups must hold words of equal length — the letter slots come from the target.
+const HOMOPHONE_GROUPS = [
+    ['sätt', 'sett'],   // both [sɛt:] — short e and ä are the same sound
+    ['men', 'män'],     // both [mɛn:]
+    ['en', 'än'],       // both [ɛn]
+    ['gott', 'gått']    // both [gɔt:] — short o and å are the same sound
+];
+
+// Every spelling that sounds like this word, uppercased. The word itself first.
+function acceptedSpellingsFor(word) {
+    const group = HOMOPHONE_GROUPS.find(g => g.includes(word)) || [word];
+    return group
+        .filter(candidate => candidate.length === word.length)
+        .map(candidate => candidate.toUpperCase());
+}
+
 /**
  * Word Spelling game mode
  * Player hears a Swedish word and must spell it using the keyboard
@@ -17,6 +38,7 @@ export class WordSpellingMode extends BasePokeballGameMode {
     constructor() {
         super();
         this.currentWord = null;
+        this.acceptedSpellings = [];
         this.currentLetterIndex = 0;
         this.usedLetters = [];
         this.collectedIndices = new Set();
@@ -31,6 +53,8 @@ export class WordSpellingMode extends BasePokeballGameMode {
         // Multi-word progress tracking
         this.wordsCompleted = 0;
         this.requiredWords = 3; // Default, will be loaded from config
+        this.wordCount = 0;     // 0 = the whole pool; narrowed from config
+        this.usedWords = [];    // No repeats within one session
         this.wordBallIndicators = [];
         this.configLoaded = false;
     }
@@ -42,8 +66,10 @@ export class WordSpellingMode extends BasePokeballGameMode {
                 const serverConfig = await response.json();
                 if (serverConfig.wordSpelling) {
                     this.requiredWords = serverConfig.wordSpelling.requiredWords || this.requiredWords;
+                    this.wordCount = serverConfig.wordSpelling.wordCount || this.wordCount;
                     console.log('WordSpellingMode loaded config:', {
-                        requiredWords: this.requiredWords
+                        requiredWords: this.requiredWords,
+                        wordCount: getSpellingWords(this.wordCount).length
                     });
                 }
             }
@@ -53,12 +79,22 @@ export class WordSpellingMode extends BasePokeballGameMode {
         this.configLoaded = true;
     }
 
+    // A word from the pool, avoiding the ones already spelled this session.
+    pickWord() {
+        const pool = getSpellingWords(this.wordCount);
+        const unused = pool.filter(word => !this.usedWords.includes(word));
+        const candidates = unused.length > 0 ? unused : pool;
+        const word = candidates[Math.floor(Math.random() * candidates.length)];
+        this.usedWords.push(word);
+        return word;
+    }
+
     generateChallenge() {
-        // Get random easy word
-        this.currentWord = getRandomWord('easy');
+        this.currentWord = this.pickWord();
+        this.acceptedSpellings = acceptedSpellingsFor(this.currentWord);
 
         // Find valid letter indices
-        const normalizedWord = this.currentWord.word.toUpperCase();
+        const normalizedWord = this.currentWord.toUpperCase();
         this.validIndices = [];
         normalizedWord.split('').forEach((char, index) => {
             if (SWEDISH_ALPHABET.includes(char)) {
@@ -67,8 +103,7 @@ export class WordSpellingMode extends BasePokeballGameMode {
         });
 
         this.challengeData = {
-            word: this.currentWord.word,
-            translation: this.currentWord.translation,
+            word: this.currentWord,
             correctLetter: normalizedWord[this.validIndices[0]]
         };
 
@@ -181,21 +216,30 @@ export class WordSpellingMode extends BasePokeballGameMode {
         const currentIndex = this.validIndices[this.currentLetterIndex];
         const correctLetter = normalizedWord[currentIndex];
 
-        if (selectedLetter === correctLetter) {
-            // Correct letter!
-            this.handleCorrectLetter(scene, selectedLetter, currentIndex);
+        // A letter counts as right if it fits any spelling that sounds the same
+        // and still matches everything typed so far — "sätt" and "sett" are one
+        // word to the ear. The slot reveals the asked-for spelling either way.
+        const stillMatching = this.acceptedSpellings.filter(
+            spelling => spelling[currentIndex] === selectedLetter
+        );
+
+        if (stillMatching.length > 0) {
+            this.acceptedSpellings = stillMatching;
+            this.handleCorrectLetter(scene, correctLetter, currentIndex);
         } else {
             // Wrong letter!
             this.handleWrongLetter(scene, selectedLetter, correctLetter, currentIndex);
         }
     }
 
-    handleCorrectLetter(scene, selectedLetter, currentIndex) {
+    // `letter` is the letter of the asked-for spelling, which is not always the
+    // key the child pressed — see the homophone handling in handleLetterClick.
+    handleCorrectLetter(scene, letter, currentIndex) {
         // Add to collected
         this.collectedIndices.add(currentIndex);
 
         // Play letter audio
-        const audioKey = `letter_audio_${selectedLetter.toLowerCase()}`;
+        const audioKey = `letter_audio_${letter.toLowerCase()}`;
         scene.sound.play(audioKey);
 
         // Show particle effect at slot position
