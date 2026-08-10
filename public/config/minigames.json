@@ -11,6 +11,7 @@
     "wordSpelling": 40,
     "addition": 10,
     "multiplication": 10,
+    "vowelLength": 0,
     "shapeDirections": 0,
     "clockListening": 0,
     "clockReading": 0,
@@ -61,6 +62,10 @@
     "maxFactor": 10,
     "maxProduct": 99,
     "showCommutativity": true
+  },
+  "vowelLength": {
+    "required": 3,
+    "showListenHelp": true
   },
   "clockListening": {
     "required": 3,

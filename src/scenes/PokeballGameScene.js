@@ -13,6 +13,7 @@ import { LegendaryNumbersMode } from '../pokeballGameModes/LegendaryNumbersMode.
 import { DayMatchMode } from '../pokeballGameModes/DayMatchMode.js';
 import { AdditionMode } from '../pokeballGameModes/AdditionMode.js';
 import { MultiplicationMode } from '../pokeballGameModes/MultiplicationMode.js';
+import { VowelLengthMode } from '../pokeballGameModes/VowelLengthMode.js';
 import { ShapeDirectionsMode } from '../pokeballGameModes/ShapeDirectionsMode.js';
 import { ClockListeningMode } from '../pokeballGameModes/ClockListeningMode.js';
 import { ClockReadingMode } from '../pokeballGameModes/ClockReadingMode.js';
@@ -42,6 +43,7 @@ const MODE_CLASSES = {
     DayMatchMode,
     AdditionMode,
     MultiplicationMode,
+    VowelLengthMode,
     ShapeDirectionsMode,
     ClockListeningMode,
     ClockReadingMode,
@@ -255,6 +257,10 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /multiplication - multiplication with array visualisation
             this.gameMode = new MultiplicationMode();
             console.log('Selected game mode: Multiplication (forced)');
+        } else if (forcedMode === 'vowellength-only') {
+            // Debug path: /vowellength - long and short vowel minimal pairs
+            this.gameMode = new VowelLengthMode();
+            console.log('Selected game mode: Vowel Length (forced)');
         } else if (forcedMode === 'shapedirections-only') {
             // Debug path: /shapedirections - shape directions game
             this.gameMode = new ShapeDirectionsMode();
@@ -302,6 +308,7 @@ export class PokeballGameScene extends Phaser.Scene {
                           MODE_WEIGHTS.dayMatch +
                           MODE_WEIGHTS.addition +
                           MODE_WEIGHTS.multiplication +
+                          MODE_WEIGHTS.vowelLength +
                           MODE_WEIGHTS.shapeDirections +
                           MODE_WEIGHTS.clockListening +
                           MODE_WEIGHTS.clockReading +
@@ -390,6 +397,12 @@ export class PokeballGameScene extends Phaser.Scene {
         if (random < currentWeight) {
             console.log('Selected game mode: Multiplication');
             return new MultiplicationMode();
+        }
+
+        currentWeight += MODE_WEIGHTS.vowelLength;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Vowel Length');
+            return new VowelLengthMode();
         }
 
         currentWeight += MODE_WEIGHTS.shapeDirections;

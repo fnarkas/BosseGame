@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { SWEDISH_LETTERS } from '../letterData.js';
 import { getAllWords, getAllSentences } from '../speechVocabulary.js';
 import { SPELLING_WORDS } from '../spellingWords.js';
+import { getAllVowelWords } from '../vowelLengthPairs.js';
 import { getAvailablePokemon } from '../pokemonData.js';
 import { loadModeWeights, getEnabledSlices } from '../minigameWheel.js';
 
@@ -40,7 +41,7 @@ export class BootScene extends Phaser.Scene {
             console.log('All assets loaded. Checking word audio cache...');
             // Only the misses are worth printing - a word without audio is an
             // unsolvable puzzle in the spelling game, which never shows the word.
-            const expected = [...getAllWords().map(w => w.word), ...SPELLING_WORDS];
+            const expected = [...getAllWords().map(w => w.word), ...SPELLING_WORDS, ...getAllVowelWords()];
             const missing = expected.filter(word => !this.cache.audio.exists(`word_audio_${word}`));
             if (missing.length === 0) {
                 console.log(`✓ All ${expected.length} word audio files in cache`);
@@ -87,6 +88,9 @@ export class BootScene extends Phaser.Scene {
         // Load math word audio
         this.loadMathAudio();
 
+        // Load isolated vowel sounds
+        this.loadVowelAudio();
+
         // Load word audio
         this.loadWordAudio();
 
@@ -117,6 +121,7 @@ export class BootScene extends Phaser.Scene {
         this.load.image('game-mode-dayofweek', 'minigame_icons/day_of_week.png');
         this.load.image('game-mode-addition', 'minigame_icons/addition.png');
         this.load.image('game-mode-multiplication', 'minigame_icons/multiplication.png');
+        this.load.image('game-mode-vowellength', 'minigame_icons/vowel_length.png');
         this.load.image('game-mode-shapedirections', 'minigame_icons/shape_directions.png');
         this.load.image('game-mode-clock', 'minigame_icons/clock.png');
         this.load.image('game-mode-piano', 'minigame_icons/piano_mode.png');
@@ -227,6 +232,17 @@ export class BootScene extends Phaser.Scene {
         this.load.audio('math_audio_ganger', 'math_audio/ganger.mp3');
     }
 
+    loadVowelAudio() {
+        // Isolated vowel sounds, long and short, for the vowel-length game. The
+        // child taps the vowel in a word to hear just that sound on its own.
+        const vowels = ['a', 'e', 'i', 'o', 'u', 'y', 'å', 'ä', 'ö'];
+        vowels.forEach(vowel => {
+            ['long', 'short'].forEach(length => {
+                this.load.audio(`vowel_audio_${vowel}_${length}`, `vowel_audio/${vowel}_${length}.mp3`);
+            });
+        });
+    }
+
     loadWordAudio() {
         // Load word audio for spelling game
         const words = getAllWords();
@@ -263,6 +279,15 @@ export class BootScene extends Phaser.Scene {
         const spellingWords = SPELLING_WORDS.filter(word => !alreadyQueued.has(word));
         console.log(`Loading ${spellingWords.length} spelling word audio files...`);
         spellingWords.forEach(word => {
+            this.load.audio(`word_audio_${word}`, `word_audio/${word}.mp3`);
+            alreadyQueued.add(word);
+        });
+
+        // The vowel-length minimal pairs. Half of these are rare words that the
+        // frequency-based pools above never reach (tak, glas, vas ...).
+        const vowelWords = getAllVowelWords().filter(word => !alreadyQueued.has(word));
+        console.log(`Loading ${vowelWords.length} vowel-pair audio files...`);
+        vowelWords.forEach(word => {
             this.load.audio(`word_audio_${word}`, `word_audio/${word}.mp3`);
         });
 

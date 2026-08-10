@@ -39,6 +39,7 @@ const GAMES_REGISTRY = [
     { path: '/wordspelling', name: '⌨️ Word Spelling', mode: 'wordspelling-only', scene: 'PokeballGameScene', weightKey: 'wordSpelling' },
     { path: '/addition', name: '➕ Addition', mode: 'addition-only', scene: 'PokeballGameScene', weightKey: 'addition' },
     { path: '/multiplication', name: '✖️ Multiplikation', mode: 'multiplication-only', scene: 'PokeballGameScene', weightKey: 'multiplication' },
+    { path: '/vowellength', name: '🔤 Lång och kort vokal', mode: 'vowellength-only', scene: 'PokeballGameScene', weightKey: 'vowelLength' },
     { path: '/shapedirections', name: '🔷➡️ Shape Directions', mode: 'shapedirections-only', scene: 'PokeballGameScene', weightKey: 'shapeDirections' },
     { path: '/clocklistening', name: '🕐🔊 Clock Listening', mode: 'clocklistening-only', scene: 'PokeballGameScene', weightKey: 'clockListening' },
     { path: '/clockreading', name: '🕐👀 Clock Reading', mode: 'clockreading-only', scene: 'PokeballGameScene', weightKey: 'clockReading' },
@@ -391,6 +392,7 @@ async function showAdminPage() {
                         <option value="dayofweek">📅 Day of Week</option>
                         <option value="addition">➕ Addition</option>
                         <option value="multiplication">✖️ Multiplication</option>
+                        <option value="vowellength">🔤 Vowel Length</option>
                         <option value="piano">🎹 Piano Learning</option>
                         <option value="speedreading">📖⏱️ Speed Reading</option>
                     </select>
@@ -680,6 +682,48 @@ async function showAdminPage() {
 
                     <button onclick="saveMinigameConfig('multiplication')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Multiplication Config</button>
                     <div id="config-multiplication-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
+                </div>
+
+                <div id="config-vowellength" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                    <h3 style="margin-top: 0;">Vowel Length Configuration</h3>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Correct Answers Needed:</label>
+                        <input type="number" id="config-vowellength-required" value="${serverConfig.vowelLength?.required || 3}" min="1" max="9" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">Tasks per round. With 3 the child sees all three task types once each.</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="config-vowellength-listenhelp" ${serverConfig.vowelLength?.showListenHelp !== false ? 'checked' : ''} style="width: 24px; height: 24px; margin-right: 10px; cursor: pointer;">
+                            <span style="font-weight: bold;">Listen Help on the Answer Cards</span>
+                        </label>
+                        <div style="color: #666; margin-top: 5px; font-size: 14px; margin-left: 34px;">
+                            Puts a 🔊 badge on each answer card, so the child can hear both options and compare
+                            before choosing. That turns task 1 into a comparison rather than a memory test —
+                            the right scaffold at first, but it makes it easier. Turn off once the rule has landed.
+                        </div>
+                    </div>
+
+                    <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196F3; margin-bottom: 20px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ About Vowel Length:</div>
+                        <div style="color: #666; font-size: 14px;">
+                            Swedish has complementary quantity: in a stressed syllable either the vowel is long and the
+                            following consonant short (tak = ta:k), or the vowel is short and the consonant long
+                            (tack = tak:). The doubled consonant in writing marks which one it is.<br><br>
+                            27 minimal pairs, one pair per round, seen from three angles:<br>
+                            1. Hear the word → pick the written form (glas / glass)<br>
+                            2. See the word, hear one reading → is it right? (✅ / ❌)<br>
+                            3. Hear the word → pick one or two consonants (s / ss)<br><br>
+                            After every answer the word is spelled out and the vowel visibly stretches or snaps together.
+                            The vowel letter is tappable and plays that vowel sound alone, long or short.
+                            A miss does not reset progress. Edit the pairs in src/vowelLengthPairs.js, then run
+                            generate_vowel_audio.py.
+                        </div>
+                    </div>
+
+                    <button onclick="saveMinigameConfig('vowellength')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Vowel Length Config</button>
+                    <div id="config-vowellength-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
                 </div>
 
                 <div id="config-piano" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
@@ -1032,6 +1076,7 @@ async function showAdminPage() {
         document.getElementById('config-dayofweek').style.display = 'none';
         document.getElementById('config-addition').style.display = 'none';
         document.getElementById('config-multiplication').style.display = 'none';
+        document.getElementById('config-vowellength').style.display = 'none';
         document.getElementById('config-piano').style.display = 'none';
         document.getElementById('config-speedreading').style.display = 'none';
 
@@ -1621,6 +1666,56 @@ async function showAdminPage() {
                 }
             } catch (error) {
                 console.error('Failed to save addition config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
+        } else if (game === 'vowellength') {
+            const required = parseInt(document.getElementById('config-vowellength-required').value);
+            const showListenHelp = document.getElementById('config-vowellength-listenhelp').checked;
+
+            const message = document.getElementById('config-vowellength-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                // Load current config
+                const response = await fetch('/config/minigames.json', { cache: 'no-store' });
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' },
+                    vowelLength: { required: 3, showListenHelp: true }
+                };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                // Update vowel length config
+                fullConfig.vowelLength = {
+                    required: required,
+                    showListenHelp: showListenHelp
+                };
+
+                // Save to server
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Vowel Length config saved to server! All devices will use these settings.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save vowel length config:', error);
                 message.textContent = '❌ Failed to save config. Check console for details.';
                 message.style.color = '#f44336';
             }
