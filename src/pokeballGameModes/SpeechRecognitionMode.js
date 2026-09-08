@@ -1,6 +1,8 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
-import { getRandomWord } from '../speechVocabulary.js';
+import { getRandomWord, getRandomSentence } from '../speechVocabulary.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { playSentenceAudio, playWordAudio } from '../wordAudioData.js';
+import { registerRecognition, releaseRecognition, restoreAudioAfterMic } from '../utils/micSession.js';
 
 // ⚙️ CONFIGURATION: How many words must be read correctly to win
 const REQUIRED_CORRECT_WORDS = 1; // Change this number: 1 = easy, 3 = medium, 5 = hard
@@ -244,61 +246,41 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         this.recognition.onend = () => {
             console.log('🎤 Recognition session ended');
             this.isListening = false;
+            // Mic released - cycle the audio context so iOS leaves the
+            // attenuated play-and-record mode (see micSession.js).
+            restoreAudioAfterMic(scene);
             if (this.micButton && this.permissionGranted) {
                 this.micButton.setFillStyle(0xFF6B6B);
             }
         };
 
-        // Request microphone permission early
-        this.requestMicrophonePermission(scene);
+        registerRecognition(this.recognition);
+        this.enableMicrophoneButton(scene);
     }
 
-    async requestMicrophonePermission(scene) {
-        // Use getUserMedia to request microphone permission (doesn't require internet)
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            console.error('getUserMedia not supported');
-            if (this.statusText) {
-                this.statusText.setText('Mikrofon stöds ej');
-            }
-            return;
+    enableMicrophoneButton(scene) {
+        // Do NOT open the microphone here (no getUserMedia). On iOS any capture
+        // flips the audio session into a heavily attenuated play-and-record
+        // mode that can stick for the life of the tab. SpeechRecognition asks
+        // for permission itself on the first start(), so treat permission as
+        // granted until the browser reports 'not-allowed'.
+        this.permissionGranted = true;
+
+        if (this.micButton) {
+            this.micButton.setFillStyle(0xFF6B6B); // Red = ready
+            this.micButton.setInteractive({ useHandCursor: true });
+
+            this.micButton.on('pointerdown', () => {
+                if (!this.isListening) {
+                    // Allow a retry after a 'not-allowed' error.
+                    this.permissionGranted = true;
+                    this.startListening(scene);
+                }
+            });
         }
 
-        if (this.statusText) {
-            this.statusText.setText('Klicka "Tillåt" för mikrofonen');
-        }
-
-        try {
-            // Request microphone access (this works offline)
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-            // Permission granted! Stop the stream immediately
-            stream.getTracks().forEach(track => track.stop());
-
-            console.log('Microphone permission granted');
-            this.permissionGranted = true;
-
-            // Enable the microphone button
-            if (this.micButton) {
-                this.micButton.setFillStyle(0xFF6B6B); // Red = ready
-                this.micButton.setInteractive({ useHandCursor: true });
-
-                // Set up click handler
-                this.micButton.on('pointerdown', () => {
-                    if (!this.isListening && this.permissionGranted) {
-                        this.startListening(scene);
-                    }
-                });
-            }
-
-            // Test network connection to speech API
-            this.testNetworkConnection(scene);
-
-        } catch (error) {
-            console.error('Microphone permission denied:', error);
-            if (this.statusText) {
-                this.statusText.setText('Mikrofon ej tillåten');
-            }
-        }
+        // Test network connection to speech API
+        this.testNetworkConnection(scene);
     }
 
     async testNetworkConnection(scene) {
@@ -564,10 +546,10 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
             this.recognitionTimeout = null;
         }
 
-        // Stop recognition if active
-        if (this.recognition && this.isListening) {
-            this.recognition.stop();
-        }
+        // Tear the capture session down immediately (abort, not stop) so the
+        // microphone can never be left open when the mode goes away.
+        releaseRecognition(this.recognition);
+        this.recognition = null;
 
         this.isListening = false;
         this.ballIndicators = [];

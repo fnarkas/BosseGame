@@ -1,6 +1,7 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { getTopCommonWords } from '../commonSwedishWords.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { registerRecognition, releaseRecognition, restoreAudioAfterMic } from '../utils/micSession.js';
 
 // ⚙️ DEFAULTS (overridable from public/config/minigames.json → speedReading)
 const DEFAULT_WORD_COUNT = 100;    // How many of the most common words are in play
@@ -332,6 +333,11 @@ export class SpeedReadingMode extends BasePokeballGameMode {
 
         this.recognition.onend = () => {
             this.isListening = false;
+            // Once the game is over the mic is released for good - cycle the
+            // audio context so iOS leaves play-and-record mode (micSession.js).
+            if (!this.gameActive) {
+                restoreAudioAfterMic(scene);
+            }
             // Auto-restart the listening loop while the game is running so the
             // child can just keep reading without pressing the button again.
             if (this.gameActive && this.permissionGranted) {
@@ -347,43 +353,37 @@ export class SpeedReadingMode extends BasePokeballGameMode {
             }
         };
 
-        this.requestMicrophonePermission(scene);
+        registerRecognition(this.recognition);
+        this.enableMicrophoneButton(scene);
     }
 
-    async requestMicrophonePermission(scene) {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            if (this.statusText) this.statusText.setText('Mikrofon stöds ej');
-            return;
+    enableMicrophoneButton(scene) {
+        // Do NOT open the microphone here (no getUserMedia). On iOS any capture
+        // flips the audio session into a heavily attenuated play-and-record
+        // mode that can stick for the life of the tab. SpeechRecognition asks
+        // for permission itself on the first start(), so treat permission as
+        // granted until the browser reports 'not-allowed'.
+        this.permissionGranted = true;
+
+        if (this.micButton) {
+            this.setMicState('idle');
+            this.micButton.setInteractive({ useHandCursor: true });
+            this.micButton.on('pointerdown', () => {
+                if (!this.isListening) {
+                    // Allow a retry after a 'not-allowed' error.
+                    this.permissionGranted = true;
+                    this.startListening(scene);
+                }
+            });
         }
 
-        if (this.statusText) this.statusText.setText('Klicka "Tillåt" för mikrofonen');
-
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            stream.getTracks().forEach(track => track.stop());
-            this.permissionGranted = true;
-
-            if (this.micButton) {
-                this.setMicState('idle');
-                this.micButton.setInteractive({ useHandCursor: true });
-                this.micButton.on('pointerdown', () => {
-                    if (!this.isListening && this.permissionGranted) {
-                        this.startListening(scene);
-                    }
-                });
-            }
-
-            if (this.statusText) {
-                this.statusText.setText('Läs ordet!');
-                this.statusText.setColor('#27AE60');
-            }
-
-            // Kick off the game automatically once the mic is ready.
-            this.startListening(scene);
-        } catch (error) {
-            console.error('Microphone permission denied:', error);
-            if (this.statusText) this.statusText.setText('Mikrofon ej tillåten');
+        if (this.statusText) {
+            this.statusText.setText('Läs ordet!');
+            this.statusText.setColor('#27AE60');
         }
+
+        // Kick off the game automatically.
+        this.startListening(scene);
     }
 
     startListening(scene) {
@@ -670,9 +670,9 @@ export class SpeedReadingMode extends BasePokeballGameMode {
             this.timerEvent = null;
         }
 
-        if (this.recognition && this.isListening) {
-            try { this.recognition.stop(); } catch (e) { /* ignore */ }
-        }
+        // abort() tears the capture session down immediately; stop() waits
+        // for final results and can leave the mic open on iOS.
+        releaseRecognition(this.recognition);
         this.isListening = false;
         this.recognition = null;
 

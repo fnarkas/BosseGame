@@ -238,7 +238,7 @@ export class NumberReadingMode extends BasePokeballGameMode {
 
             // Set up click handler
             this.micButton.on('pointerdown', () => {
-                if (!this.isRevealing && !this.speechHelper.isListening && this.speechHelper.permissionGranted) {
+                if (!this.isRevealing && !this.speechHelper.isListening) {
                     this.speechHelper.startListening(scene);
                 }
             });

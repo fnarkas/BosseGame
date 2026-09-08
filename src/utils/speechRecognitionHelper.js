@@ -4,10 +4,13 @@
  * Handles all the special cases for microphone permission, network testing, timeouts, etc.
  */
 
+import { registerRecognition, releaseRecognition, restoreAudioAfterMic } from './micSession.js';
+
 export class SpeechRecognitionHelper {
     constructor(lang = 'sv-SE') {
         this.lang = lang;
         this.recognition = null;
+        this.scene = null;
         this.isListening = false;
         this.permissionGranted = false;
         this.networkTested = false;
@@ -140,55 +143,29 @@ export class SpeechRecognitionHelper {
         this.recognition.onend = () => {
             console.log('🎤 Recognition session ended');
             this.isListening = false;
+            // The microphone is released now - cycle the audio context so iOS
+            // drops out of play-and-record mode (see micSession.js).
+            restoreAudioAfterMic(this.scene);
             if (this.onEnd) {
                 this.onEnd();
             }
         };
 
-        // Request microphone permission
-        await this.requestMicrophonePermission(scene);
+        this.scene = scene;
+        registerRecognition(this.recognition);
+
+        // Do NOT open the microphone here. On iOS, any capture (getUserMedia
+        // included) flips the audio session into a heavily attenuated
+        // play-and-record mode that can stick for the life of the tab.
+        // SpeechRecognition asks for permission itself on the first start(),
+        // so we treat permission as granted until the browser says otherwise
+        // via a 'not-allowed' error.
+        this.permissionGranted = true;
+
+        // Test network connection to speech API
+        await this.testNetworkConnection(scene);
 
         return true;
-    }
-
-    /**
-     * Request microphone permission using getUserMedia
-     */
-    async requestMicrophonePermission(scene) {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            console.error('getUserMedia not supported');
-            if (this.onStatusChange) {
-                this.onStatusChange('Mikrofon stöds ej', '#E74C3C');
-            }
-            return false;
-        }
-
-        if (this.onStatusChange) {
-            this.onStatusChange('Klicka "Tillåt" för mikrofonen', '#95A5A6');
-        }
-
-        try {
-            // Request microphone access (this works offline)
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-            // Permission granted! Stop the stream immediately
-            stream.getTracks().forEach(track => track.stop());
-
-            console.log('✅ Microphone permission granted');
-            this.permissionGranted = true;
-
-            // Test network connection to speech API
-            await this.testNetworkConnection(scene);
-
-            return true;
-
-        } catch (error) {
-            console.error('❌ Microphone permission denied:', error);
-            if (this.onStatusChange) {
-                this.onStatusChange('Mikrofon ej tillåten', '#E74C3C');
-            }
-            return false;
-        }
     }
 
     /**
@@ -240,14 +217,17 @@ export class SpeechRecognitionHelper {
      * Start listening for speech
      */
     startListening(scene) {
-        if (!this.recognition || this.isListening || !this.permissionGranted) {
+        if (!this.recognition || this.isListening) {
             console.log('Cannot start listening:', {
                 hasRecognition: !!this.recognition,
-                isListening: this.isListening,
-                permissionGranted: this.permissionGranted
+                isListening: this.isListening
             });
             return false;
         }
+
+        // A tap is always allowed to retry after a 'not-allowed' error; the
+        // browser will prompt again if it needs to.
+        this.permissionGranted = true;
 
         console.log('🎙️ Starting speech recognition...');
         this.isListening = true;
@@ -319,8 +299,16 @@ export class SpeechRecognitionHelper {
      * Clean up resources
      */
     cleanup() {
-        this.stopListening();
+        if (this.recognitionTimeout) {
+            this.recognitionTimeout.remove();
+            this.recognitionTimeout = null;
+        }
+        // abort() tears the capture session down immediately; stop() would
+        // wait for final results and can leave the mic open on iOS.
+        releaseRecognition(this.recognition);
+        this.isListening = false;
         this.recognition = null;
+        this.scene = null;
         this.onResult = null;
         this.onError = null;
         this.onStart = null;
