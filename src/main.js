@@ -39,7 +39,9 @@ const GAMES_REGISTRY = [
     { path: '/wordspelling', name: '⌨️ Word Spelling', mode: 'wordspelling-only', scene: 'PokeballGameScene', weightKey: 'wordSpelling' },
     { path: '/addition', name: '➕ Addition', mode: 'addition-only', scene: 'PokeballGameScene', weightKey: 'addition' },
     { path: '/multiplication', name: '✖️ Multiplikation', mode: 'multiplication-only', scene: 'PokeballGameScene', weightKey: 'multiplication' },
+    { path: '/numberbonds', name: '🤝 Tiokompisar', mode: 'numberbonds-only', scene: 'PokeballGameScene', weightKey: 'numberBonds' },
     { path: '/vowellength', name: '🔤 Lång och kort vokal', mode: 'vowellength-only', scene: 'PokeballGameScene', weightKey: 'vowelLength' },
+    { path: '/vowelsounds', name: '🔊 Lång eller kort?', mode: 'vowelsounds-only', scene: 'PokeballGameScene', weightKey: 'vowelSounds' },
     { path: '/shapedirections', name: '🔷➡️ Shape Directions', mode: 'shapedirections-only', scene: 'PokeballGameScene', weightKey: 'shapeDirections' },
     { path: '/clocklistening', name: '🕐🔊 Clock Listening', mode: 'clocklistening-only', scene: 'PokeballGameScene', weightKey: 'clockListening' },
     { path: '/clockreading', name: '🕐👀 Clock Reading', mode: 'clockreading-only', scene: 'PokeballGameScene', weightKey: 'clockReading' },
@@ -392,7 +394,9 @@ async function showAdminPage() {
                         <option value="dayofweek">📅 Day of Week</option>
                         <option value="addition">➕ Addition</option>
                         <option value="multiplication">✖️ Multiplication</option>
+                        <option value="numberbonds">🤝 Number Bonds</option>
                         <option value="vowellength">🔤 Vowel Length</option>
+                        <option value="vowelsounds">🔊 Vowel Sounds (long or short?)</option>
                         <option value="piano">🎹 Piano Learning</option>
                         <option value="speedreading">📖⏱️ Speed Reading</option>
                     </select>
@@ -724,6 +728,60 @@ async function showAdminPage() {
 
                     <button onclick="saveMinigameConfig('vowellength')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Vowel Length Config</button>
                     <div id="config-vowellength-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
+                </div>
+
+                <div id="config-vowelsounds" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                    <h3 style="margin-top: 0;">Vowel Sounds Configuration</h3>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Stage:</label>
+                        <select id="config-vowelsounds-stage" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px;">
+                            <option value="sounds" ${(serverConfig.vowelSounds?.stage || 'sounds') === 'sounds' ? 'selected' : ''}>1. Hear a vowel → long or short?</option>
+                            <option value="letters" ${serverConfig.vowelSounds?.stage === 'letters' ? 'selected' : ''}>2. Long or short → one or two letters?</option>
+                            <option value="mixed" ${serverConfig.vowelSounds?.stage === 'mixed' ? 'selected' : ''}>Mixed: alternate 1 and 2</option>
+                        </select>
+                        <div style="color: #666; margin-top: 5px; font-size: 14px;">
+                            Start on stage 1. Move to stage 2 once the child reliably tells long from short by ear.
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Correct Answers Needed:</label>
+                        <input type="number" id="config-vowelsounds-required" value="${serverConfig.vowelSounds?.required || 4}" min="1" max="9" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">Tasks per round. A miss does not reset progress.</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="config-vowelsounds-listenhelp" ${serverConfig.vowelSounds?.showListenHelp !== false ? 'checked' : ''} style="width: 24px; height: 24px; margin-right: 10px; cursor: pointer;">
+                            <span style="font-weight: bold;">Listen Help on the Answer Cards</span>
+                        </label>
+                        <div style="color: #666; margin-top: 5px; font-size: 14px; margin-left: 34px;">
+                            Puts a 🔊 badge on each answer card that plays the long or short version of the same
+                            vowel, so the child can compare before choosing. Turn off once the difference is heard
+                            without help.
+                        </div>
+                    </div>
+
+                    <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196F3; margin-bottom: 20px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ About Vowel Sounds:</div>
+                        <div style="color: #666; font-size: 14px;">
+                            The two steps that come before Vowel Length, drilled on their own.<br><br>
+                            Stage 1: a vowel is played on its own (a, e, i, o, u, y, å, ä, ö - long or short).
+                            The child picks the wide letter over a long bar (lååång) or the narrow letter over a
+                            short bar (kort). The reveal shows the letter stretching or snapping while the sound
+                            plays again.<br><br>
+                            Stage 2: the vowel is shown already long or short, and played. The child picks one
+                            consonant (T) or two (TT). The reveal spells out a real word from the minimal-pair list
+                            (mat / matt) and reads it aloud. Only plain doublings are used here; ck pairs are left
+                            for Vowel Length.<br><br>
+                            Long is always the left card and short the right, in both stages, so the position
+                            itself becomes a cue that carries over.
+                        </div>
+                    </div>
+
+                    <button onclick="saveMinigameConfig('vowelsounds')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Vowel Sounds Config</button>
+                    <div id="config-vowelsounds-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
                 </div>
 
                 <div id="config-piano" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
@@ -1077,6 +1135,8 @@ async function showAdminPage() {
         document.getElementById('config-addition').style.display = 'none';
         document.getElementById('config-multiplication').style.display = 'none';
         document.getElementById('config-vowellength').style.display = 'none';
+        document.getElementById('config-vowelsounds').style.display = 'none';
+        document.getElementById('config-numberbonds').style.display = 'none';
         document.getElementById('config-piano').style.display = 'none';
         document.getElementById('config-speedreading').style.display = 'none';
 
@@ -1822,6 +1882,54 @@ async function showAdminPage() {
                 }
             } catch (error) {
                 console.error('Failed to save piano config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
+        } else if (game === 'vowelsounds') {
+            const stage = document.getElementById('config-vowelsounds-stage').value;
+            const required = parseInt(document.getElementById('config-vowelsounds-required').value);
+            const showListenHelp = document.getElementById('config-vowelsounds-listenhelp').checked;
+
+            const message = document.getElementById('config-vowelsounds-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                const response = await fetch('/config/minigames.json', { cache: 'no-store' });
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' }
+                };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                fullConfig.vowelSounds = {
+                    required: required,
+                    stage: stage,
+                    showListenHelp: showListenHelp
+                };
+
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Vowel Sounds config saved to server! All devices will use these settings.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save vowel sounds config:', error);
                 message.textContent = '❌ Failed to save config. Check console for details.';
                 message.style.color = '#f44336';
             }

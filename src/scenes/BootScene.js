@@ -122,6 +122,8 @@ export class BootScene extends Phaser.Scene {
         this.load.image('game-mode-addition', 'minigame_icons/addition.png');
         this.load.image('game-mode-multiplication', 'minigame_icons/multiplication.png');
         this.load.image('game-mode-vowellength', 'minigame_icons/vowel_length.png');
+        this.load.image('game-mode-vowelsounds', 'minigame_icons/vowel_sounds.png');
+        this.load.image('game-mode-numberbonds', 'minigame_icons/number_bonds.png');
         this.load.image('game-mode-shapedirections', 'minigame_icons/shape_directions.png');
         this.load.image('game-mode-clock', 'minigame_icons/clock.png');
         this.load.image('game-mode-piano', 'minigame_icons/piano_mode.png');

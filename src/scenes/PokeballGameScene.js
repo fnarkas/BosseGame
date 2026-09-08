@@ -14,6 +14,8 @@ import { DayMatchMode } from '../pokeballGameModes/DayMatchMode.js';
 import { AdditionMode } from '../pokeballGameModes/AdditionMode.js';
 import { MultiplicationMode } from '../pokeballGameModes/MultiplicationMode.js';
 import { VowelLengthMode } from '../pokeballGameModes/VowelLengthMode.js';
+import { VowelSoundsMode } from '../pokeballGameModes/VowelSoundsMode.js';
+import { NumberBondsMode } from '../pokeballGameModes/NumberBondsMode.js';
 import { ShapeDirectionsMode } from '../pokeballGameModes/ShapeDirectionsMode.js';
 import { ClockListeningMode } from '../pokeballGameModes/ClockListeningMode.js';
 import { ClockReadingMode } from '../pokeballGameModes/ClockReadingMode.js';
@@ -44,6 +46,8 @@ const MODE_CLASSES = {
     AdditionMode,
     MultiplicationMode,
     VowelLengthMode,
+    VowelSoundsMode,
+    NumberBondsMode,
     ShapeDirectionsMode,
     ClockListeningMode,
     ClockReadingMode,
@@ -261,6 +265,14 @@ export class PokeballGameScene extends Phaser.Scene {
             // Debug path: /vowellength - long and short vowel minimal pairs
             this.gameMode = new VowelLengthMode();
             console.log('Selected game mode: Vowel Length (forced)');
+        } else if (forcedMode === 'vowelsounds-only') {
+            // Debug path: /vowelsounds - hear long/short, then long/short -> one/two letters
+            this.gameMode = new VowelSoundsMode();
+            console.log('Selected game mode: Vowel Sounds (forced)');
+        } else if (forcedMode === 'numberbonds-only') {
+            // Debug path: /numberbonds - timed number bonds to ten
+            this.gameMode = new NumberBondsMode();
+            console.log('Selected game mode: Number Bonds (forced)');
         } else if (forcedMode === 'shapedirections-only') {
             // Debug path: /shapedirections - shape directions game
             this.gameMode = new ShapeDirectionsMode();
@@ -309,6 +321,8 @@ export class PokeballGameScene extends Phaser.Scene {
                           MODE_WEIGHTS.addition +
                           MODE_WEIGHTS.multiplication +
                           MODE_WEIGHTS.vowelLength +
+                          MODE_WEIGHTS.vowelSounds +
+                          MODE_WEIGHTS.numberBonds +
                           MODE_WEIGHTS.shapeDirections +
                           MODE_WEIGHTS.clockListening +
                           MODE_WEIGHTS.clockReading +
@@ -403,6 +417,18 @@ export class PokeballGameScene extends Phaser.Scene {
         if (random < currentWeight) {
             console.log('Selected game mode: Vowel Length');
             return new VowelLengthMode();
+        }
+
+        currentWeight += MODE_WEIGHTS.vowelSounds;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Vowel Sounds');
+            return new VowelSoundsMode();
+        }
+
+        currentWeight += MODE_WEIGHTS.numberBonds;
+        if (random < currentWeight) {
+            console.log('Selected game mode: Number Bonds');
+            return new NumberBondsMode();
         }
 
         currentWeight += MODE_WEIGHTS.shapeDirections;
