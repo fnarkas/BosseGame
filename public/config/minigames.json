@@ -13,7 +13,7 @@
     "multiplication": 10,
     "vowelLength": 40,
     "vowelSounds": 40,
-    "numberBonds": 40,
+    "numberBonds": 720,
     "shapeDirections": 0,
     "clockListening": 0,
     "clockReading": 0,
@@ -70,7 +70,7 @@
     "durationSeconds": 60,
     "targetCount": 20,
     "maxCoins": 100,
-    "showTenFrame": true
+    "showTenFrame": false
   },
   "vowelLength": {
     "required": 3,
