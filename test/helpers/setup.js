@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { beforeEach, vi } from 'vitest';
 import { invalidateMinigameConfig } from '../../src/minigameConfig.js';
+import { resetStorage } from '../../src/storage.js';
+import { _resetForTests as resetAccountModule } from '../../src/account.js';
 
 const PUBLIC_DIR = path.resolve(__dirname, '../../public');
 
@@ -70,7 +72,9 @@ if (quiet) {
 }
 
 beforeEach(() => {
-    localStorage.clear();
+    // Account state is in memory (storage.js); nothing is synced during tests.
+    resetAccountModule();
+    resetStorage();
     configOverride = null;
 });
 

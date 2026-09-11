@@ -31,7 +31,16 @@ python3 optimize_pokemon_images.py     # krymp dem för iPad (valfritt men rekom
 npm run dev                            # https://localhost:5173/
 ```
 
-Servern körs med HTTPS (krävs för taligenkänning). Bygg för produktion med `npm run build`.
+Servern körs med HTTPS (krävs för taligenkänning). Bygg för produktion med `npm run build`
+och kör sedan `npm run serve` (serverar `dist/` och kontot-API:t på port 8080).
+
+### Konton
+
+Spelet frågar efter ett namn första gången (eller efter 👤 i inställningarna). Ett nytt
+namn skapar ett nytt konto, ett känt namn öppnar det kontot. All progression sparas på
+servern i `data/game.db` (SQLite, ej i git; flytta med `POKEMON_DB_PATH`), så samma barn
+kan spela på vilken enhet som helst. Progression som en äldre version sparat i webbläsaren
+kan flyttas till ett konto med 📥 på inloggningsskärmen. API:t finns i `server/api.js`.
 
 ### Adresser
 
@@ -62,13 +71,19 @@ src/
 ├── minigameRegistry.js      # ENDA listan över minispel (klass, rutt, vikt, ikon, färg)
 ├── minigameWheel.js         # lyckohjulet, härlett ur registret
 ├── minigameConfig.js        # en cachad läsning av public/config/minigames.json
-├── storage.js               # säker localStorage (all lagring går via denna)
+├── storage.js               # sparat läge i minnet (all lagring går via denna)
+├── account.js, login.js     # konto per namn, synk mot servern, inloggningsskärm
 ├── audio.js                 # säker ljuduppspelning (okända nycklar kastar aldrig)
 ├── adaptive.js              # viktat urval utifrån barnets misstag
 ├── streak.js, currency.js, inventory.js, caughtPokemon.js
 ├── scenes/                  # BootScene, MainGameScene, PokeballGameScene, SettingsScene
 ├── pokeballGameModes/       # ett minispel per fil + BasePokeballGameMode + uiKit
 └── pokemonData.js           # genereras av fetch_pokemon_data.py
+server/
+├── db.js                    # SQLite (node:sqlite): konton + sparat läge per nyckel
+├── api.js                   # /api/accounts, /api/login, /api/state, /api/import, /api/reset
+├── vitePlugin.js            # monterar API:t på dev-servern
+└── index.js                 # fristående server för dist/ (npm run serve)
 public/
 ├── config/minigames.json    # inställningar (sparas från /admin i dev-läge)
 ├── pokemon_images/          # laddas ner, ej i git

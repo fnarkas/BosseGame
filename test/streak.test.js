@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { resetStorage } from '../src/storage.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier, milestoneBonus, MAX_STREAK, STREAK_EXPIRY_MS } from '../src/streak.js';
 import { playChime } from '../src/sfx.js';
 import { FakeScene } from './helpers/fakeScene.js';
 
 describe('streak', () => {
-    beforeEach(() => localStorage.clear());
+    beforeEach(() => resetStorage());
 
     it('counts up to the cap and multiplies from 1', () => {
         expect(getStreak()).toBe(0);

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { resetStorage } from '../../src/storage.js';
 import { FakeScene, startMode } from '../helpers/fakeScene.js';
 import { InitialSoundMode } from '../../src/pokeballGameModes/InitialSoundMode.js';
 import { getStreak, incrementStreak } from '../../src/streak.js';
@@ -11,7 +12,7 @@ const wrongCard = (scene, mode) => cards(scene).find(c => c.getData('letter') !=
 describe('InitialSoundMode', () => {
     let scene, mode, calls;
     beforeEach(async () => {
-        localStorage.clear();
+        resetStorage();
         scene = new FakeScene();
         mode = new InitialSoundMode();
         calls = [];

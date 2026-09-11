@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { getJSON } from '../../src/storage.js';
 import { FakeScene, startMode, flush } from '../helpers/fakeScene.js';
 import { setTestConfig } from '../helpers/setup.js';
 import { NumberReadingMode } from '../../src/pokeballGameModes/NumberReadingMode.js';
@@ -284,7 +285,7 @@ describe('NumberReadingMode', () => {
             await setup({ required: 1, numbers: '45' });
             tapMic();
             speak('tjugotre');
-            const data = JSON.parse(localStorage.getItem('wrongAnswers'));
+            const data = getJSON('wrongAnswers');
             expect(data.mistakeCounts.NumberReadingMode['45_vs_23']).toBe(1);
         });
     });

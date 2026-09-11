@@ -346,7 +346,8 @@ exercised against `test/helpers/fakeScene.js` — see `test/README.md`.
 
 | Need | Use | Never |
 |---|---|---|
-| Read/write saved state | `src/storage.js` (`getJSON/setJSON/getInt/...`) | raw `localStorage.*` (throws in private mode, corrupt JSON freezes the game) |
+| Read/write saved state | `src/storage.js` (`getJSON/setJSON/getInt/...`) — in memory, synced to the server per account by `src/account.js` | raw `localStorage.*` (only device settings like volume live there) |
+| Accounts / login | `login()`, `logout()`, `importLocalData()` in `src/account.js`; `ensureLoggedIn()` in `src/login.js`; API in `server/api.js`, SQLite in `server/db.js` (`data/game.db`) | a second persistence path or `fetch('/api/...')` outside `account.js` |
 | Caught Pokemon list | `src/caughtPokemon.js` | parsing `pokemonCaughtList` yourself |
 | Config from `minigames.json` | `loadModeConfig('section', defaults)` in `src/minigameConfig.js` (one cached fetch) | `fetch('/config/minigames.json')` |
 | Play a sound | in modes `this.playAudio(scene, key)` / `this.playSequence(scene, keys)`; elsewhere `playAudio(scene, key)` from `src/audio.js` | `scene.sound.play(key)` (throws on a missing key) |

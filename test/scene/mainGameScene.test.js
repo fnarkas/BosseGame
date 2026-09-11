@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { getJSON } from '../../src/storage.js';
 import { installFakeScene, flush } from '../helpers/fakeScene.js';
 import { MainGameScene } from '../../src/scenes/MainGameScene.js';
 import { addPokeball, getInventory } from '../../src/inventory.js';
@@ -66,7 +67,7 @@ describe('MainGameScene (Pokemon catching)', () => {
         fake.advance(8000);
         await flush();
         expect(window.showPokemonCaughtPopup).toHaveBeenCalledWith(95, expect.any(Function));
-        expect(JSON.parse(localStorage.getItem('pokemonCaughtList')).map(p => p.id)).toEqual([95]);
+        expect(getJSON('pokemonCaughtList').map(p => p.id)).toEqual([95]);
         // Next tutorial Pokemon is up, with fresh hearts and exactly one re-roll price tag
         expect(scene.currentPokemon.id).toBe(41);
         expect(hearts(fake).text).toBe('❤️❤️❤️');

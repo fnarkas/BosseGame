@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import fs from 'fs';
 import path from 'path';
+import { gameApiPlugin } from './server/vitePlugin.js';
 
 // Custom plugin to handle config updates
 function configManagerPlugin() {
@@ -48,7 +49,8 @@ export default defineConfig({
   base: './',
   plugins: [
     basicSsl(), // Enables HTTPS for speech recognition API
-    configManagerPlugin() // Handles config file updates
+    configManagerPlugin(), // Handles config file updates
+    gameApiPlugin() // Accounts + saved state in data/game.db (see server/)
   ],
   build: {
     outDir: 'dist',

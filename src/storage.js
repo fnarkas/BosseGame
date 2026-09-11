@@ -1,15 +1,71 @@
-// Safe localStorage access.
+// Saved-state access for the game.
 //
-// Every read and write in the game goes through here so that a corrupt value,
-// a full quota, or a browser with storage disabled (Safari private mode,
-// embedded webviews) can never throw in the middle of an animation and freeze
-// the game for a child who can't read the console. On failure we log once and
-// fall back to the caller's default; the game keeps running with in-memory
-// state for the session.
+// Every read and write in the game goes through here. The player's progress
+// (coins, streak, caught Pokemon, mistakes, ...) lives in an in-memory map that
+// account.js fills from the server at login and syncs back on every change, so
+// the same child can play on any device in the house. Reads are synchronous,
+// which is what the game modes expect.
+//
+// A few values belong to the device rather than the player (the iPad's
+// volume, which account was last used) and stay in localStorage. That access is
+// wrapped so a browser with storage disabled (Safari private mode, embedded
+// webviews) can never throw in the middle of an animation and freeze the game
+// for a child who can't read the console.
 
-const memoryFallback = new Map();
+export const DEVICE_KEYS = new Set(['gameVolume', 'accountName']);
 
-function storage() {
+const cache = new Map();
+const listeners = new Set();
+const deviceFallback = new Map();
+
+// ---- account state (in memory, synced by account.js) ----------------------
+
+// Replace the whole in-memory state, e.g. right after login.
+export function loadState(values) {
+    cache.clear();
+    for (const [key, value] of Object.entries(values || {})) {
+        if (typeof value === 'string' && !DEVICE_KEYS.has(key)) cache.set(key, value);
+    }
+}
+
+export function getAllValues() {
+    return Object.fromEntries(cache);
+}
+
+// Called with (key, value) on every write and (key, null) on every removal of
+// account state. Returns an unsubscribe function.
+export function onStorageChange(listener) {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+}
+
+function notify(key, value) {
+    for (const listener of listeners) {
+        try {
+            listener(key, value);
+        } catch (error) {
+            console.warn('storage: change listener failed', error);
+        }
+    }
+}
+
+// Forget everything: account state, device settings and listeners' pending
+// work is the caller's business. Used by /reset and the tests.
+export function resetStorage() {
+    cache.clear();
+    deviceFallback.clear();
+    const store = localStorageOrNull();
+    if (!store) return;
+    try {
+        store.clear();
+    } catch (error) {
+        console.warn('storage: failed to clear', error);
+    }
+}
+
+// ---- device-local values (localStorage) ------------------------------------
+
+function localStorageOrNull() {
     try {
         return window.localStorage;
     } catch (error) {
@@ -17,9 +73,9 @@ function storage() {
     }
 }
 
-export function getString(key, fallback = null) {
-    const store = storage();
-    if (!store) return memoryFallback.has(key) ? memoryFallback.get(key) : fallback;
+function getDevice(key, fallback) {
+    const store = localStorageOrNull();
+    if (!store) return deviceFallback.has(key) ? deviceFallback.get(key) : fallback;
     try {
         const value = store.getItem(key);
         return value === null ? fallback : value;
@@ -29,9 +85,9 @@ export function getString(key, fallback = null) {
     }
 }
 
-export function setString(key, value) {
-    const store = storage();
-    memoryFallback.set(key, value);
+function setDevice(key, value) {
+    deviceFallback.set(key, value);
+    const store = localStorageOrNull();
     if (!store) return false;
     try {
         store.setItem(key, value);
@@ -42,15 +98,62 @@ export function setString(key, value) {
     }
 }
 
-export function remove(key) {
-    memoryFallback.delete(key);
-    const store = storage();
+function removeDevice(key) {
+    deviceFallback.delete(key);
+    const store = localStorageOrNull();
     if (!store) return;
     try {
         store.removeItem(key);
     } catch (error) {
         console.warn(`storage: failed to remove '${key}'`, error);
     }
+}
+
+// Progress saved by older versions of the game straight into localStorage.
+// The login screen offers to move it to an account (account.js).
+export function readLegacyLocalData() {
+    const store = localStorageOrNull();
+    const data = {};
+    if (!store) return data;
+    try {
+        for (let i = 0; i < store.length; i++) {
+            const key = store.key(i);
+            if (key === null || DEVICE_KEYS.has(key)) continue;
+            const value = store.getItem(key);
+            if (typeof value === 'string') data[key] = value;
+        }
+    } catch (error) {
+        console.warn('storage: failed to read legacy data', error);
+    }
+    return data;
+}
+
+export function clearLegacyLocalData() {
+    for (const key of Object.keys(readLegacyLocalData())) removeDevice(key);
+}
+
+// ---- public API used by the game ------------------------------------------
+
+export function getString(key, fallback = null) {
+    if (DEVICE_KEYS.has(key)) return getDevice(key, fallback);
+    return cache.has(key) ? cache.get(key) : fallback;
+}
+
+export function setString(key, value) {
+    const str = String(value);
+    if (DEVICE_KEYS.has(key)) return setDevice(key, str);
+    cache.set(key, str);
+    notify(key, str);
+    return true;
+}
+
+export function remove(key) {
+    if (DEVICE_KEYS.has(key)) {
+        removeDevice(key);
+        return;
+    }
+    if (!cache.delete(key)) return;
+    notify(key, null);
 }
 
 export function has(key) {

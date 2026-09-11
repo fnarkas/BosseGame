@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { getJSON } from '../../src/storage.js';
 import { FakeScene, startMode } from '../helpers/fakeScene.js';
 import { setTestConfig } from '../helpers/setup.js';
 import { MultiplicationMode } from '../../src/pokeballGameModes/MultiplicationMode.js';
@@ -364,7 +365,7 @@ describe('MultiplicationMode', () => {
 
         it('tracks the mistake', () => {
             answer(wrongAnswer());
-            const data = JSON.parse(localStorage.getItem('wrongAnswers'));
+            const data = getJSON('wrongAnswers');
             expect(data.mistakeCounts.MultiplicationMode).toBeDefined();
             expect(data.totalMistakes).toBe(1);
         });

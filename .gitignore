@@ -52,3 +52,6 @@ package-lock.json
 
 # Vite build output
 dist/
+
+# Player accounts database (server/db.js)
+data/

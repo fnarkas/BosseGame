@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { getFloat, setFloat } from '../storage.js';
+import { logout } from '../account.js';
 
 export default class SettingsScene extends Phaser.Scene {
     constructor() {
@@ -117,6 +118,25 @@ export default class SettingsScene extends Phaser.Scene {
         });
         testButton.on('pointerout', () => {
             testButton.setScale(1);
+        });
+
+        // Switch account: forget who is playing on this device and reload so
+        // the login screen comes up.
+        const accountButton = this.add.text(panelX - 180, panelY + 80, '👤', {
+            fontSize: '64px',
+            padding: { x: 20, y: 10 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+        accountButton.on('pointerdown', () => {
+            logout();
+            window.location.reload();
+        });
+
+        accountButton.on('pointerover', () => {
+            accountButton.setScale(1.1);
+        });
+        accountButton.on('pointerout', () => {
+            accountButton.setScale(1);
         });
 
         // Close button (X)

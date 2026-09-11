@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { resetStorage } from '../../src/storage.js';
 import { installFakeScene, flush } from '../helpers/fakeScene.js';
 import { setTestConfig } from '../helpers/setup.js';
 import { PokeballGameScene } from '../../src/scenes/PokeballGameScene.js';
@@ -148,7 +149,7 @@ describe('PokeballGameScene', () => {
         const weights = Object.fromEntries(Object.keys(DEFAULT_MODE_WEIGHTS).map(k => [k, 0]));
         weights.addition = 10;
         for (let i = 0; i < 10; i++) {
-            localStorage.clear();
+            resetStorage();
             const { scene } = await makeScene({ weights });
             expect(scene.gameMode.constructor.name).toBe('AdditionMode');
         }
@@ -158,7 +159,7 @@ describe('PokeballGameScene', () => {
         const seen = new Set();
         const keys = Object.keys(DEFAULT_MODE_WEIGHTS);
         for (const key of keys) {
-            localStorage.clear();
+            resetStorage();
             const weights = Object.fromEntries(keys.map(k => [k, 0]));
             weights[key] = 10;
             const { scene } = await makeScene({ weights });
@@ -175,7 +176,7 @@ describe('PokeballGameScene', () => {
             'vowellength-only', 'vowelsounds-only', 'numberbonds-only', 'shapedirections-only',
             'clocklistening-only', 'clockreading-only', 'piano-only', 'speedreading-only'];
         for (const mode of forced) {
-            localStorage.clear();
+            resetStorage();
             const { scene, fake } = await makeScene({ forcedMode: mode });
             expect(scene.gameMode, mode).toBeTruthy();
             fake.advance(3000);

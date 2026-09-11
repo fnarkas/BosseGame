@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { resetStorage } from '../src/storage.js';
 import { trackWrongAnswer } from '../src/wrongAnswers.js';
 import {
     parseMistakes, mistakeCount, confusablesFor, itemWeight, weightedPick,
@@ -9,7 +10,7 @@ import { parseNumberRange } from '../src/utils/parseNumberRange.js';
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ'.split('');
 
 describe('adaptive item selection', () => {
-    beforeEach(() => localStorage.clear());
+    beforeEach(() => resetStorage());
 
     it('parses both mistake key formats', () => {
         trackWrongAnswer('LetterListeningMode', 'b', 'd');

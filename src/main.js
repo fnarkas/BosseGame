@@ -12,6 +12,8 @@ import { loadActiveMinigame } from './minigameSession.js';
 import { MINIGAMES } from './minigameRegistry.js';
 import { showAdminPage } from './admin/index.js';
 import { clearAllStorage } from './utils/clearStorage.js';
+import { ensureLoggedIn } from './login.js';
+import { getCurrentAccount, resetAccount } from './account.js';
 
 // Make POKEMON_DATA globally available
 window.POKEMON_DATA = POKEMON_DATA;
@@ -24,9 +26,6 @@ window.showPokemonCaughtPopup = showPokemonCaughtPopup;
 
 // Make openStore globally available for scenes
 window.openStore = openStore;
-
-// Migrate old inventory before game starts
-migrateOldInventory();
 
 // Routes for the /games menu and the debug URLs. Every minigame comes from the
 // registry; the last entry is the normal random mix.
@@ -75,17 +74,6 @@ if (gameConfig) {
     console.log('Running in LETTER MATCH mode');
 }
 
-// If a minigame was left unfinished, resume it on load instead of the main
-// scene. This makes a reload return the player to the game they were in rather
-// than letting them re-roll or back out. Explicit routes (a specific game,
-// store, games menu, admin) take precedence and are left untouched.
-if (startScene === 'MainGameScene' && !pokeballGameMode && !showStoreOnLoad && !showGamesMenu && !showAdmin) {
-    if (loadActiveMinigame()) {
-        startScene = 'PokeballGameScene';
-        console.log('Resuming unfinished minigame');
-    }
-}
-
 // Show games menu if /games route
 if (showGamesMenu) {
     showGamesMenuPage();
@@ -95,6 +83,29 @@ if (showGamesMenu) {
     // Only the reset page: never boot Phaser into the replaced DOM.
     resetAllProgress();
 } else {
+    bootGame();
+}
+
+// The player's progress lives on the server (src/account.js), so the game
+// cannot start until an account is chosen and its state has been loaded.
+async function bootGame() {
+    const accountName = await ensureLoggedIn();
+    console.log(`Playing as ${accountName}`);
+
+    // Migrate old inventory before game starts
+    migrateOldInventory();
+
+    // If a minigame was left unfinished, resume it on load instead of the main
+    // scene. This makes a reload return the player to the game they were in rather
+    // than letting them re-roll or back out. Explicit routes (a specific game,
+    // store) take precedence and are left untouched.
+    if (startScene === 'MainGameScene' && !pokeballGameMode && !showStoreOnLoad) {
+        if (loadActiveMinigame()) {
+            startScene = 'PokeballGameScene';
+            console.log('Resuming unfinished minigame');
+        }
+    }
+
     // Main game configuration
     const config = {
         type: Phaser.AUTO,
@@ -147,8 +158,18 @@ if (showGamesMenu) {
     }
 }
 
-function resetAllProgress() {
-    // Clear all saved data
+async function resetAllProgress() {
+    // Wipe the current account on the server, then everything on this device.
+    const accountName = getCurrentAccount();
+    let serverError = null;
+    if (accountName) {
+        try {
+            await resetAccount(accountName);
+        } catch (error) {
+            serverError = error;
+            console.warn('Reset: could not clear the account on the server', error);
+        }
+    }
     clearAllStorage();
 
     console.log('All progress has been reset!');
@@ -158,11 +179,15 @@ function resetAllProgress() {
         gameContainer.style.display = 'none';
     }
 
+    const who = accountName ? ` for ${accountName}` : '';
+    const detail = serverError
+        ? `This device was cleared, but the server could not be reached: ${serverError.message}`
+        : 'All Pokemon, pokeballs, and coins have been cleared.';
     const resetHTML = `
         <div style="font-family: Arial; max-width: 600px; margin: 80px auto; padding: 40px; text-align: center;">
-            <h1 style="font-size: 80px; margin-bottom: 20px;">✅</h1>
-            <h2 style="font-size: 36px; margin-bottom: 20px;">Progress Reset!</h2>
-            <p style="font-size: 20px; color: #666; margin-bottom: 40px;">All Pokemon, pokeballs, and coins have been cleared.</p>
+            <h1 style="font-size: 80px; margin-bottom: 20px;">${serverError ? '⚠️' : '✅'}</h1>
+            <h2 style="font-size: 36px; margin-bottom: 20px;">Progress Reset${who}!</h2>
+            <p style="font-size: 20px; color: #666; margin-bottom: 40px;">${detail}</p>
             <a href="/" style="display: inline-block; padding: 20px 40px; background: #4CAF50; color: white; border-radius: 10px; text-decoration: none; font-size: 24px;">Start Fresh</a>
         </div>
     `;
