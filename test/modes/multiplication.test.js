@@ -148,7 +148,7 @@ describe('MultiplicationMode', () => {
             expect(mode.rowTotals.every(t => t.alpha === 0)).toBe(true);
             expect(mode.digitBoxes.map(d => d.digit)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
             expect(scene.findText('🔊')).not.toBeNull();
-            expect(mode.ballIndicators).toHaveLength(3);
+            expect(mode.progressBalls.circles).toHaveLength(3);
         });
 
         it('says "rows gånger cols" at the start, stitched from loaded audio keys', () => {
@@ -215,7 +215,7 @@ describe('MultiplicationMode', () => {
             expect(mode.isRevealing).toBe(false);
             expect(mode.inputLocked).toBe(false);
             expect(mode.tensZone.getData('value')).toBeNull();
-            expect(mode.ballIndicators.filter(b => b.fillColor === 0x27AE60)).toHaveLength(1);
+            expect(mode.progressBalls.circles.filter(b => b.fillColor === 0x27AE60)).toHaveLength(1);
             expect(calls).toHaveLength(0);
             expect(scene._useAfterDestroy).toEqual([]);
             expect(scene._missingAudio).toEqual([]);
@@ -243,7 +243,7 @@ describe('MultiplicationMode', () => {
             calls = [];
             mode.setAnswerCallback((ok, answer) => calls.push({ ok, answer }));
             await startMode(mode, scene);
-            expect(mode.ballIndicators).toHaveLength(2);
+            expect(mode.progressBalls.circles).toHaveLength(2);
             for (let i = 0; i < 2; i++) { answer(product()); scene.advance(ROUND_MS); }
             expect(calls).toHaveLength(1);
         });
@@ -293,7 +293,7 @@ describe('MultiplicationMode', () => {
     // ---------------- wrong answers ----------------
 
     describe('wrong answers', () => {
-        it('keeps progress but resets the streak, reveals and skip-counts, then moves on', () => {
+        it('keeps progress but resets the streak, reveals and skip-counts to the answer, then asks the same problem again', () => {
             answer(product());
             scene.advance(ROUND_MS);
             expect(mode.correctCount).toBe(1);
@@ -306,8 +306,6 @@ describe('MultiplicationMode', () => {
             answer(wrongAnswer());
             expect(mode.isRevealing).toBe(true);
             expect(mode.correctCount).toBe(1);
-            expect(getStreak()).toBe(0);
-            expect(scene.boosterBarElements.multiplierText.text).toBe('x1');
             expect(mode.tensZone.fillColor).toBe(0xFF0000);
 
             // After the shake, the correct digits are shown in gold
@@ -322,14 +320,22 @@ describe('MultiplicationMode', () => {
             expect(box.x).toBe(box.getData('originalX'));
             expect(mode.onesZone.getData('label').text).toBe(String(problem.ones));
 
-            scene.advance(ROUND_MS);
+            // The skip-count runs during the reveal and ends on the spoken answer
+            scene.advance(revealMsFor(problem.rows) + 50);
             const counted = scene.playedAudio().slice(before);
-            expect(counted.slice(0, problem.rows)).toEqual(
+            expect(counted).toEqual(
                 Array.from({ length: problem.rows }, (_, r) => `number_audio_${(r + 1) * problem.cols}`)
             );
+            expect(counted[counted.length - 1]).toBe(`number_audio_${problem.product}`);
+            expect(mode.isRevealing).toBe(true);
+
+            scene.advance(ROUND_MS);
+            expect(getStreak()).toBe(0);
+            expect(scene.boosterBarElements.multiplierText.text).toBe('x1');
             expect(mode.isRevealing).toBe(false);
             expect(mode.inputLocked).toBe(false);
             expect(mode.challengeData).not.toBe(problem);
+            expect(mode.challengeData).toMatchObject({ rows: problem.rows, cols: problem.cols }); // re-asked
             expect(mode.correctCount).toBe(1);
             expect(scene.objectsCreatedAfter(start).length).toBeGreaterThan(0);
             expect(calls).toHaveLength(0);
@@ -339,6 +345,21 @@ describe('MultiplicationMode', () => {
             // And the new problem is answerable
             answer(product());
             expect(mode.correctCount).toBe(2);
+        });
+
+        it('re-asks a missed problem immediately and once more two rounds later', () => {
+            mode.requiredCorrect = 10;
+            mode.commutativityEnabled = false;
+            const missed = { rows: mode.challengeData.rows, cols: mode.challengeData.cols };
+            answer(wrongAnswer());
+            scene.advance(ROUND_MS);
+            expect(mode.challengeData).toMatchObject(missed);
+            answer(product());
+            scene.advance(ROUND_MS);
+            expect(mode.challengeData).not.toMatchObject(missed);
+            answer(product());
+            scene.advance(ROUND_MS);
+            expect(mode.challengeData).toMatchObject(missed);
         });
 
         it('tracks the mistake', () => {

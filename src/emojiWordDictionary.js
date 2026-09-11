@@ -1,3 +1,6 @@
+import { getJSON, setJSON, getBool, setBool } from './storage.js';
+import { loadMinigameConfig } from './minigameConfig.js';
+
 /**
  * Emoji-Word Dictionary for matching games
  * Organized by first letter to enable letter-based filtering
@@ -92,71 +95,38 @@ export const DEFAULT_EMOJI_WORD_DICTIONARY = [
  * Load emoji word dictionary from localStorage or return default
  */
 export function getEmojiWordDictionary() {
-    const stored = localStorage.getItem('emojiWordDictionary');
-    if (stored) {
-        try {
-            return JSON.parse(stored);
-        } catch (e) {
-            console.error('Failed to parse emoji word dictionary:', e);
-            return [...DEFAULT_EMOJI_WORD_DICTIONARY];
-        }
-    }
-    return [...DEFAULT_EMOJI_WORD_DICTIONARY];
+    const stored = getJSON('emojiWordDictionary', null, Array.isArray);
+    return stored ? stored : [...DEFAULT_EMOJI_WORD_DICTIONARY];
 }
 
 /**
  * Save emoji word dictionary to localStorage
  */
 export function saveEmojiWordDictionary(dictionary) {
-    localStorage.setItem('emojiWordDictionary', JSON.stringify(dictionary));
+    setJSON('emojiWordDictionary', dictionary);
 }
 
 /**
  * Get letter filtering setting
  */
 export function getLetterFilterEnabled() {
-    const enabled = localStorage.getItem('emojiWordLetterFilter');
-    return enabled === 'true';
+    return getBool('emojiWordLetterFilter', false);
 }
 
 /**
  * Set letter filtering setting
  */
 export function setLetterFilterEnabled(enabled) {
-    localStorage.setItem('emojiWordLetterFilter', enabled ? 'true' : 'false');
+    setBool('emojiWordLetterFilter', enabled);
 }
 
-// Cache for config to avoid repeated fetches
-let cachedConfig = null;
-let configPromise = null;
 
 /**
  * Load minigames config from server
  * @returns {Promise<Object>} The config object
  */
 async function loadConfig() {
-    if (cachedConfig) {
-        return cachedConfig;
-    }
-
-    if (configPromise) {
-        return configPromise;
-    }
-
-    configPromise = fetch('/config/minigames.json')
-        .then(response => response.json())
-        .then(config => {
-            cachedConfig = config;
-            configPromise = null;
-            return config;
-        })
-        .catch(error => {
-            console.error('Failed to load config:', error);
-            configPromise = null;
-            return { emojiWord: { textCase: 'uppercase' } }; // Default
-        });
-
-    return configPromise;
+    return loadMinigameConfig();
 }
 
 /**

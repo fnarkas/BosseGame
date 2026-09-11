@@ -2,7 +2,10 @@
 <html lang="sv">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>Pokemon Bokstavs-Spel</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,9 +15,9 @@
     <!-- Pokedex HTML Overlay -->
     <div id="pokedex-overlay" style="display: none;">
         <div class="pokedex-header">
-            <button id="pokedex-back-btn" class="back-button">← Tillbaka</button>
-            <h1 class="pokedex-title">Min Pokedex</h1>
-            <div id="pokedex-stats" class="pokedex-stats">Fångade: 0 / 100</div>
+            <button id="pokedex-back-btn" class="back-button" aria-label="Tillbaka">←</button>
+            <h1 class="pokedex-title">📖</h1>
+            <div id="pokedex-stats" class="pokedex-stats"></div>
         </div>
         <div id="pokedex-grid-container" class="pokedex-grid-container">
             <div id="pokedex-grid" class="pokedex-grid">
@@ -34,15 +37,15 @@
                 <!-- Type icons will be added here dynamically -->
             </div>
             <div id="popup-pokemon-stats" class="popup-pokemon-stats">Height: 0m | Weight: 0kg</div>
-            <button id="popup-continue-btn" class="popup-continue-btn">CONTINUE</button>
+            <button id="popup-continue-btn" class="popup-continue-btn" aria-label="Fortsätt">✅</button>
         </div>
     </div>
 
     <!-- Store Overlay -->
     <div id="store-overlay" style="display: none;">
         <div class="store-header">
-            <button id="store-back-btn" class="back-button">← Tillbaka</button>
-            <h1 class="store-title">Pokéball Affär</h1>
+            <button id="store-back-btn" class="back-button" aria-label="Tillbaka">←</button>
+            <h1 class="store-title">🛒</h1>
             <div id="store-coin-balance" class="store-coin-balance">
                 <img src="coin.png" class="coin-icon" alt="Coins"> <span id="coin-count">x0</span>
             </div>

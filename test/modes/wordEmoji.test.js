@@ -47,20 +47,52 @@ for (const v of variants) {
             expect(calls).toEqual([{ ok: true, answer: v.correct(mode) }]);
         });
 
-        it('reveals the answer after a wrong tap, resets the streak and moves on', async () => {
+        it('reveals and speaks the answer after a wrong tap, resets the streak and re-asks the word', async () => {
             incrementStreak();
             const first = v.id(mode);
-            scene.click(wrongBtn());
+            const firstId = mode.challengeData.id;
+            const audioKey = `word_audio_${mode.challengeData.word ? mode.challengeData.word.toLowerCase() : mode.challengeData.correctWord.toLowerCase()}`;
+            scene.addFakeAudio(audioKey);
+            const wrong = wrongBtn();
+            const wrongX = wrong.x;
+            scene.click(wrong);
             scene.advance(100);
             // Taps during the shake/reveal do nothing
             scene.click(correctBtn());
             expect(calls).toHaveLength(0);
+            scene.advance(350); // shake over: gold reveal + the word spoken
+            expect(wrong.x).toBe(wrongX);
+            expect(scene.lastAudio()).toBe(audioKey);
+            const revealed = (mode.emojiButtons || mode.wordButtons).find(b => b[v.dataKey] === v.correct(mode));
+            expect(revealed.button.fillColor).toBe(0xFFD700);
+            expect(revealed.button.input.enabled).toBe(false);
             scene.advance(5000);
             await flush();
             expect(getStreak()).toBe(0);
             expect(calls).toHaveLength(0);
             expect(buttons()).toHaveLength(5);
-            expect(v.id(mode)).not.toBe(first);
+            // The missed word comes straight back...
+            expect(v.id(mode)).toBe(first);
+            expect(mode.challengeData.id).toBe(firstId);
+            // ...then one other word, then the missed one once more
+            mode.generateChallenge();
+            expect(mode.challengeData.id).not.toBe(firstId);
+            mode.generateChallenge();
+            expect(mode.challengeData.id).toBe(firstId);
+        });
+
+        it(v.dataKey === 'word' ? 'has a speaker that says the target word' : 'has no speaker before the answer', () => {
+            const speaker = scene.findText('🔊');
+            if (v.dataKey === 'word') {
+                const key = `word_audio_${mode.challengeData.correctWord.toLowerCase()}`;
+                scene.addFakeAudio(key);
+                expect(speaker).not.toBeNull();
+                expect(scene.playedAudio()).toEqual([]); // the emoji is the prompt; nothing auto-plays
+                scene.click(speaker);
+                expect(scene.playedAudio()).toEqual([key]);
+            } else {
+                expect(speaker).toBeNull();
+            }
         });
 
         it('cleans up without leaving orphaned UI or late callbacks', async () => {

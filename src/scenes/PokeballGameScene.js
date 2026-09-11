@@ -1,59 +1,13 @@
 import Phaser from 'phaser';
-import { WordEmojiMatchMode } from '../pokeballGameModes/WordEmojiMatchMode.js';
-import { EmojiWordMatchMode } from '../pokeballGameModes/EmojiWordMatchMode.js';
-import { LetterListeningMode } from '../pokeballGameModes/LetterListeningMode.js';
-import { LeftRightMode } from '../pokeballGameModes/LeftRightMode.js';
-import { LetterDragMatchMode } from '../pokeballGameModes/LetterDragMatchMode.js';
-import { SpeechRecognitionMode } from '../pokeballGameModes/SpeechRecognitionMode.js';
-import { NumberListeningMode } from '../pokeballGameModes/NumberListeningMode.js';
-import { NumberReadingMode } from '../pokeballGameModes/NumberReadingMode.js';
-import { WordSpellingMode } from '../pokeballGameModes/WordSpellingMode.js';
-import { LegendaryAlphabetMatchMode } from '../pokeballGameModes/LegendaryAlphabetMatchMode.js';
-import { LegendaryNumbersMode } from '../pokeballGameModes/LegendaryNumbersMode.js';
-import { DayMatchMode } from '../pokeballGameModes/DayMatchMode.js';
-import { AdditionMode } from '../pokeballGameModes/AdditionMode.js';
-import { MultiplicationMode } from '../pokeballGameModes/MultiplicationMode.js';
-import { VowelLengthMode } from '../pokeballGameModes/VowelLengthMode.js';
-import { VowelSoundsMode } from '../pokeballGameModes/VowelSoundsMode.js';
-import { NumberBondsMode } from '../pokeballGameModes/NumberBondsMode.js';
-import { ShapeDirectionsMode } from '../pokeballGameModes/ShapeDirectionsMode.js';
-import { ClockListeningMode } from '../pokeballGameModes/ClockListeningMode.js';
-import { ClockReadingMode } from '../pokeballGameModes/ClockReadingMode.js';
-import { PianoLearningMode } from '../pokeballGameModes/PianoLearningMode.js';
-import { SpeedReadingMode } from '../pokeballGameModes/SpeedReadingMode.js';
+import { getMinigameByForced, getMinigameForMode, isLegendaryMode, pickWeightedMinigame } from '../minigameRegistry.js';
 import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
-import { getStreak, incrementStreak, resetStreak, getMultiplier } from '../streak.js';
+import { getStreak, incrementStreak, resetStreak, getMultiplier, milestoneBonus } from '../streak.js';
+import { playChime } from '../sfx.js';
 import { createBoosterBar, updateBoosterBar, destroyBoosterBar, hideBoosterBar, showBoosterBar } from '../boosterBar.js';
 import { loadModeWeights } from '../minigameWheel.js';
 import { saveActiveMinigame, loadActiveMinigame, clearActiveMinigame } from '../minigameSession.js';
-
-// Map of game-mode class names to their constructors, used to restore the
-// in-progress minigame by name after a page reload.
-const MODE_CLASSES = {
-    LetterListeningMode,
-    WordEmojiMatchMode,
-    EmojiWordMatchMode,
-    LeftRightMode,
-    LetterDragMatchMode,
-    SpeechRecognitionMode,
-    NumberListeningMode,
-    NumberReadingMode,
-    WordSpellingMode,
-    LegendaryAlphabetMatchMode,
-    LegendaryNumbersMode,
-    DayMatchMode,
-    AdditionMode,
-    MultiplicationMode,
-    VowelLengthMode,
-    VowelSoundsMode,
-    NumberBondsMode,
-    ShapeDirectionsMode,
-    ClockListeningMode,
-    ClockReadingMode,
-    PianoLearningMode,
-    SpeedReadingMode
-};
+import { ensureAudioPacks } from '../lazyLoad.js';
 
 export class PokeballGameScene extends Phaser.Scene {
     constructor() {
@@ -62,7 +16,6 @@ export class PokeballGameScene extends Phaser.Scene {
         this.coinCount = 0;
         this.coinCounterText = null;
         this.isProcessingAnswer = false;
-        this.challengeCount = 0; // Track number of challenges completed
         this.boosterBarElements = null; // Booster bar UI elements
     }
 
@@ -73,11 +26,30 @@ export class PokeballGameScene extends Phaser.Scene {
         // Load coin count from localStorage
         this.coinCount = getCoinCount();
 
+        // Whatever stops this scene (home button, no-pokeballs flow, a debug
+        // route) must tear down the running mode: its timers, tweens, mic
+        // session and DOM state would otherwise outlive the scene.
+        if (this.events && this.events.once) {
+            this.events.once('shutdown', () => this.teardown());
+        }
+
         // Background
         this.add.rectangle(0, 0, width, height, 0x87CEEB).setOrigin(0);
 
-        // Pokedex button (top left)
-        const pokedexBtn = this.add.text(80, 40, '📖', {
+        // Home button (top left): always visible, so the child can leave any
+        // minigame and go back to catching Pokemon. Leaving forgets the
+        // in-progress game, so a reload afterwards doesn't resume it.
+        const homeBtn = this.add.image(70, 50, 'pokeball_poke-ball');
+        homeBtn.setScale(0.8);
+        homeBtn.setDepth(1002);
+        homeBtn.setInteractive({ useHandCursor: true });
+        homeBtn.setName('home-button');
+        homeBtn.on('pointerover', () => homeBtn.setScale(0.9));
+        homeBtn.on('pointerout', () => homeBtn.setScale(0.8));
+        homeBtn.on('pointerdown', () => this.goHome());
+
+        // Pokedex button (top left, next to home)
+        const pokedexBtn = this.add.text(170, 40, '📖', {
             fontSize: '48px'
         });
         pokedexBtn.setOrigin(0.5);
@@ -110,7 +82,12 @@ export class PokeballGameScene extends Phaser.Scene {
         storeBtn.setDepth(1002); // Above overlay
 
         storeBtn.on('pointerdown', () => {
-            window.openStore();
+            this.scene.pause();
+            window.openStore(() => {
+                if (this.scene.isPaused && this.scene.isPaused()) this.scene.resume();
+                this.coinCount = getCoinCount();
+                this.coinCounterText.setText(`${this.coinCount}`);
+            });
         });
 
         // Settings button (gear icon, before store button)
@@ -165,10 +142,10 @@ export class PokeballGameScene extends Phaser.Scene {
             // resume that exact game instead of rolling a new one. This stops a
             // child from reloading to re-roll until they get the game they want.
             const savedModeName = loadActiveMinigame();
-            const RestoreClass = savedModeName ? MODE_CLASSES[savedModeName] : null;
+            const restoreEntry = savedModeName ? getMinigameForMode(savedModeName) : null;
 
-            if (RestoreClass) {
-                this.gameMode = new RestoreClass();
+            if (restoreEntry) {
+                this.gameMode = new restoreEntry.Mode();
                 this.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
                     this.handleAnswer(isCorrect, answer, x, y);
                 });
@@ -202,274 +179,26 @@ export class PokeballGameScene extends Phaser.Scene {
     }
 
     async selectGameMode() {
-        // Check if a specific mode is forced (for debug paths)
+        // A debug route (e.g. /letters) forces one mode via the registry value
+        // 'pokeballGameMode'; otherwise roll a weighted random mode.
         const forcedMode = this.registry.get('pokeballGameMode');
+        const forcedEntry = forcedMode ? getMinigameByForced(forcedMode) : null;
 
-        if (forcedMode === 'letter-only') {
-            // Debug path: /letters - only show letter listening
-            this.gameMode = new LetterListeningMode();
-            console.log('Selected game mode: Letter Listening (forced)');
-        } else if (forcedMode === 'word-emoji-only') {
-            // Debug path: could add /words - only show word-emoji
-            this.gameMode = new WordEmojiMatchMode();
-            console.log('Selected game mode: Word-Emoji Match (forced)');
-        } else if (forcedMode === 'directions-only') {
-            // Debug path: /directions - only show left/right
-            this.gameMode = new LeftRightMode();
-            console.log('Selected game mode: Left/Right Directions (forced)');
-        } else if (forcedMode === 'lettermatch-only') {
-            // Debug path: /lettermatch - only show letter drag match
-            this.gameMode = new LetterDragMatchMode();
-            console.log('Selected game mode: Letter Drag Match (forced)');
-        } else if (forcedMode === 'speech-only') {
-            // Debug path: /speech - only show speech recognition
-            this.gameMode = new SpeechRecognitionMode();
-            console.log('Selected game mode: Speech Recognition (forced)');
-        } else if (forcedMode === 'numbers-only') {
-            // Debug path: /numbers - only show number listening
-            this.gameMode = new NumberListeningMode();
-            console.log('Selected game mode: Number Listening (forced)');
-        } else if (forcedMode === 'numberreading-only') {
-            // Debug path: /numberreading - only show number reading
-            this.gameMode = new NumberReadingMode();
-            console.log('Selected game mode: Number Reading (forced)');
-        } else if (forcedMode === 'emojiword-only') {
-            // Debug path: /emojiword - only show emoji-word match
-            this.gameMode = new EmojiWordMatchMode();
-            console.log('Selected game mode: Emoji-Word Match (forced)');
-        } else if (forcedMode === 'wordspelling-only') {
-            // Debug path: /wordspelling - only show word spelling
-            this.gameMode = new WordSpellingMode();
-            console.log('Selected game mode: Word Spelling (forced)');
-        } else if (forcedMode === 'legendary-only') {
-            // Debug path: /legendary - legendary alphabet match challenge
-            this.gameMode = new LegendaryAlphabetMatchMode();
-            console.log('Selected game mode: Legendary Alphabet Match (forced)');
-        } else if (forcedMode === 'legendary-numbers-only') {
-            // Debug path: /legendarynumbers - legendary numbers challenge
-            this.gameMode = new LegendaryNumbersMode();
-            console.log('Selected game mode: Legendary Numbers (forced)');
-        } else if (forcedMode === 'dayofweek-only') {
-            // Debug path: /dayofweek - day of week matching
-            this.gameMode = new DayMatchMode();
-            console.log('Selected game mode: Day Match (forced)');
-        } else if (forcedMode === 'addition-only') {
-            // Debug path: /addition - simple addition
-            this.gameMode = new AdditionMode();
-            console.log('Selected game mode: Addition (forced)');
-        } else if (forcedMode === 'multiplication-only') {
-            // Debug path: /multiplication - multiplication with array visualisation
-            this.gameMode = new MultiplicationMode();
-            console.log('Selected game mode: Multiplication (forced)');
-        } else if (forcedMode === 'vowellength-only') {
-            // Debug path: /vowellength - long and short vowel minimal pairs
-            this.gameMode = new VowelLengthMode();
-            console.log('Selected game mode: Vowel Length (forced)');
-        } else if (forcedMode === 'vowelsounds-only') {
-            // Debug path: /vowelsounds - hear long/short, then long/short -> one/two letters
-            this.gameMode = new VowelSoundsMode();
-            console.log('Selected game mode: Vowel Sounds (forced)');
-        } else if (forcedMode === 'numberbonds-only') {
-            // Debug path: /numberbonds - timed number bonds to ten
-            this.gameMode = new NumberBondsMode();
-            console.log('Selected game mode: Number Bonds (forced)');
-        } else if (forcedMode === 'shapedirections-only') {
-            // Debug path: /shapedirections - shape directions game
-            this.gameMode = new ShapeDirectionsMode();
-            console.log('Selected game mode: Shape Directions (forced)');
-        } else if (forcedMode === 'clocklistening-only') {
-            // Debug path: /clocklistening - clock listening game
-            this.gameMode = new ClockListeningMode();
-            console.log('Selected game mode: Clock Listening (forced)');
-        } else if (forcedMode === 'clockreading-only') {
-            // Debug path: /clockreading - clock reading game
-            this.gameMode = new ClockReadingMode();
-            console.log('Selected game mode: Clock Reading (forced)');
-        } else if (forcedMode === 'piano-only') {
-            // Debug path: /piano - piano learning game
-            this.gameMode = new PianoLearningMode();
-            console.log('Selected game mode: Piano Learning (forced)');
-        } else if (forcedMode === 'speedreading-only') {
-            // Debug path: /speedreading - timed speed reading game
-            this.gameMode = new SpeedReadingMode();
-            console.log('Selected game mode: Speed Reading (forced)');
-        } else {
-            // Normal mode: Randomly select from all game modes with configurable probabilities
-            this.gameMode = await this.selectRandomGameMode();
+        if (forcedMode && !forcedEntry) {
+            console.warn(`Unknown forced game mode '${forcedMode}', rolling a random one`);
         }
+
+        const entry = forcedEntry || await this.selectRandomGameMode();
+        this.gameMode = new entry.Mode();
+        console.log(`Selected game mode: ${entry.name}${forcedEntry ? ' (forced)' : ''}`);
     }
 
     async selectRandomGameMode() {
-        // Load weights (config merged over defaults) from the shared wheel module,
+        // Weights (config merged over defaults) come from the shared wheel module,
         // so mode selection and the wheel graphic always agree. Higher weight =
         // higher probability of being selected; weight 0 = never selected.
-        const MODE_WEIGHTS = await loadModeWeights();
-
-        // Calculate total weight
-        const totalWeight = MODE_WEIGHTS.letterListening +
-                          MODE_WEIGHTS.wordEmoji +
-                          MODE_WEIGHTS.emojiWord +
-                          MODE_WEIGHTS.leftRight +
-                          MODE_WEIGHTS.letterDragMatch +
-                          MODE_WEIGHTS.speechRecognition +
-                          MODE_WEIGHTS.numberListening +
-                          MODE_WEIGHTS.numberReading +
-                          MODE_WEIGHTS.wordSpelling +
-                          MODE_WEIGHTS.legendary +
-                          MODE_WEIGHTS.legendaryNumbers +
-                          MODE_WEIGHTS.dayMatch +
-                          MODE_WEIGHTS.addition +
-                          MODE_WEIGHTS.multiplication +
-                          MODE_WEIGHTS.vowelLength +
-                          MODE_WEIGHTS.vowelSounds +
-                          MODE_WEIGHTS.numberBonds +
-                          MODE_WEIGHTS.shapeDirections +
-                          MODE_WEIGHTS.clockListening +
-                          MODE_WEIGHTS.clockReading +
-                          MODE_WEIGHTS.pianoLearning +
-                          MODE_WEIGHTS.speedReading;
-
-        // Generate random number between 0 and total weight
-        const random = Math.random() * totalWeight;
-
-        // Select mode based on weighted random
-        let currentWeight = 0;
-
-        currentWeight += MODE_WEIGHTS.letterListening;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Letter Listening');
-            return new LetterListeningMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.wordEmoji;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Word-Emoji Match');
-            return new WordEmojiMatchMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.emojiWord;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Emoji-Word Match');
-            return new EmojiWordMatchMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.leftRight;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Left/Right Directions');
-            return new LeftRightMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.letterDragMatch;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Letter Drag Match');
-            return new LetterDragMatchMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.speechRecognition;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Speech Recognition');
-            return new SpeechRecognitionMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.numberListening;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Number Listening');
-            return new NumberListeningMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.numberReading;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Number Reading');
-            return new NumberReadingMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.legendary;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Legendary Alphabet Match');
-            return new LegendaryAlphabetMatchMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.legendaryNumbers;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Legendary Numbers');
-            return new LegendaryNumbersMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.dayMatch;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Day Match');
-            return new DayMatchMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.addition;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Addition');
-            return new AdditionMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.multiplication;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Multiplication');
-            return new MultiplicationMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.vowelLength;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Vowel Length');
-            return new VowelLengthMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.vowelSounds;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Vowel Sounds');
-            return new VowelSoundsMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.numberBonds;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Number Bonds');
-            return new NumberBondsMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.shapeDirections;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Shape Directions');
-            return new ShapeDirectionsMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.clockListening;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Clock Listening');
-            return new ClockListeningMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.clockReading;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Clock Reading');
-            return new ClockReadingMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.pianoLearning;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Piano Learning');
-            return new PianoLearningMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.speedReading;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Speed Reading');
-            return new SpeedReadingMode();
-        }
-
-        currentWeight += MODE_WEIGHTS.wordSpelling;
-        if (random < currentWeight) {
-            console.log('Selected game mode: Word Spelling');
-            return new WordSpellingMode();
-        }
-
-        // Fallback (should never reach here if weights are configured properly)
-        console.warn('Weighted selection failed, defaulting to Word Spelling');
-        return new WordSpellingMode();
+        const weights = await loadModeWeights();
+        return pickWeightedMinigame(weights);
     }
 
     showDiceRollAnimation() {
@@ -484,28 +213,6 @@ export class PokeballGameScene extends Phaser.Scene {
         const wheelBoosterBar = createBoosterBar(this, width / 2, 60, 1002);
         const currentStreak = getStreak();
         updateBoosterBar(wheelBoosterBar, currentStreak, this);
-
-        // Pokemon catching button (top left) - exit back to catching Pokemon
-        const pokeballBtn = this.add.image(70, 50, 'pokeball_poke-ball');
-        pokeballBtn.setScale(0.8);
-        pokeballBtn.setDepth(1002);
-        pokeballBtn.setInteractive({ useHandCursor: true });
-
-        pokeballBtn.on('pointerdown', () => {
-            // Clean up wheel animation
-            overlay.destroy();
-            wheelSprite.destroy();
-            pointerSprite.destroy();
-            pokeballBtn.destroy();
-            destroyBoosterBar(wheelBoosterBar);
-
-            // Declined at the wheel — clear the session so we don't resume it.
-            clearActiveMinigame();
-
-            // Clean up game mode and return to Pokemon catching
-            this.gameMode.cleanup(this);
-            this.scene.start('MainGameScene');
-        });
 
         // Map the selected mode to its slice on the wheel. The wheel is built in
         // BootScene from the enabled (weight > 0) slices, so we look up the slice
@@ -545,9 +252,6 @@ export class PokeballGameScene extends Phaser.Scene {
             // Stop pulsing animation
             this.tweens.killTweensOf(wheelSprite);
             wheelSprite.setScale(0.8);
-
-            // Hide pokeball button when wheel starts spinning
-            pokeballBtn.destroy();
 
             // Start the spinning animation
             this.startWheelSpin(wheelSprite, pointerSprite, selectedSlice, overlay, wheelBoosterBar);
@@ -616,24 +320,35 @@ export class PokeballGameScene extends Phaser.Scene {
         this.isProcessingAnswer = false;
 
         // Show/hide booster bar based on game mode
-        const modeName = this.gameMode.constructor.name;
-        const isLegendaryMode = modeName === 'LegendaryAlphabetMatchMode' || modeName === 'LegendaryNumbersMode';
-        if (isLegendaryMode) {
+        if (isLegendaryMode(this.gameMode)) {
             hideBoosterBar(this.boosterBarElements);
         } else {
             showBoosterBar(this.boosterBarElements);
         }
 
-        // Load config if needed, then generate challenge
-        if (this.gameMode.loadConfig && !this.gameMode.configLoaded) {
-            this.gameMode.loadConfig().then(() => {
-                this.gameMode.generateChallenge();
-                this.gameMode.createChallengeUI(this);
-            });
-        } else {
-            this.gameMode.generateChallenge();
-            this.gameMode.createChallengeUI(this);
-        }
+        // Load the mode's audio pack and config if needed, then generate the
+        // challenge. Both are usually instant (cached); the first time a mode
+        // is played its audio downloads behind a small spinner.
+        const mode = this.gameMode;
+        const entry = getMinigameForMode(mode);
+        const start = () => {
+            // Skip if the scene stopped or moved on while we were loading.
+            if (this.gameMode !== mode) return;
+            if (this.scene.isActive && !this.scene.isActive()) return;
+            mode.generateChallenge();
+            mode.createChallengeUI(this);
+        };
+        const loadConfig = (mode.loadConfig && !mode.configLoaded)
+            ? mode.loadConfig().catch((error) => {
+                console.warn('Config failed to load, starting with defaults:', error);
+                mode.configLoaded = true;
+            })
+            : Promise.resolve();
+        const loadAudio = ensureAudioPacks(this, (entry && entry.audio) || []);
+        Promise.all([loadConfig, loadAudio]).then(start, (error) => {
+            console.warn('Mode assets failed to load, starting anyway:', error);
+            start();
+        });
     }
 
     handleAnswer(isCorrect, answer, x, y) {
@@ -641,9 +356,7 @@ export class PokeballGameScene extends Phaser.Scene {
         this.isProcessingAnswer = true;
 
         if (isCorrect) {
-            // Check if this is legendary mode
-            const modeName = this.gameMode.constructor.name;
-            const isLegendaryMode = modeName === 'LegendaryAlphabetMatchMode' || modeName === 'LegendaryNumbersMode';
+            const legendary = isLegendaryMode(this.gameMode);
             // The timed modes work out their own variable payout from how much the
             // player got done, with no streak/multiplier (like legendary, but with
             // a normal gift box). They flag themselves rather than being listed by
@@ -654,9 +367,12 @@ export class PokeballGameScene extends Phaser.Scene {
             // Increment streak and get multiplier (only for streak-based modes)
             let newStreak, multiplier, baseCoinReward, finalCoinReward;
 
-            if (!isLegendaryMode && !paysOwnCoins) {
+            let bonus = 0;
+            if (!legendary && !paysOwnCoins) {
+                const previousStreak = getStreak();
                 newStreak = incrementStreak();
                 multiplier = getMultiplier();
+                bonus = milestoneBonus(previousStreak, newStreak);
 
                 // Update booster bar
                 updateBoosterBar(this.boosterBarElements, newStreak, this);
@@ -674,14 +390,22 @@ export class PokeballGameScene extends Phaser.Scene {
                 finalCoinReward = this.gameMode.config.coinReward;
             }
 
-            // Show success feedback particles
+            // Show success feedback particles and a happy chime
             this.showSuccessFeedback(x, y);
+            playChime(this, bonus > 0 ? 'fanfare' : 'correct');
 
             // Show reward animation (gift box for normal, treasure chest for legendary)
-            showGiftBoxReward(this, finalCoinReward, (isLegendaryMode || paysOwnCoins) ? null : multiplier, isLegendaryMode, async () => {
+            showGiftBoxReward(this, finalCoinReward, (legendary || paysOwnCoins) ? null : multiplier, legendary, async () => {
                 // Animation complete - update coin count
                 this.coinCount = addCoins(finalCoinReward);
                 this.coinCounterText.setText(`${this.coinCount}`);
+
+                // Streak milestone: extra coins with a little celebration
+                if (bonus > 0) {
+                    await this.showStreakBonus(bonus);
+                    this.coinCount = addCoins(bonus);
+                    this.coinCounterText.setText(`${this.coinCount}`);
+                }
 
                 // Clean up and load next challenge
                 this.gameMode.cleanup(this);
@@ -689,8 +413,7 @@ export class PokeballGameScene extends Phaser.Scene {
                 // This game is finished — forget it so a reload doesn't resume it.
                 clearActiveMinigame();
 
-                // Increment challenge count and switch mode
-                this.challengeCount++;
+                // Switch mode
                 await this.selectGameMode();
 
                 // Set up callback for new mode
@@ -713,17 +436,13 @@ export class PokeballGameScene extends Phaser.Scene {
             });
         } else {
             // Reset streak on wrong answer (not for legendary mode)
-            const modeName = this.gameMode.constructor.name;
-            const isLegendaryMode = modeName === 'LegendaryAlphabetMatchMode' || modeName === 'LegendaryNumbersMode';
-            if (!isLegendaryMode) {
+            if (!isLegendaryMode(this.gameMode)) {
                 const newStreak = resetStreak();
                 updateBoosterBar(this.boosterBarElements, newStreak, this);
             }
 
-            // Show error feedback
-            this.showErrorFeedback(x, y);
-
-            // Show a visual (non-text) error cue - the players can't read yet
+            // A sad chime plus a visual (non-text) error cue - the players can't read yet
+            playChime(this, 'wrong');
             const errorText = this.add.text(this.cameras.main.width / 2, 600, '😢', {
                 fontSize: '96px',
                 padding: { y: 20 }
@@ -737,33 +456,74 @@ export class PokeballGameScene extends Phaser.Scene {
         }
     }
 
+    // Leave the minigame scene and go back to catching Pokemon.
+    goHome() {
+        if (this.isProcessingAnswer) return;
+        clearActiveMinigame();
+        this.scene.start('MainGameScene');
+    }
+
+    // "🎉 +N" burst for a streak milestone. Resolves when it has faded.
+    showStreakBonus(bonus) {
+        return new Promise(resolve => {
+            const width = this.cameras.main.width;
+            const height = this.cameras.main.height;
+            const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.4).setOrigin(0).setDepth(1000);
+            const party = this.add.text(width / 2, height / 2 - 70, '🎉', { fontSize: '120px', padding: { y: 30 } })
+                .setOrigin(0.5).setDepth(1001).setScale(0);
+            const coinIcon = this.add.image(width / 2 - 50, height / 2 + 70, 'coin-tiny').setDepth(1001).setScale(0);
+            const amount = this.add.text(width / 2 + 30, height / 2 + 70, `+${bonus}`, {
+                font: 'bold 72px Arial', fill: '#FFD700', stroke: '#000000', strokeThickness: 6
+            }).setOrigin(0.5).setDepth(1001).setScale(0);
+            const all = [party, coinIcon, amount];
+
+            this.tweens.add({ targets: party, scale: 1, duration: 300, ease: 'Back.easeOut' });
+            this.tweens.add({ targets: [coinIcon, amount], scale: 1, duration: 300, delay: 150, ease: 'Back.easeOut' });
+            this.tweens.add({ targets: party, angle: { from: -15, to: 15 }, duration: 200, yoyo: true, repeat: 3, delay: 300 });
+            this.time.delayedCall(1500, () => {
+                this.tweens.add({
+                    targets: [...all, overlay],
+                    alpha: 0,
+                    duration: 300,
+                    onComplete: () => {
+                        all.forEach(o => o.destroy());
+                        overlay.destroy();
+                        resolve();
+                    }
+                });
+            });
+        });
+    }
+
     showSuccessFeedback(x, y) {
-        // Create star particle effect
-        const graphics = this.add.graphics();
-        graphics.fillStyle(0xFFD700, 1);
+        // Create the star particle texture once
+        if (!this.textures.exists('successStar')) {
+            const graphics = this.add.graphics();
+            graphics.fillStyle(0xFFD700, 1);
 
-        // Draw a star
-        const starPoints = 5;
-        const outerRadius = 12;
-        const innerRadius = 6;
-        const centerOffset = 16;
-        graphics.beginPath();
-        for (let i = 0; i < starPoints * 2; i++) {
-            const radius = i % 2 === 0 ? outerRadius : innerRadius;
-            const angle = (i * Math.PI) / starPoints - Math.PI / 2;
-            const px = centerOffset + radius * Math.cos(angle);
-            const py = centerOffset + radius * Math.sin(angle);
-            if (i === 0) {
-                graphics.moveTo(px, py);
-            } else {
-                graphics.lineTo(px, py);
+            // Draw a star
+            const starPoints = 5;
+            const outerRadius = 12;
+            const innerRadius = 6;
+            const centerOffset = 16;
+            graphics.beginPath();
+            for (let i = 0; i < starPoints * 2; i++) {
+                const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                const angle = (i * Math.PI) / starPoints - Math.PI / 2;
+                const px = centerOffset + radius * Math.cos(angle);
+                const py = centerOffset + radius * Math.sin(angle);
+                if (i === 0) {
+                    graphics.moveTo(px, py);
+                } else {
+                    graphics.lineTo(px, py);
+                }
             }
-        }
-        graphics.closePath();
-        graphics.fillPath();
+            graphics.closePath();
+            graphics.fillPath();
 
-        graphics.generateTexture('successStar', 32, 32);
-        graphics.destroy();
+            graphics.generateTexture('successStar', 32, 32);
+            graphics.destroy();
+        }
 
         // Create particles
         const particles = this.add.particles(x, y, 'successStar', {
@@ -783,9 +543,18 @@ export class PokeballGameScene extends Phaser.Scene {
         });
     }
 
-    showErrorFeedback(x, y) {
-        // Red flash effect on the incorrect button would be handled by the mode
-        // For now, just show a simple shake
-        // (We could enhance this later)
+    // Scene shutdown: tear down the running mode and HUD.
+    teardown() {
+        if (this.gameMode) {
+            try {
+                this.gameMode.cleanup(this);
+            } catch (error) {
+                console.warn('Mode cleanup failed during shutdown:', error);
+            }
+        }
+        if (this.boosterBarElements) {
+            destroyBoosterBar(this.boosterBarElements);
+            this.boosterBarElements = null;
+        }
     }
 }

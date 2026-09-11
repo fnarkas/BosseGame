@@ -1,5 +1,8 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { getRandomSong, PIANO_KEYS } from '../pianoSongs.js';
+import { loadModeConfig } from '../minigameConfig.js';
+
+const BALL_COLORS = { done: 0x4CAF50, current: 0xFFEB3B, todo: 0xCCCCCC };
 
 /**
  * Piano Learning Mode - Learn melodies by repeating notes in patterns
@@ -17,10 +20,7 @@ export class PianoLearningMode extends BasePokeballGameMode {
         this.currentPatternIndex = 0; // Which pattern we're on
         this.playerNotes = []; // Notes played by player for current pattern
         this.pianoKeys = {}; // Map of note name -> key graphics
-        this.audioCache = {}; // Map of note name -> Phaser sound
         this.isPlayingDemo = false;
-        this.ballIndicators = [];
-        this.progressText = null;
         this.noteMarkers = []; // Visual circles on piano keys
 
         // Default configuration (will be overridden by loadConfig)
@@ -30,30 +30,17 @@ export class PianoLearningMode extends BasePokeballGameMode {
     }
 
     async loadConfig() {
-        try {
-            const response = await fetch('/config/minigames.json');
-            if (response.ok) {
-                const serverConfig = await response.json();
-                const config = serverConfig.pianoLearning || {};
-                // Patterns are whole measures: only a positive integer makes sense here
-                // (0 would give infinitely many patterns, 1.5 would index between measures).
-                const measures = Number(config.measuresPerPattern);
-                this.measuresPerPattern = Number.isInteger(measures) && measures > 0 ? measures : 1;
-                this.showNotes = config.showNotes !== false; // Default to true
+        const config = await loadModeConfig('pianoLearning', { measuresPerPattern: 1, showNotes: true });
+        // Patterns are whole measures: only a positive integer makes sense here
+        // (0 would give infinitely many patterns, 1.5 would index between measures).
+        const measures = Number(config.measuresPerPattern);
+        this.measuresPerPattern = Number.isInteger(measures) && measures > 0 ? measures : 1;
+        this.showNotes = config.showNotes !== false; // Default to true
 
-                console.log('PianoLearningMode config loaded from server:', {
-                    measuresPerPattern: this.measuresPerPattern,
-                    showNotes: this.showNotes
-                });
-            } else {
-                throw new Error('Config not found');
-            }
-        } catch (error) {
-            console.warn('Failed to load server config, using defaults:', error);
-            this.measuresPerPattern = 1;
-            this.showNotes = true;
-        }
-
+        console.log('PianoLearningMode config loaded from server:', {
+            measuresPerPattern: this.measuresPerPattern,
+            showNotes: this.showNotes
+        });
         this.configLoaded = true;
     }
 
@@ -90,25 +77,25 @@ export class PianoLearningMode extends BasePokeballGameMode {
         this.playerNotes = [];
 
         // Speaker button to replay current pattern (centered at top)
-        const speakerBtn = scene.add.text(width / 2, 120, '🔊', {
-            font: '64px Arial',
-            padding: { y: 20 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
-        speakerBtn.on('pointerdown', () => {
+        this.createSpeakerButton(scene, width / 2, 120, () => {
             if (!this.isPlayingDemo && !this.inputLocked) {
                 this.playCurrentPattern(scene);
             }
-        });
-        this.uiElements.push(speakerBtn);
-
-        // No progress text needed - balls show progress visually
+        }, { fontSize: '64px' });
 
         // Create piano keyboard
         this.createPiano(scene);
 
-        // Create ball indicators showing progress through patterns
-        this.createBallIndicators(scene);
+        // Progress through the patterns: done / current / not yet, no gift
+        this.createProgressBalls(scene, {
+            total: this.challengeData.totalPatterns,
+            y: 200,
+            spacing: 34,
+            radius: 12,
+            goalEmoji: null,
+            stateFor: (i) => (i < this.currentPatternIndex ? BALL_COLORS.done
+                : i === this.currentPatternIndex ? BALL_COLORS.current : BALL_COLORS.todo)
+        });
 
         // Create note markers (hidden initially, shown during playback)
         if (this.showNotes) {
@@ -187,59 +174,11 @@ export class PianoLearningMode extends BasePokeballGameMode {
 
             this.uiElements.push(keyRect);
         });
-
-        // Load all audio
-        PIANO_KEYS.forEach(keyData => {
-            const audioKey = `piano-${keyData.note}`;
-            if (scene.cache.audio.exists(audioKey)) {
-                this.audioCache[keyData.note] = scene.sound.add(audioKey);
-            }
-        });
     }
 
-    createBallIndicators(scene) {
-        const width = scene.cameras.main.width;
-        const totalPatterns = this.challengeData.totalPatterns;
-
-        // Show one ball for each pattern (no limiting)
-        const ballSize = 24;
-        const spacing = 10;
-        const totalWidth = totalPatterns * (ballSize + spacing);
-        const startX = (width - totalWidth) / 2;
-        const y = 200;
-
-        this.ballIndicators = [];
-        for (let i = 0; i < totalPatterns; i++) {
-            const x = startX + i * (ballSize + spacing);
-            const ball = scene.add.circle(x, y, ballSize / 2, 0xCCCCCC);
-            ball.setStrokeStyle(2, 0x666666);
-            this.ballIndicators.push(ball);
-            this.uiElements.push(ball);
-        }
-
-        // Mark the current pattern from the start
-        this.updateBallIndicators();
-    }
-
-    updateBallIndicators() {
-        const totalPatterns = this.challengeData.totalPatterns;
-
-        // Update ball colors based on progress
-        for (let i = 0; i < totalPatterns; i++) {
-            const ball = this.ballIndicators[i];
-            if (!ball) continue;
-
-            if (i < this.currentPatternIndex) {
-                // Completed
-                ball.setFillStyle(0x4CAF50); // Green
-            } else if (i === this.currentPatternIndex) {
-                // Current
-                ball.setFillStyle(0xFFEB3B); // Yellow
-            } else {
-                // Not yet reached
-                ball.setFillStyle(0xCCCCCC); // Gray
-            }
-        }
+    // Notes overlap naturally, like on a real piano.
+    playNote(scene, note) {
+        this.playAudio(scene, `piano-${note}`, { overlap: true });
     }
 
     displayNoteMarkers(scene) {
@@ -345,11 +284,7 @@ export class PianoLearningMode extends BasePokeballGameMode {
             // Highlight the key
             this.highlightKey(noteName, true, highlightColor);
 
-            // Play the note
-            const audio = this.audioCache[noteName];
-            if (audio) {
-                audio.play();
-            }
+            this.playNote(scene, noteName);
 
             // Highlight stays on for 80% of the note duration
             await this.wait(scene, noteDurationMs * 0.8);
@@ -402,10 +337,7 @@ export class PianoLearningMode extends BasePokeballGameMode {
         const isCorrectNote = (note === expectedNote);
 
         // Play the note either way (so they hear what they pressed)
-        const audio = this.audioCache[note];
-        if (audio) {
-            audio.play();
-        }
+        this.playNote(scene, note);
 
         if (isCorrectNote) {
             // Correct note! Remove marker and continue
@@ -462,7 +394,7 @@ export class PianoLearningMode extends BasePokeballGameMode {
         this.uiElements.push(errorFlash);
 
         this.delayedCall(scene, 200, () => {
-            errorFlash.destroy();
+            if (errorFlash.scene) errorFlash.destroy();
         });
 
         // Replay the current pattern after a moment (unlocks input when done)
@@ -484,7 +416,7 @@ export class PianoLearningMode extends BasePokeballGameMode {
         this.playerNotes = [];
 
         // Update progress
-        this.updateBallIndicators();
+        this.updateProgressBalls(this.currentPatternIndex);
 
         // Check if song is complete
         if (this.currentPatternIndex >= this.challengeData.totalPatterns) {
@@ -524,20 +456,8 @@ export class PianoLearningMode extends BasePokeballGameMode {
 
     cleanup(scene) {
         super.cleanup(scene);
-
-        // Clean up audio
-        Object.values(this.audioCache).forEach(audio => {
-            if (audio) {
-                audio.stop();
-                if (audio.destroy) audio.destroy();
-            }
-        });
-        this.audioCache = {};
-
         this.pianoKeys = {};
-        this.ballIndicators = [];
         this.noteMarkers = [];
-        this.progressText = null;
         this.isPlayingDemo = false;
     }
 }

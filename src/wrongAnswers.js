@@ -1,3 +1,5 @@
+import { getJSON, setJSON, remove } from './storage.js';
+
 /**
  * Wrong Answer Tracking System
  * Tracks common mistakes to help identify learning patterns
@@ -10,9 +12,9 @@ const WRONG_ANSWERS_KEY = 'wrongAnswers';
  * @returns {Object} Wrong answers tracking data
  */
 export function getWrongAnswersData() {
-  const data = localStorage.getItem(WRONG_ANSWERS_KEY);
+  const data = getJSON(WRONG_ANSWERS_KEY, null, v => v && typeof v === 'object' && v.mistakeCounts);
   if (data) {
-    return JSON.parse(data);
+    return data;
   }
 
   // Return default structure
@@ -34,7 +36,7 @@ export function getWrongAnswersData() {
  */
 function saveWrongAnswersData(data) {
   data.lastUpdated = new Date().toISOString();
-  localStorage.setItem(WRONG_ANSWERS_KEY, JSON.stringify(data));
+  setJSON(WRONG_ANSWERS_KEY, data);
 }
 
 /**
@@ -143,7 +145,7 @@ export function getMostCommonMistakes(limit = 10) {
  * Reset all mistake tracking
  */
 export function resetMistakeTracking() {
-  localStorage.removeItem(WRONG_ANSWERS_KEY);
+  remove(WRONG_ANSWERS_KEY);
   console.log('All mistake tracking has been reset');
 }
 

@@ -1,21 +1,36 @@
-import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
+import { COLORS } from './uiKit.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
-import { resetStreak } from '../streak.js';
-import { updateBoosterBar } from '../boosterBar.js';
+import { loadModeConfig } from '../minigameConfig.js';
+import { clockAudioKey } from '../audio.js';
 
 /**
  * Clock Listening Mode - Listen to Swedish time and set clock hands
- * User hears "Klockan tre" or "Klockan halv fem" and must set the clock correctly
+ * User hears "Klockan tre" or "Klockan halv fem" and drags the hands to match.
+ * A miss shakes the clock, swings the hands to the right time in gold while
+ * the time is spoken again, and then asks the same time once more.
  */
+
+const DEFAULT_CONFIG = { required: 3, includeHalfHours: true };
+
+const SPEAKER_Y = 150;
+const CLOCK_Y = 360;
+const CLOCK_RADIUS = 140;
+const SUBMIT_Y = 580;
+const BALLS_Y = 680;
+const HOUR_HAND_COLOR = 0x2C3E50;
+const MINUTE_HAND_COLOR = 0xE74C3C;
+
+export { clockAudioKey };
+
 export class ClockListeningMode extends BasePokeballGameMode {
     constructor() {
         super();
         this.correctInRow = 0;
 
-        // Default values (will be overridden by loadConfig)
-        this.requiredCorrect = 3;
-        this.includeHalfHours = true;
+        // Default values (overridden by loadConfig)
+        this.requiredCorrect = DEFAULT_CONFIG.required;
+        this.includeHalfHours = DEFAULT_CONFIG.includeHalfHours;
 
         this.currentHour = null;
         this.currentMinute = null;
@@ -24,122 +39,73 @@ export class ClockListeningMode extends BasePokeballGameMode {
         // (e.g. at 5:30 the hour hand sits halfway between 5 and 6).
         this.setHour = 12;
         this.setMinute = 0;
-        this.clockGraphics = null;
         this.hourHand = null;
         this.minuteHand = null;
         this.hourHitbox = null;
         this.minuteHitbox = null;
+        this.clockParts = [];       // Everything centred on the clock (for the shake)
         this.clockCenter = { x: 0, y: 0 };
-        this.currentAudio = null;
-        this.ballIndicators = [];
-        this.isDragging = false;
-        this.draggedHand = null;
-        this.isRevealing = false;
-        this.feedbackFlash = null;
         this.configLoaded = false;
     }
 
     async loadConfig() {
-        try {
-            const response = await fetch('/config/minigames.json');
-            if (response.ok) {
-                const serverConfig = await response.json();
-                const config = serverConfig.clockListening || { required: 3, includeHalfHours: true };
-                this.requiredCorrect = config.required || 3;
-                this.includeHalfHours = config.includeHalfHours !== false;
-
-                console.log('ClockListeningMode config loaded from server:', {
-                    required: this.requiredCorrect,
-                    includeHalfHours: this.includeHalfHours
-                });
-            } else {
-                throw new Error('Config not found');
-            }
-        } catch (error) {
-            console.warn('Failed to load server config, using defaults:', error);
-            this.requiredCorrect = 3;
-            this.includeHalfHours = true;
-        }
-
+        const config = await loadModeConfig('clockListening', DEFAULT_CONFIG);
+        this.requiredCorrect = config.required || DEFAULT_CONFIG.required;
+        this.includeHalfHours = config.includeHalfHours !== false;
         this.configLoaded = true;
     }
 
     generateChallenge() {
-        const previousHour = this.currentHour;
-        const previousMinute = this.currentMinute;
-
-        // Generate random time (whole hours or half hours), avoiding the same
-        // time twice in a row.
-        for (let attempt = 0; attempt < 20; attempt++) {
-            this.currentHour = Math.floor(Math.random() * 12) + 1; // 1-12
-
-            if (this.includeHalfHours && Math.random() < 0.5) {
-                this.currentMinute = 30; // Half hour
-            } else {
-                this.currentMinute = 0; // Whole hour
+        // A missed time comes back first
+        const retry = this.takeRetry();
+        if (retry) {
+            this.currentHour = retry.hour;
+            this.currentMinute = retry.minute;
+        } else {
+            const previousHour = this.currentHour;
+            const previousMinute = this.currentMinute;
+            // Random whole or half hour, avoiding the same time twice in a row
+            for (let attempt = 0; attempt < 20; attempt++) {
+                this.currentHour = Math.floor(Math.random() * 12) + 1; // 1-12
+                this.currentMinute = (this.includeHalfHours && Math.random() < 0.5) ? 30 : 0;
+                if (this.currentHour !== previousHour || this.currentMinute !== previousMinute) break;
             }
-
-            if (this.currentHour !== previousHour || this.currentMinute !== previousMinute) break;
         }
 
-        this.challengeData = {
-            hour: this.currentHour,
-            minute: this.currentMinute
-        };
-
-        console.log('Generated clock challenge:', `${this.currentHour}:${this.currentMinute.toString().padStart(2, '0')}`);
+        this.challengeData = { hour: this.currentHour, minute: this.currentMinute };
+        return this.challengeData;
     }
 
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
-        const height = scene.cameras.main.height;
 
         // A new question is answerable again
         this.inputLocked = false;
         this.isRevealing = false;
 
-        // Speaker button to replay audio (centered at top)
-        const speakerBtn = scene.add.text(width / 2, 150, '🔊', {
-            font: '80px Arial',
-            padding: { y: 20 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
-        speakerBtn.on('pointerdown', () => {
-            this.playClockAudio(scene);
-        });
-        this.uiElements.push(speakerBtn);
-
-        // Play clock audio automatically when challenge loads
+        this.createSpeakerButton(scene, width / 2, SPEAKER_Y, () => this.playClockAudio(scene));
         this.playClockAudio(scene);
 
-        // Create clock at center
-        this.clockCenter = { x: width / 2, y: 360 };
+        this.clockCenter = { x: width / 2, y: CLOCK_Y };
         this.createClock(scene);
-
-        // Create ball indicators showing progress
-        this.createBallIndicators(scene);
-
-        // Submit button
+        this.createProgressBalls(scene, { total: this.requiredCorrect, completed: this.correctInRow, y: BALLS_Y });
         this.createSubmitButton(scene);
     }
 
     createClock(scene) {
-        const clockRadius = 140;
         const { x, y } = this.clockCenter;
+        this.clockParts = [];
 
-        // Clock face background
-        const clockBg = scene.add.circle(x, y, clockRadius, 0xFFFFFF, 1);
-        clockBg.setStrokeStyle(6, 0x000000);
+        const clockBg = scene.add.circle(x, y, CLOCK_RADIUS, COLORS.NEUTRAL_FILL, 1);
+        clockBg.setStrokeStyle(6, COLORS.OUTLINE);
         this.uiElements.push(clockBg);
+        this.clockParts.push(clockBg);
 
-        // Hour markers
+        // Hour markers (the numbers are learning content)
         for (let i = 1; i <= 12; i++) {
-            const angle = (i * 30 - 90) * Math.PI / 180; // Convert to radians, -90 to start at 12
-            const markerRadius = clockRadius - 20;
-            const markerX = x + Math.cos(angle) * markerRadius;
-            const markerY = y + Math.sin(angle) * markerRadius;
-
-            const marker = scene.add.text(markerX, markerY, i.toString(), {
+            const angle = (i * 30 - 90) * Math.PI / 180; // -90 so 12 is at the top
+            const markerRadius = CLOCK_RADIUS - 20;
+            const marker = scene.add.text(x + Math.cos(angle) * markerRadius, y + Math.sin(angle) * markerRadius, i.toString(), {
                 fontSize: '24px',
                 fontFamily: 'Arial',
                 color: '#000000',
@@ -148,49 +114,43 @@ export class ClockListeningMode extends BasePokeballGameMode {
             this.uiElements.push(marker);
         }
 
-        // Create hour hand (shorter, thicker)
+        // Hands pivot at the bottom (the clock centre)
         const hourHandLength = 60;
-        this.hourHand = scene.add.rectangle(x, y, 8, hourHandLength, 0x2C3E50, 1);
-        this.hourHand.setOrigin(0.5, 1); // Pivot at bottom (center of clock)
-        this.hourHand.setData('handType', 'hour');
-        this.hourHand.setData('initialAngle', 0);
+        this.hourHand = scene.add.rectangle(x, y, 8, hourHandLength, HOUR_HAND_COLOR, 1);
+        this.hourHand.setOrigin(0.5, 1);
         this.uiElements.push(this.hourHand);
 
-        // Create minute hand (longer, thinner)
         const minuteHandLength = 100;
-        this.minuteHand = scene.add.rectangle(x, y, 5, minuteHandLength, 0xE74C3C, 1);
-        this.minuteHand.setOrigin(0.5, 1); // Pivot at bottom (center of clock)
-        this.minuteHand.setData('handType', 'minute');
-        this.minuteHand.setData('initialAngle', 0);
+        this.minuteHand = scene.add.rectangle(x, y, 5, minuteHandLength, MINUTE_HAND_COLOR, 1);
+        this.minuteHand.setOrigin(0.5, 1);
         this.uiElements.push(this.minuteHand);
 
-        // Create larger invisible hitboxes for easier dragging
-        this.hourHitbox = scene.add.rectangle(x, y, 40, hourHandLength + 20, 0xFFFFFF, 0);
+        // Larger invisible hitboxes for easier dragging
+        this.hourHitbox = scene.add.rectangle(x, y, 40, hourHandLength + 20, COLORS.NEUTRAL_FILL, 0);
         this.hourHitbox.setOrigin(0.5, 1);
         this.hourHitbox.setInteractive({ useHandCursor: true, draggable: true });
         this.hourHitbox.setData('handType', 'hour');
-        this.hourHitbox.setData('targetHand', this.hourHand);
         this.uiElements.push(this.hourHitbox);
 
-        this.minuteHitbox = scene.add.rectangle(x, y, 30, minuteHandLength + 20, 0xFFFFFF, 0);
+        this.minuteHitbox = scene.add.rectangle(x, y, 30, minuteHandLength + 20, COLORS.NEUTRAL_FILL, 0);
         this.minuteHitbox.setOrigin(0.5, 1);
         this.minuteHitbox.setInteractive({ useHandCursor: true, draggable: true });
         this.minuteHitbox.setData('handType', 'minute');
-        this.minuteHitbox.setData('targetHand', this.minuteHand);
         this.uiElements.push(this.minuteHitbox);
 
-        // Center dot (on top of hands)
-        const centerDot = scene.add.circle(x, y, 8, 0x000000, 1);
+        // Centre dot on top of the hands
+        const centerDot = scene.add.circle(x, y, 8, COLORS.OUTLINE, 1);
         this.uiElements.push(centerDot);
 
-        // Set initial hand positions to 12:00
+        this.clockParts.push(this.hourHand, this.minuteHand, this.hourHitbox, this.minuteHitbox, centerDot);
+
+        // Hands start at 12:00
         this.setHour = 12;
         this.setMinute = 0;
         this.updateHandVisuals();
 
-        // Set up drag events for hitboxes
-        this.setupHandDragging(scene, this.hourHitbox);
-        this.setupHandDragging(scene, this.minuteHitbox);
+        this.setupHandDragging(this.hourHitbox);
+        this.setupHandDragging(this.minuteHitbox);
     }
 
     // Draw both hands from the dialled-in time. The hour hand includes the
@@ -204,24 +164,15 @@ export class ClockListeningMode extends BasePokeballGameMode {
         if (this.minuteHitbox) this.minuteHitbox.angle = minuteAngle;
     }
 
-    setupHandDragging(scene, hitbox) {
-        const targetHand = hitbox.getData('targetHand');
-
-        hitbox.on('dragstart', () => {
-            this.isDragging = true;
-            this.draggedHand = hitbox;
-            hitbox.setData('initialAngle', hitbox.angle);
-        });
-
+    setupHandDragging(hitbox) {
         hitbox.on('drag', (pointer) => {
             // Hands are frozen while an answer is being resolved / revealed
-            if (this.isRevealing || this.inputLocked) return;
+            if (this.isInputBlocked()) return;
 
-            // Calculate angle from clock center to pointer
+            // Angle from the clock centre to the pointer, 0° at 12 o'clock
             const dx = pointer.x - this.clockCenter.x;
             const dy = pointer.y - this.clockCenter.y;
-            let angle = Math.atan2(dy, dx) * 180 / Math.PI;
-            angle += 90; // Adjust so 0 degrees is at top (12 o'clock)
+            let angle = Math.atan2(dy, dx) * 180 / Math.PI + 90;
             angle = ((angle % 360) + 360) % 360;
 
             if (hitbox.getData('handType') === 'hour') {
@@ -230,35 +181,27 @@ export class ClockListeningMode extends BasePokeballGameMode {
                 const minuteOffset = (this.setMinute / 60) * 30;
                 let hour = Math.round((angle - minuteOffset) / 30);
                 hour = ((hour % 12) + 12) % 12;
-                if (hour === 0) hour = 12;
-                this.setHour = hour;
+                this.setHour = hour === 0 ? 12 : hour;
             } else {
-                // Snap the minute hand to 5-minute increments (each 5 min = 30°).
-                let minute = Math.round(angle / 30) * 5;
+                // Snap the minute hand to 5-minute increments (each 5 min = 30°)
+                const minute = Math.round(angle / 30) * 5;
                 this.setMinute = ((minute % 60) + 60) % 60;
             }
 
-            // Redraw both hands so the hour hand follows the minute hand.
+            // Redraw both hands so the hour hand follows the minute hand
             this.updateHandVisuals();
-        });
-
-        hitbox.on('dragend', () => {
-            this.isDragging = false;
-            this.draggedHand = null;
         });
     }
 
     createSubmitButton(scene) {
         const width = scene.cameras.main.width;
-        const buttonY = 580;
 
-        // Submit button
-        const submitBtn = scene.add.rectangle(width / 2, buttonY, 200, 70, 0x27AE60, 1);
-        submitBtn.setStrokeStyle(4, 0xFFFFFF);
+        const submitBtn = scene.add.rectangle(width / 2, SUBMIT_Y, 200, 70, COLORS.CORRECT, 1);
+        submitBtn.setStrokeStyle(4, COLORS.NEUTRAL_FILL);
         submitBtn.setInteractive({ useHandCursor: true });
         this.uiElements.push(submitBtn);
 
-        const submitText = scene.add.text(width / 2, buttonY, '✓', {
+        const submitText = scene.add.text(width / 2, SUBMIT_Y, '✓', {
             fontSize: '48px',
             fontFamily: 'Arial',
             color: '#FFFFFF'
@@ -266,50 +209,10 @@ export class ClockListeningMode extends BasePokeballGameMode {
         this.uiElements.push(submitText);
 
         submitBtn.on('pointerdown', () => {
-            if (this.isRevealing || this.inputLocked) return;
+            if (this.isInputBlocked()) return;
             this.inputLocked = true;
             this.checkAnswer(scene);
         });
-    }
-
-    createBallIndicators(scene) {
-        const width = scene.cameras.main.width;
-        const startX = width / 2 - ((this.requiredCorrect - 1) * 60) / 2;
-        const y = 680;
-        const spacing = 60;
-
-        this.ballIndicators = [];
-
-        for (let i = 0; i < this.requiredCorrect; i++) {
-            const x = startX + i * spacing;
-
-            // Create circle indicator
-            const circle = scene.add.circle(x, y, 20,
-                i < this.correctInRow ? 0x27AE60 : 0xffffff, 1);
-            circle.setStrokeStyle(3, 0x000000);
-
-            this.ballIndicators.push(circle);
-            this.uiElements.push(circle);
-        }
-
-        // Add gift emoji at the end to show the goal
-        const giftX = startX + this.requiredCorrect * spacing;
-        const giftEmoji = scene.add.text(giftX, y, '🎁', {
-            fontSize: '48px',
-            padding: { y: 10 }
-        }).setOrigin(0.5);
-        this.uiElements.push(giftEmoji);
-    }
-
-    updateBallIndicators() {
-        // Update ball colors based on correctInRow
-        for (let i = 0; i < this.ballIndicators.length; i++) {
-            if (i < this.correctInRow) {
-                this.ballIndicators[i].setFillStyle(0x27AE60); // Green
-            } else {
-                this.ballIndicators[i].setFillStyle(0xffffff); // White
-            }
-        }
     }
 
     checkAnswer(scene) {
@@ -317,117 +220,80 @@ export class ClockListeningMode extends BasePokeballGameMode {
         // visual offset from the minute hand is already baked into setHour).
         const playerHour = this.setHour;
         const playerMinute = this.setMinute;
-
-        console.log(`Player: ${playerHour}:${playerMinute.toString().padStart(2, '0')}, Correct: ${this.currentHour}:${this.currentMinute.toString().padStart(2, '0')}`);
-
-        // Check if correct (allow some tolerance)
-        const isCorrect = (playerHour === this.currentHour && playerMinute === this.currentMinute);
+        const isCorrect = playerHour === this.currentHour && playerMinute === this.currentMinute;
 
         if (isCorrect) {
-            // Correct!
             this.showCorrectFeedback(scene);
             this.correctInRow++;
-            this.updateBallIndicators();
+            this.updateProgressBalls(this.correctInRow);
 
-            // Check if won
             if (this.correctInRow >= this.requiredCorrect) {
                 this.delayedCall(scene, 1000, () => {
-                    const x = scene.cameras.main.width / 2;
-                    const y = scene.cameras.main.height / 2;
-                    this.finish(true, 'clock-listening', x, y);
+                    this.finish(true, 'clock-listening', scene.cameras.main.width / 2, scene.cameras.main.height / 2);
                 });
             } else {
-                // Load next challenge
-                this.delayedCall(scene, 1000, () => {
-                    this.loadNextChallenge(scene);
-                });
+                this.delayedCall(scene, 1000, () => this.restartChallenge(scene, { resetStreak: false }));
             }
         } else {
-            // Wrong!
             trackWrongAnswer(
                 'ClockListeningMode',
                 `${this.currentHour}:${this.currentMinute.toString().padStart(2, '0')}`,
                 `${playerHour}:${playerMinute.toString().padStart(2, '0')}`
             );
 
-            this.showWrongFeedback(scene);
             this.correctInRow = 0;
-            this.updateBallIndicators();
+            this.updateProgressBalls(0);
 
-            // Reset streak since player made an error
-            resetStreak();
-            if (scene.boosterBarElements) {
-                updateBoosterBar(scene.boosterBarElements, 0, scene);
-            }
+            // Same time straight away, and once more a couple of rounds later
+            const time = { hour: this.currentHour, minute: this.currentMinute };
+            this.queueRetry(time);
+            this.queueRetry({ ...time }, 2);
 
-            // Reset and try again (same time, hands back to 12:00)
-            this.delayedCall(scene, 2000, () => {
-                this.resetHands();
-                this.removeFeedbackFlash();
-                this.isRevealing = false;
-                this.inputLocked = false;
-            });
-        }
-    }
-
-    removeFeedbackFlash() {
-        if (this.feedbackFlash) {
-            const index = this.uiElements.indexOf(this.feedbackFlash);
-            if (index >= 0) this.uiElements.splice(index, 1);
-            this.feedbackFlash.destroy();
-            this.feedbackFlash = null;
+            this.showWrongFeedback(scene);
         }
     }
 
     showCorrectFeedback(scene) {
-        // Green flash on clock
-        const greenFlash = scene.add.circle(this.clockCenter.x, this.clockCenter.y, 150, 0x27AE60, 0.3);
+        const greenFlash = scene.add.circle(this.clockCenter.x, this.clockCenter.y, 150, COLORS.CORRECT, 0.3);
         this.uiElements.push(greenFlash);
-        this.feedbackFlash = greenFlash;
-
-        // Success particles
         this.showSuccessParticles(scene, this.clockCenter.x, this.clockCenter.y);
     }
 
+    // Red flash + shake on the clock while the time is spoken again; after the
+    // shake the hands swing to the right time in gold. Then the same time
+    // again on a fresh clock (streak reset).
     showWrongFeedback(scene) {
-        this.isRevealing = true;
-
-        // Red flash on clock
-        const redFlash = scene.add.circle(this.clockCenter.x, this.clockCenter.y, 150, 0xFF0000, 0.3);
+        const redFlash = scene.add.circle(this.clockCenter.x, this.clockCenter.y, 150, COLORS.WRONG, 0.3);
         this.uiElements.push(redFlash);
-        this.feedbackFlash = redFlash;
 
-        // Shake animation
+        const targets = [...this.clockParts, redFlash];
         const originalX = this.clockCenter.x;
         this.addTween(scene, {
-            targets: this.uiElements.filter(el =>
-                el.x === originalX && el.y === this.clockCenter.y
-            ),
+            targets,
             x: originalX - 10,
             duration: 50,
             yoyo: true,
             repeat: 3,
             onComplete: () => {
+                targets.forEach(el => { if (el.scene) el.x = originalX; });
                 this.showCorrectAnswer(scene);
             }
         });
+
+        this.revealAnswer(scene, { audioKey: clockAudioKey(this.currentHour, this.currentMinute) });
     }
 
     showCorrectAnswer(scene) {
-        // Show correct time by moving hands
-        // Hour hand moves gradually (e.g., at 6:30 it's between 6 and 7)
-        const correctHourAngle = ((this.currentHour % 12) * 30) + (this.currentMinute / 60 * 30);
-        const correctMinuteAngle = (this.currentMinute / 5) * 30;
+        // The hour hand sits between two numbers at half past
+        const correctHourAngle = (this.currentHour % 12) * 30 + (this.currentMinute / 60) * 30;
+        const correctMinuteAngle = this.currentMinute * 6;
 
-        // Animate hour hand and hitbox to correct position
         this.addTween(scene, {
             targets: [this.hourHand, this.hourHitbox],
             angle: correctHourAngle,
             duration: 800,
             ease: 'Back.easeOut'
         });
-
-        // Animate minute hand and hitbox to correct position
         this.addTween(scene, {
             targets: [this.minuteHand, this.minuteHitbox],
             angle: correctMinuteAngle,
@@ -435,128 +301,21 @@ export class ClockListeningMode extends BasePokeballGameMode {
             ease: 'Back.easeOut'
         });
 
-        // Change hand colors to gold
-        this.hourHand.setFillStyle(0xFFD700);
-        this.minuteHand.setFillStyle(0xFFD700);
-    }
-
-    resetHands() {
-        // Reset the dialled-in time to 12:00 and redraw.
-        this.setHour = 12;
-        this.setMinute = 0;
-        this.updateHandVisuals();
-        if (this.hourHand) this.hourHand.setFillStyle(0x2C3E50);
-        if (this.minuteHand) this.minuteHand.setFillStyle(0xE74C3C);
-    }
-
-    loadNextChallenge(scene) {
-        // Clean up current UI
-        this.cleanup(scene);
-        this.isRevealing = false;
-
-        // Generate new challenge
-        this.generateChallenge();
-
-        // Recreate UI for new challenge
-        this.createChallengeUI(scene);
-    }
-
-    showSuccessParticles(scene, x, y) {
-        // Create star-shaped particle texture if it doesn't exist
-        if (!scene.textures.exists('star')) {
-            const particleGraphics = scene.add.graphics();
-            particleGraphics.fillStyle(0xFFFF00, 1);
-            particleGraphics.lineStyle(2, 0xFFD700);
-
-            const outerRadius = 12;
-            const innerRadius = 5;
-            const points = 5;
-
-            particleGraphics.beginPath();
-            for (let i = 0; i < points * 2; i++) {
-                const radius = i % 2 === 0 ? outerRadius : innerRadius;
-                const angle = (i * Math.PI) / points;
-                const px = 12 + radius * Math.sin(angle);
-                const py = 12 - radius * Math.cos(angle);
-                if (i === 0) {
-                    particleGraphics.moveTo(px, py);
-                } else {
-                    particleGraphics.lineTo(px, py);
-                }
-            }
-            particleGraphics.closePath();
-            particleGraphics.fillPath();
-            particleGraphics.strokePath();
-
-            particleGraphics.generateTexture('star', 24, 24);
-            particleGraphics.destroy();
-        }
-
-        // Create particles
-        const particles = scene.add.particles(x, y, 'star', {
-            speed: { min: 100, max: 200 },
-            angle: { min: 0, max: 360 },
-            scale: { start: 2, end: 0 },
-            lifespan: 600,
-            gravityY: 150,
-            tint: [0xFFFF00, 0xFFD700, 0xFFA500],
-            quantity: 15
-        });
-        particles.setDepth(100);
-        particles.explode();
-        this.uiElements.push(particles);
-
-        // Clean up
-        this.delayedCall(scene, 700, () => {
-            particles.destroy();
-        });
+        this.hourHand.setFillStyle(COLORS.REVEAL);
+        this.minuteHand.setFillStyle(COLORS.REVEAL);
     }
 
     playClockAudio(scene) {
-        // Stop any currently playing audio
-        if (this.currentAudio && this.currentAudio.isPlaying) {
-            this.currentAudio.stop();
-        }
-
-        // Build audio key based on time
-        let audioKey;
-        if (this.currentMinute === 30) {
-            audioKey = `clock_audio_${this.currentHour}_30`;
-        } else {
-            audioKey = `clock_audio_${this.currentHour}`;
-        }
-
-        try {
-            this.currentAudio = scene.sound.add(audioKey);
-            this.currentAudio.play();
-        } catch (error) {
-            console.warn(`Audio not found: ${audioKey}`);
-        }
+        this.playAudio(scene, clockAudioKey(this.currentHour, this.currentMinute));
     }
 
     cleanup(scene) {
-        // Stop and destroy any playing audio
-        if (this.currentAudio) {
-            if (this.currentAudio.isPlaying) {
-                this.currentAudio.stop();
-            }
-            this.currentAudio.destroy();
-            this.currentAudio = null;
-        }
-
-        // Clear references
+        // Destroys all UI elements, cancels pending timers/tweens, stops audio, unlocks input
+        super.cleanup(scene);
         this.hourHand = null;
         this.minuteHand = null;
         this.hourHitbox = null;
         this.minuteHitbox = null;
-        this.clockGraphics = null;
-        this.feedbackFlash = null;
-        this.ballIndicators = [];
-        this.isDragging = false;
-        this.draggedHand = null;
-        this.isRevealing = false;
-
-        // Destroy all UI elements, cancel pending timers/tweens, unlock input
-        super.cleanup(scene);
+        this.clockParts = [];
     }
 }

@@ -9,6 +9,10 @@ const DAY_AUDIO = {
     5: 'day_5_fredag', 6: 'day_6_lordag', 7: 'day_7_sondag'
 };
 
+const SHAKE = 400;       // 50ms * yoyo * 4
+const REVEAL = 1000;     // the day is spoken over its gold number
+const FEEDBACK = SHAKE + REVEAL;
+
 function heartsText(scene) {
     return scene.findText(t => t.text.includes('❤️') || t.text.includes('🖤'));
 }
@@ -183,15 +187,33 @@ describe('DayMatchMode', () => {
             expect(zoneFor(4).getData('matched')).toBe(false);
             expect(boxFor(4).x).toBe(boxFor(4).getData('startX'));
             scene.advance(1000);
+            expect(mode.isRevealing).toBe(true); // the day is still being spoken
+            scene.advance(FEEDBACK - 1000);
             // Feedback over: play continues normally
             expect(mode.isRevealing).toBe(false);
             dropOn(4, 4);
             expect(mode.correctMatches).toBe(1);
         });
 
+        it('speaks the day over its gold number after a wrong drop', () => {
+            const box = boxFor(1);
+            dropOn(1, 2);
+            const droppedX = box.x;
+            scene.advance(SHAKE + 10);
+            expect(box.x).toBe(droppedX); // the shake ended where it started; the snap home is under way
+            expect(scene.lastAudio()).toBe(DAY_AUDIO[1]);
+            expect(zoneFor(1).fillColor).toBe(0xFFD700);
+            expect(zoneFor(2).fillColor).toBe(0xFFFFFF);
+            scene.advance(FEEDBACK);
+            expect(zoneFor(1).fillColor).toBe(0xFFFFFF);
+            expect(zoneFor(1).fillAlpha).toBe(0.2);
+            expect(mode.hearts.text.text).toBe('❤️❤️🖤');
+            expect(scene._missingAudio).toEqual([]);
+        });
+
         it('can still finish the round after a wrong drop', () => {
             dropOn(6, 1);
-            scene.advance(1000);
+            scene.advance(FEEDBACK);
             matchAll();
             scene.advance(800);
             expect(calls).toHaveLength(1);
@@ -201,8 +223,8 @@ describe('DayMatchMode', () => {
 
     describe('game over', () => {
         function loseAllHearts() {
-            dropOn(1, 3); scene.advance(1000);
-            dropOn(1, 4); scene.advance(1000);
+            dropOn(1, 3); scene.advance(FEEDBACK);
+            dropOn(1, 4); scene.advance(FEEDBACK);
             dropOn(1, 5); // third error: hearts hit zero
         }
 
@@ -235,8 +257,8 @@ describe('DayMatchMode', () => {
 
         it('does not accept matches in the window between the last error and the restart', () => {
             for (let n = 1; n <= 5; n++) { dropOn(n, n); scene.advance(450); }
-            dropOn(6, 7); scene.advance(1000);
-            dropOn(6, 7); scene.advance(1000);
+            dropOn(6, 7); scene.advance(FEEDBACK);
+            dropOn(6, 7); scene.advance(FEEDBACK);
             dropOn(6, 7);
             expect(mode.errorsRemaining).toBe(0);
             scene.advance(750); // shake + return finished, restart pending
@@ -264,8 +286,8 @@ describe('DayMatchMode', () => {
         });
 
         it('after the last heart is lost does not rebuild the UI later', () => {
-            dropOn(1, 2); scene.advance(1000);
-            dropOn(1, 3); scene.advance(1000);
+            dropOn(1, 2); scene.advance(FEEDBACK);
+            dropOn(1, 3); scene.advance(FEEDBACK);
             dropOn(1, 4);
             mode.cleanup(scene);
             const t = scene.time.now;

@@ -182,11 +182,11 @@ describe('ClockReadingMode', () => {
     describe('microphone', () => {
         it('enables the mic button after speech init and starts listening on tap', () => {
             expect(mode.micButton.input && mode.micButton.input.enabled).toBe(true);
-            expect(mode.micButton.fillColor).toBe(0xFF6B6B);
+            expect(mode.micButton.fillColor).toBe(0x95A5A6);
             expect(scene.click(mode.micButton)).toBe(true);
             expect(mode.speechHelper.isListening).toBe(true);
             expect(mode.speechHelper.recognition.started).toBe(1);
-            expect(mode.micButton.fillColor).toBe(0x27AE60);
+            expect(mode.micButton.fillColor).toBe(0xE74C3C);
             // a second tap while listening does not restart recognition
             scene.click(mode.micButton);
             expect(mode.speechHelper.recognition.started).toBe(1);
@@ -258,27 +258,51 @@ describe('ClockReadingMode', () => {
     });
 
     describe('wrong answer', () => {
-        it('keeps accumulated progress, resets the streak and moves on to a new clock', () => {
+        it('keeps accumulated progress, speaks the right time, resets the streak and asks the same time again', async () => {
             incrementStreak();
             speakCorrect(mode);
             scene.advance(1200);
+            await flush();
             expect(mode.correctCount).toBe(1);
 
-            const before = `${mode.currentHour}:${mode.currentMinute}`;
+            const before = { hour: mode.currentHour, minute: mode.currentMinute };
+            const played = scene.playedAudio().length;
             speakWrong(mode);
             expect(mode.isRevealing).toBe(true);
-            expect(getStreak()).toBe(0);
+            expect(scene.playedAudio().slice(played)).toEqual([
+                before.minute === 30 ? `clock_audio_${before.hour}_30` : `clock_audio_${before.hour}`
+            ]);
             scene.advance(100);
             // results during the reveal are ignored
             speakCorrect(mode);
             scene.advance(2500);
+            await flush();
+            expect(getStreak()).toBe(0);
             expect(mode.correctCount).toBe(1);
             expect(mode.isRevealing).toBe(false);
             expect(mode.inputLocked).toBe(false);
-            expect(`${mode.currentHour}:${mode.currentMinute}`).not.toBe(before);
+            expect(mode.challengeData).toEqual(before); // re-asked
+            expect(mode.hourHand.x).toBe(mode.clockCenter.x);
             expect(scene.findTexts('🎤')).toHaveLength(1);
             expect(calls).toHaveLength(0);
             expect(scene._useAfterDestroy).toEqual([]);
+        });
+
+        it('re-asks a missed time immediately and once more two rounds later', async () => {
+            mode.requiredCorrect = 10;
+            const missed = { hour: mode.currentHour, minute: mode.currentMinute };
+            speakWrong(mode);
+            scene.advance(2100);
+            await flush();
+            expect(mode.challengeData).toEqual(missed);
+            speakCorrect(mode);
+            scene.advance(1200);
+            await flush();
+            expect(mode.challengeData).not.toEqual(missed);
+            speakCorrect(mode);
+            scene.advance(1200);
+            await flush();
+            expect(mode.challengeData).toEqual(missed);
         });
 
         it('treats unparseable speech as a wrong answer without throwing', () => {

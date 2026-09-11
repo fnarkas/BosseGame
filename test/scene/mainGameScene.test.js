@@ -119,8 +119,9 @@ describe('MainGameScene (Pokemon catching)', () => {
         expect(rerollCosts(fake)).toHaveLength(1);
         expect(fake.liveTexts().filter(t => t.text === '🎲')).toHaveLength(1);
         expect(shownName(fake)).toBe(scene.currentPokemon.name.toLowerCase());
-        // A 4th re-roll is refused without coins
+        // A 4th re-roll spends the last coins; a 5th is refused without coins
         fake.click(fake.findText('🎲'));
+        await flush();
         expect(getCoinCount()).toBe(0);
         const current = scene.currentPokemon.id;
         fake.click(fake.findText('🎲'));
@@ -173,7 +174,7 @@ describe('MainGameScene (Pokemon catching)', () => {
         expect(scene.noPokeballsPopupElements.length).toBeGreaterThan(0);
         expect(fake.findText('⚠️')).toBeTruthy();
         addPokeball('pokeball');
-        scene.update();
+        scene.onOverlayClosed(); // e.g. the store was just closed
         await flush();
         expect(scene.noPokeballsPopupElements).toBeNull();
         expect(scene.currentPokemon).toBeTruthy();

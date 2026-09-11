@@ -4,6 +4,7 @@
  */
 
 import { getAllWords } from './speechVocabulary.js';
+import { playAudio, hasAudio, audioDuration } from './audio.js';
 
 /**
  * Get audio key for a word
@@ -33,13 +34,7 @@ export function getAllWordAudioMappings() {
  * @param {string} word - The word to play
  */
 export function playWordAudio(scene, word) {
-    const audioKey = getWordAudioKey(word);
-    // Check if audio exists in cache
-    if (scene.cache.audio.exists(audioKey)) {
-        scene.sound.play(audioKey);
-    } else {
-        console.warn(`Word audio not found: ${word}, key: ${audioKey}`);
-    }
+    return playAudio(scene, getWordAudioKey(word));
 }
 
 /**
@@ -58,18 +53,17 @@ export function playSentenceAudio(scene, sentence, gapMs = 50) {
     words.forEach((word, index) => {
         const audioKey = getWordAudioKey(word);
 
-        if (!scene.cache.audio.exists(audioKey)) {
+        if (!hasAudio(scene, audioKey)) {
             console.warn(`Sentence word audio not found: ${word}, key: ${audioKey}`);
             return;
         }
 
         // Get audio duration for timing the next word
-        const sound = scene.sound.get(audioKey) || scene.sound.add(audioKey);
-        const duration = sound.duration * 1000; // Convert to ms
+        const duration = audioDuration(scene, audioKey) * 1000; // Convert to ms
 
         // Schedule this word
         scene.time.delayedCall(cumulativeDelay, () => {
-            scene.sound.play(audioKey);
+            playAudio(scene, audioKey);
         });
 
         // Add this word's duration + gap for next word

@@ -7,7 +7,10 @@ import { loadActiveMinigame, saveActiveMinigame } from '../../src/minigameSessio
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ'.split('');
 const SHAKE = 400;        // 50ms * yoyo * 4
 const SNAP_BACK = 300;
+const REVEAL = 1000;      // the letter is spoken over its gold capital
+const FEEDBACK = SHAKE + REVEAL;
 const GAME_OVER_WAIT = 1000;
+const BAR_WIDTH = 600;
 
 // The mode ends a lost game by driving the scene itself (pick the next mode,
 // wire its callback, roll the wheel). Give the FakeScene just that surface.
@@ -51,10 +54,18 @@ describe('LegendaryAlphabetMatchMode', () => {
                 expect(b.input.draggable).toBe(true);
                 expect(b.getData('letterText').text).toBe(b.getData('letter').toLowerCase());
             });
-            expect(mode.progressText.text).toBe('0/29');
+            expect(mode.progressBarFill.width).toBe(0);
             expect(scene.liveObjectsOfType('Image').map(i => i.textureKey)).toEqual(['treasure-chest']);
             expect(hearts().text).toBe('❤️❤️❤️');
             expect(scene._missingAudio).toEqual([]);
+        });
+
+        it('shows only letters and hearts on screen (no counter text)', () => {
+            const texts = scene.liveTexts().map(t => t.text);
+            texts.forEach(t => {
+                if (t.includes('❤️') || t.includes('🖤')) return;
+                expect(t).toMatch(/^[A-ZÅÄÖ]?[a-zåäö]?$/);
+            });
         });
 
         it('shuffles the boxes (not always alphabetical)', () => {
@@ -101,7 +112,7 @@ describe('LegendaryAlphabetMatchMode', () => {
                 expect(scene.lastAudio()).toBe(`letter_audio_${letter.toLowerCase()}`);
                 expect(zoneFor(letter).getData('matched')).toBe(true);
                 expect(boxFor(letter).input.enabled).toBe(false);
-                expect(mode.progressText.text).toBe(`${i + 1}/29`);
+                expect(mode.progressBarFill.width).toBeCloseTo(BAR_WIDTH * (i + 1) / 29);
                 scene.advance(50);
             });
             expect(mode.errorsRemaining).toBe(3);
@@ -148,10 +159,25 @@ describe('LegendaryAlphabetMatchMode', () => {
             scene.advance(SHAKE + SNAP_BACK);
             expect(boxFor('A').x).toBe(boxFor('A').getData('startX'));
             expect(boxFor('A').getData('letterText').style.color).toBe('#FFFFFF');
+            expect(mode.isInputBlocked()).toBe(true); // the letter is still being spoken
+            scene.advance(FEEDBACK - SHAKE - SNAP_BACK);
             expect(mode.inputLocked).toBe(false);
             dropOn('A', 'A');
             expect(mode.matchedCount).toBe(1);
             expect(calls).toHaveLength(0);
+        });
+
+        it('speaks the letter over its gold capital after a wrong drop, without touching the streak', () => {
+            const before = scene.playedAudio().length;
+            dropOn('A', 'B');
+            scene.advance(SHAKE + 10);
+            expect(scene.playedAudio().slice(before)).toEqual(['letter_audio_a']);
+            expect(zoneFor('A').fillColor).toBe(0xFFD700);
+            expect(zoneFor('B').fillColor).toBe(0xFFFFFF);
+            scene.advance(REVEAL);
+            expect(zoneFor('A').fillColor).toBe(0xFFFFFF);
+            expect(zoneFor('A').fillAlpha).toBe(0.2);
+            expect(scene._missingAudio).toEqual([]);
         });
 
         it('ignores drops while a wrong drop is being shaken (no double heart loss, no sneaky match)', () => {
@@ -173,9 +199,9 @@ describe('LegendaryAlphabetMatchMode', () => {
     describe('game over', () => {
         async function loseAllHearts() {
             dropOn('A', 'B');
-            scene.advance(SHAKE + SNAP_BACK);
+            scene.advance(FEEDBACK);
             dropOn('A', 'C');
-            scene.advance(SHAKE + SNAP_BACK);
+            scene.advance(FEEDBACK);
             dropOn('A', 'D');
             expect(mode.errorsRemaining).toBe(0);
             expect(hearts().text).toBe('🖤🖤🖤');

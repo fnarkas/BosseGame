@@ -1,3 +1,5 @@
+import { getJSON, setJSON, getInt, setInt, has, remove } from './storage.js';
+
 /**
  * Inventory Management System
  * Handles pokeball storage and operations
@@ -41,18 +43,16 @@ export const POKEBALL_TYPES = {
  * @returns {Object} Inventory object with pokeball counts
  */
 export function getInventory() {
-  const inventoryStr = localStorage.getItem(INVENTORY_KEY);
-  if (inventoryStr) {
-    return JSON.parse(inventoryStr);
+  const stored = getJSON(INVENTORY_KEY, null, v => v && typeof v === 'object' && !Array.isArray(v));
+  const inventory = { pokeball: 0, greatball: 0, ultraball: 0, legendaryball: 0 };
+  if (stored) {
+    // Only keep known ball types with sane counts; anything else is corrupt.
+    for (const type of Object.keys(inventory)) {
+      const count = parseInt(stored[type], 10);
+      inventory[type] = Number.isFinite(count) && count > 0 ? count : 0;
+    }
   }
-
-  // Return default empty inventory
-  return {
-    pokeball: 0,
-    greatball: 0,
-    ultraball: 0,
-    legendaryball: 0
-  };
+  return inventory;
 }
 
 /**
@@ -60,7 +60,7 @@ export function getInventory() {
  * @param {Object} inventory - Inventory object to save
  */
 function saveInventory(inventory) {
-  localStorage.setItem(INVENTORY_KEY, JSON.stringify(inventory));
+  setJSON(INVENTORY_KEY, inventory);
 }
 
 /**
@@ -135,14 +135,14 @@ export function hasPokeball(type) {
  */
 export function migrateOldInventory() {
   // Check if already migrated
-  if (localStorage.getItem(INVENTORY_KEY)) {
+  if (has(INVENTORY_KEY)) {
     return; // Already using new system
   }
 
   // Check for old pokeball count
-  const oldCount = localStorage.getItem(OLD_POKEBALL_KEY);
-  if (oldCount) {
-    const count = parseInt(oldCount, 10);
+  const oldCount = getInt(OLD_POKEBALL_KEY, -1);
+  if (oldCount >= 0) {
+    const count = oldCount;
     const inventory = {
       pokeball: count,
       greatball: 0,
@@ -152,12 +152,12 @@ export function migrateOldInventory() {
     saveInventory(inventory);
 
     // Initialize coin count if not exists
-    if (!localStorage.getItem('coinCount')) {
-      localStorage.setItem('coinCount', '0');
+    if (!has('coinCount')) {
+      setInt('coinCount', 0);
     }
 
     // Clean up old key
-    localStorage.removeItem(OLD_POKEBALL_KEY);
+    remove(OLD_POKEBALL_KEY);
     console.log(`Migrated ${count} pokeballs to new inventory system`);
   } else {
     // No old data, initialize fresh inventory
@@ -169,8 +169,8 @@ export function migrateOldInventory() {
     });
 
     // Initialize coin count
-    if (!localStorage.getItem('coinCount')) {
-      localStorage.setItem('coinCount', '0');
+    if (!has('coinCount')) {
+      setInt('coinCount', 0);
     }
   }
 }

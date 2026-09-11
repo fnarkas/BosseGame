@@ -1,3 +1,5 @@
+import { getInt, setInt } from './storage.js';
+
 /**
  * Currency Management System
  * Handles coin storage and operations
@@ -10,8 +12,7 @@ const COIN_KEY = 'coinCount';
  * @returns {number} Current coin count
  */
 export function getCoinCount() {
-  const coins = localStorage.getItem(COIN_KEY);
-  return coins ? parseInt(coins, 10) : 0;
+  return Math.max(0, getInt(COIN_KEY, 0));
 }
 
 /**
@@ -22,7 +23,7 @@ export function getCoinCount() {
 export function addCoins(amount) {
   const current = getCoinCount();
   const newAmount = current + amount;
-  localStorage.setItem(COIN_KEY, newAmount.toString());
+  setInt(COIN_KEY, newAmount);
   return newAmount;
 }
 
@@ -37,7 +38,7 @@ export function deductCoins(amount) {
     return null; // Insufficient coins
   }
   const newAmount = current - amount;
-  localStorage.setItem(COIN_KEY, newAmount.toString());
+  setInt(COIN_KEY, newAmount);
   return newAmount;
 }
 

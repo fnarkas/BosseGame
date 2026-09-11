@@ -5,6 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import { BootScene } from '../../src/scenes/BootScene.js';
+import { allPokemonAssets, allAudioAssets } from '../../src/assetManifest.js';
 
 const PUBLIC_DIR = path.resolve(__dirname, '../../public');
 
@@ -38,6 +39,14 @@ export function getAssetRegistry() {
         if (name !== 'constructor') fakeThis[name] = BootScene.prototype[name];
     }
     fakeThis.preload();
+
+    // Lazily loaded assets (Pokemon artwork/names per encounter, per-mode audio
+    // packs). The fake scene treats them as loaded so modes can be tested
+    // without a loader round-trip; assets.test.js checks the files exist.
+    const lazy = allPokemonAssets();
+    lazy.images.forEach(a => images.set(a.key, a.url));
+    lazy.audio.forEach(a => audio.set(a.key, a.url));
+    allAudioAssets().forEach(a => audio.set(a.key, a.url));
 
     // Textures BootScene generates at runtime in create().
     const generated = ['game-wheel', 'game-wheel-base', 'wheel-pointer'];

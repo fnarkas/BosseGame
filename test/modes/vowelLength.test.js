@@ -143,8 +143,8 @@ describe('VowelLengthMode', () => {
         });
 
         it('shows one progress ball per required answer plus the gift', () => {
-            expect(mode.ballIndicators).toHaveLength(mode.requiredCorrect);
-            expect(mode.ballIndicators.every(b => b.fillColor === 0xffffff)).toBe(true);
+            expect(mode.progressBalls.circles).toHaveLength(mode.requiredCorrect);
+            expect(mode.progressBalls.circles.every(b => b.fillColor === 0xffffff)).toBe(true);
             expect(scene.findText('🎁')).toBeTruthy();
         });
     });
@@ -155,7 +155,7 @@ describe('VowelLengthMode', () => {
             const vowel = firstVowelOf(target);
             scene.click(correctCard(mode));
             expect(mode.correctCount).toBe(1);
-            expect(mode.ballIndicators[0].fillColor).toBe(0x27AE60);
+            expect(mode.progressBalls.circles[0].fillColor).toBe(0x27AE60);
             expect(scene.lastAudio()).toBe(`word_audio_${target}`);
             // Spelled out, uppercase
             expect(mode.letterObjects.map(l => l.text.text).join('')).toBe(target.toUpperCase());
@@ -220,26 +220,69 @@ describe('VowelLengthMode', () => {
             const { target } = mode.challengeData;
             scene.click(wrongCard(mode));
             expect(mode.correctCount).toBe(0);
-            expect(getStreak()).toBe(0);
             const mistakes = getGameModeMistakes('VowelLengthMode');
             expect(Object.keys(mistakes)).toHaveLength(1);
             scene.advance(NEXT_QUESTION_MS);
             expect(calls).toHaveLength(0);
+            // The streak is reset when the next question is built
+            expect(getStreak()).toBe(0);
             // The reveal happened (word spelled out) and then a new question is up
             expect(mode.roundType).toBe(0);
             expect(mode.isRevealing).toBe(false);
             expect(cards(mode)).toHaveLength(2);
             cards(mode).forEach(c => expect(c.input.enabled).toBe(true));
             expect(scene._useAfterDestroy).toEqual([]);
-            void target;
+            // The missed question is asked again, exactly as it was
+            expect(mode.challengeData.target).toBe(target);
         });
 
-        it('still shows the correct word after a miss so the child sees the answer', () => {
+        it('re-asks a missed question straight away and once more two questions later', () => {
             const { target } = mode.challengeData;
+            scene.click(wrongCard(mode));
+            scene.advance(NEXT_QUESTION_MS);
+            expect(mode.roundType).toBe(0);
+            expect(mode.challengeData.target).toBe(target);
+            scene.click(correctCard(mode));
+            scene.advance(NEXT_QUESTION_MS);
+            expect(mode.roundType).toBe(1);
+            scene.click(correctCard(mode));
+            scene.advance(NEXT_QUESTION_MS);
+            expect(mode.roundType).toBe(2);
+            // Same pair and length as the missed question, now from the third angle
+            expect(mode.challengeData.target).toBe(target);
+        });
+
+        it('keeps the streak after a correct answer', () => {
+            incrementStreak();
+            scene.click(correctCard(mode));
+            scene.advance(NEXT_QUESTION_MS);
+            expect(getStreak()).toBe(1);
+        });
+
+        it('shows and speaks the correct word after a miss, then the vowel on its own', () => {
+            const { target, targetIsLong } = mode.challengeData;
+            const vowel = firstVowelOf(target);
             scene.click(wrongCard(mode));
             scene.advance(400); // shake done
             expect(mode.letterObjects.map(l => l.text.text).join('')).toBe(target.toUpperCase());
             expect(scene.lastAudio()).toBe(`word_audio_${target}`);
+            scene.advance(600); // the word (0.5s) has finished
+            expect(scene.lastAudio()).toBe(`vowel_audio_${vowel}_${targetIsLong ? 'long' : 'short'}`);
+            expect(scene._missingAudio).toEqual([]);
+        });
+
+        it('never shows status or instruction text, only the learning content', () => {
+            const learning = new Set([...getAllVowelWords().map(w => w.toUpperCase()), '✅', '❌', '🔊', '🎁']);
+            const check = () => scene.liveTexts().forEach(t => {
+                expect(/[a-zåäö]{3,} [a-zåäö]/i.test(t.text), t.text).toBe(false);
+                expect(t.text.length <= 2 || learning.has(t.text), t.text).toBe(true);
+            });
+            check();
+            scene.click(wrongCard(mode));
+            scene.advance(400);
+            check();
+            scene.advance(NEXT_QUESTION_MS);
+            check();
         });
 
         it('can be won after a miss', () => {
@@ -340,7 +383,7 @@ describe('VowelLengthMode', () => {
             expect(m.configLoaded).toBe(true);
             expect(m.requiredCorrect).toBe(5);
             expect(m.showListenHelp).toBe(false);
-            expect(m.ballIndicators).toHaveLength(5);
+            expect(m.progressBalls.circles).toHaveLength(5);
             expect(listenBadges(s)).toHaveLength(0);
         });
 

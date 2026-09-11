@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { getFloat, setFloat } from '../storage.js';
 
 export default class SettingsScene extends Phaser.Scene {
     constructor() {
@@ -140,7 +141,7 @@ export default class SettingsScene extends Phaser.Scene {
         });
 
         // Back button at bottom
-        const backButton = this.add.text(panelX, panelY + 150, '← Tillbaka', {
+        const backButton = this.add.text(panelX, panelY + 150, '←', {
             fontSize: '32px',
             color: '#FFFFFF',
             backgroundColor: '#4A90E2',
@@ -162,8 +163,7 @@ export default class SettingsScene extends Phaser.Scene {
 
     getVolume() {
         // Get volume from localStorage, default to 100% (1.0)
-        const storedVolume = localStorage.getItem('gameVolume');
-        return storedVolume !== null ? parseFloat(storedVolume) : 1.0;
+        return Phaser.Math.Clamp(getFloat('gameVolume', 1.0), 0, 1);
     }
 
     setVolume(volume) {
@@ -174,7 +174,7 @@ export default class SettingsScene extends Phaser.Scene {
         this.sound.volume = clampedVolume;
 
         // Save to localStorage
-        localStorage.setItem('gameVolume', clampedVolume.toString());
+        setFloat('gameVolume', clampedVolume);
     }
 
     closeSettings() {

@@ -1,5 +1,8 @@
-import { POKEMON_DATA, getAvailablePokemon } from './pokemonData.js';
+import { getAvailablePokemon } from './pokemonData.js';
 import { getRarityInfo } from './pokemonRarity.js';
+import { getCaughtPokemonList, caughtIdSet } from './caughtPokemon.js';
+import { playAudio, audioDuration, numberAudioKeys } from './audio.js';
+import { pokemonAudioAsset } from './assetManifest.js';
 
 let gameInstance = null;
 let resumeCallback = null;
@@ -56,13 +59,14 @@ function renderPokedexGrid() {
     const availablePokemon = getAvailablePokemon();
 
     // Load caught Pokemon from localStorage
-    const caughtPokemon = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
+    const caughtPokemon = getCaughtPokemonList();
     // Handle both object format {id: 1, name: "...", caughtDate: "..."} and plain ID format [1, 2, 3]
-    const caughtIds = new Set(caughtPokemon.map(p => p.id || p));
+    const caughtIds = caughtIdSet(caughtPokemon);
 
-    // Update stats (count only Gen 1 Pokemon that are caught)
-    const gen1CaughtCount = caughtPokemon.filter(p => (p.id || p) <= 151).length;
-    statsDiv.textContent = `Fångade: ${gen1CaughtCount} / ${availablePokemon.length}`;
+    // Update stats (count only available Pokemon that are caught)
+    const availableIds = new Set(availablePokemon.map(p => p.id));
+    const caughtCount = [...caughtIds].filter(id => availableIds.has(id)).length;
+    statsDiv.textContent = `${caughtCount} / ${availablePokemon.length}`;
 
     // Clear existing grid
     grid.innerHTML = '';
@@ -72,7 +76,8 @@ function renderPokedexGrid() {
     placeholderCard.className = 'pokemon-card';
     const placeholderNumber = document.createElement('div');
     placeholderNumber.className = 'pokemon-card-number uncaught';
-    placeholderNumber.textContent = '#000';
+    placeholderNumber.textContent = '0';
+    placeholderNumber.addEventListener('click', () => playNumberAudio(0));
     placeholderCard.appendChild(placeholderNumber);
     grid.appendChild(placeholderCard);
 
@@ -96,6 +101,17 @@ function renderPokedexGrid() {
             });
         }
 
+        // Pokemon number: the most prominent element (the child is learning
+        // 1-151), shown for every card and spoken when tapped.
+        const number = document.createElement('div');
+        number.className = `pokemon-card-number ${!isCaught ? 'uncaught' : ''}`;
+        number.textContent = String(pokemon.id);
+        number.addEventListener('click', (event) => {
+            event.stopPropagation();
+            playNumberAudio(pokemon.id);
+        });
+        card.appendChild(number);
+
         // Pokemon image
         const img = document.createElement('img');
         img.className = `pokemon-card-image ${!isCaught ? 'uncaught' : ''}`;
@@ -108,12 +124,6 @@ function renderPokedexGrid() {
         name.className = `pokemon-card-name ${!isCaught ? 'uncaught' : ''}`;
         name.textContent = isCaught ? pokemon.name : '???';
         card.appendChild(name);
-
-        // Pokemon number
-        const number = document.createElement('div');
-        number.className = `pokemon-card-number ${!isCaught ? 'uncaught' : ''}`;
-        number.textContent = `#${String(pokemon.id).padStart(3, '0')}`;
-        card.appendChild(number);
 
         // Stars (rarity indicator) - only show for caught Pokemon
         if (isCaught && rarityInfo.stars > 0) {
@@ -148,8 +158,30 @@ function renderPokedexGrid() {
  * @param {number} pokemonId - The Pokemon ID
  */
 function playPokemonAudio(pokemonId) {
-    if (gameInstance && gameInstance.sound) {
-        const audioKey = `pokemon_audio_${pokemonId}`;
-        gameInstance.sound.play(audioKey);
+    // Pokemon names are loaded lazily per encounter, so the overlay plays the
+    // file directly (it is an HTML overlay anyway), at the game's volume.
+    const info = pokemonAudioAsset(pokemonId);
+    if (!info) return;
+    try {
+        const el = new Audio(info.url);
+        const manager = gameInstance && gameInstance.sound;
+        el.volume = manager && Number.isFinite(manager.volume) ? manager.volume : 1;
+        if (manager && manager.mute) return;
+        el.play().catch(error => console.warn('Pokemon audio failed:', error));
+    } catch (error) {
+        console.warn('Pokemon audio failed:', error);
     }
+}
+
+// Say a number 0-999 by stitching the hundreds clip and the remainder
+// ("hundra" + "femtioett"), with the 50 ms gap that reads as natural speech.
+function playNumberAudio(n) {
+    if (!gameInstance || !gameInstance.sound) return;
+    const keys = numberAudioKeys(n);
+    let delayMs = 0;
+    keys.forEach(key => {
+        const duration = audioDuration(gameInstance, key) * 1000;
+        setTimeout(() => playAudio(gameInstance, key), delayMs);
+        delayMs += duration + 50;
+    });
 }

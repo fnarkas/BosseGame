@@ -796,6 +796,29 @@ export class FakeScene {
         };
         this._extraAudio = new Set();
 
+        // Loader: queued keys become "loaded" synchronously on start(), then
+        // 'complete' fires, like Phaser's LoaderPlugin with cached files.
+        this._loaderEvents = new Emitter();
+        this._loadQueue = [];
+        this.loadedAssets = [];
+        this.load = {
+            image: (key, url) => { this._loadQueue.push({ type: 'image', key, url }); return this.load; },
+            audio: (key, url) => { this._loadQueue.push({ type: 'audio', key, url }); return this.load; },
+            on: (event, fn, ctx) => { this._loaderEvents.on(event, fn, ctx); return this.load; },
+            once: (event, fn, ctx) => { this._loaderEvents.once(event, fn, ctx); return this.load; },
+            off: (event, fn) => { this._loaderEvents.off(event, fn); return this.load; },
+            start: () => {
+                for (const item of this._loadQueue) {
+                    if (item.type === 'image') this.textures._generated.add(item.key);
+                    else this._extraAudio.add(item.key);
+                    this.loadedAssets.push(item);
+                }
+                this._loadQueue = [];
+                this._loaderEvents.emit('complete');
+            },
+            isLoading: () => false
+        };
+
         this.sound = new SoundManager(this, registry);
 
         this.add = {
@@ -883,8 +906,10 @@ export class FakeScene {
     _unregister(obj) { this._objects.delete(obj); const i = this.children.list.indexOf(obj); if (i >= 0) this.children.list.splice(i, 1); }
 
     _shutdown() {
-        // Phaser destroys the display list and clears timers/tweens on restart/start.
+        // Phaser emits 'shutdown' on scene.events, then destroys the display
+        // list and clears timers/tweens on restart/start.
         this._shutdownCalled = true;
+        this.events.emit('shutdown');
         for (const obj of [...this._objects]) obj.destroy();
         this.clock.clearAll();
         this.sound.removeAll();

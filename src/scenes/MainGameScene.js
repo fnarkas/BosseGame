@@ -2,11 +2,14 @@ import Phaser from 'phaser';
 import { LetterMatchMode } from '../answerModes/LetterMatchMode.js';
 import { DebugMode } from '../answerModes/DebugMode.js';
 import { createInventoryHUD, updateInventoryHUD } from '../inventoryHUD.js';
-import { hasPokeballs, removePokeball, getInventory, POKEBALL_TYPES } from '../inventory.js';
+import { hasPokeballs, removePokeball, POKEBALL_TYPES } from '../inventory.js';
 import { showPokeballSelector } from '../pokeballSelector.js';
 import { getRarityInfo, attemptCatch } from '../pokemonRarity.js';
 import { getCoinCount, deductCoins } from '../currency.js';
 import { POKEMON_DATA, getAvailablePokemon } from '../pokemonData.js';
+import { saveCaughtPokemonList, caughtIdSet } from '../caughtPokemon.js';
+import { ensureAssets } from '../lazyLoad.js';
+import { pokemonImageAsset, pokemonAudioAsset } from '../assetManifest.js';
 
 // First three catches are guaranteed tutorial Pokemon (Onix, Zubat, Seel):
 // names with letters whose upper/lowercase shapes look alike.
@@ -23,6 +26,7 @@ export class MainGameScene extends Phaser.Scene {
         this.answerMode = null; // Will be set in create() based on game mode
         this.inventoryHUD = null;
         this.selectedPokeballType = 'pokeball'; // Default to regular pokeball
+        this.encounterSeq = 0; // Bumped per encounter so a slow load can't show a stale Pokemon
 
         // Depth constants for layering
         this.DEPTH = {
@@ -81,7 +85,9 @@ export class MainGameScene extends Phaser.Scene {
         storeBtn.setInteractive({ useHandCursor: true });
 
         storeBtn.on('pointerdown', () => {
-            window.openStore();
+            // Pause under the HTML overlay: no tweens, no input, no battery drain.
+            this.scene.pause();
+            window.openStore(() => this.onOverlayClosed());
         });
 
         // Settings button (gear icon)
@@ -125,63 +131,8 @@ export class MainGameScene extends Phaser.Scene {
 
         pokedexBtn.on('pointerdown', () => {
             // Use HTML overlay Pokedex instead of scene
-            window.showPokedex();
-        });
-
-        // DEBUG: Press 'P' to test particle effect
-        this.input.keyboard.on('keydown-P', () => {
-            console.log('Testing particle effect...');
-
-            // Create star-shaped particle texture
-            if (!this.textures.exists('star')) {
-                console.log('Creating star texture...');
-                const particleGraphics = this.add.graphics();
-                particleGraphics.fillStyle(0xFFFF00, 1);
-                particleGraphics.lineStyle(2, 0xFFD700);
-
-                // Draw a star shape
-                const outerRadius = 12;
-                const innerRadius = 5;
-                const points = 5;
-
-                particleGraphics.beginPath();
-                for (let i = 0; i < points * 2; i++) {
-                    const radius = i % 2 === 0 ? outerRadius : innerRadius;
-                    const angle = (i * Math.PI) / points;
-                    const x = 12 + radius * Math.sin(angle);
-                    const y = 12 - radius * Math.cos(angle);
-                    if (i === 0) {
-                        particleGraphics.moveTo(x, y);
-                    } else {
-                        particleGraphics.lineTo(x, y);
-                    }
-                }
-                particleGraphics.closePath();
-                particleGraphics.fillPath();
-                particleGraphics.strokePath();
-
-                particleGraphics.generateTexture('star', 24, 24);
-                particleGraphics.destroy();
-                console.log('Star texture created');
-            }
-
-            console.log('Creating test particles at center...');
-            const particles = this.add.particles(width / 2, height / 2, 'star', {
-                speed: { min: 200, max: 400 },
-                angle: { min: 0, max: 360 },
-                scale: { start: 3, end: 0 },
-                lifespan: 2000,
-                tint: [0xFFFF00, 0xFFD700, 0xFFA500],
-                emitting: false
-            });
-
-            console.log('Exploding particles...');
-            particles.explode(100);
-
-            this.time.delayedCall(3000, () => {
-                console.log('Destroying particles...');
-                particles.destroy();
-            });
+            this.scene.pause();
+            window.showPokedex(() => this.onOverlayClosed());
         });
 
         // Start first encounter
@@ -245,22 +196,33 @@ export class MainGameScene extends Phaser.Scene {
             this.registry.set('currentPokemon', this.currentPokemon);
         }
 
-        // Display the Pokemon sprite
-        this.displayPokemon();
+        // Fetch this Pokemon's artwork and name audio (instant when cached),
+        // load the answer-mode config if needed, then show the encounter.
+        const encounter = ++this.encounterSeq;
+        const pokemon = this.currentPokemon;
+        const loadAssets = ensureAssets(this, {
+            images: [pokemonImageAsset(pokemon.id)],
+            audio: [pokemonAudioAsset(pokemon.id)]
+        });
+        const loadConfig = (this.answerMode.loadConfig && !this.answerMode.configLoaded)
+            ? this.answerMode.loadConfig().catch((error) => {
+                console.warn('Config failed to load, starting with defaults:', error);
+                this.answerMode.configLoaded = true;
+            })
+            : Promise.resolve();
 
-        // Load config if needed, then generate challenge
-        if (this.answerMode.loadConfig && !this.answerMode.configLoaded) {
-            this.answerMode.loadConfig().then(() => {
-                this.answerMode.generateChallenge(this.currentPokemon);
-                this.answerMode.createChallengeUI(this, this.attemptsLeft);
-            });
-        } else {
-            // Generate challenge using answer mode
+        const show = () => {
+            // A newer encounter started, or the scene stopped, while loading.
+            if (encounter !== this.encounterSeq) return;
+            if (this.scene.isActive && !this.scene.isActive()) return;
+            this.displayPokemon();
             this.answerMode.generateChallenge(this.currentPokemon);
-
-            // Create UI using answer mode
             this.answerMode.createChallengeUI(this, this.attemptsLeft);
-        }
+        };
+        Promise.all([loadAssets, loadConfig]).then(show, (error) => {
+            console.warn('Encounter assets failed to load, showing anyway:', error);
+            show();
+        });
     }
 
     spawnPokemon() {
@@ -272,11 +234,12 @@ export class MainGameScene extends Phaser.Scene {
         const availablePokemon = getAvailablePokemon();
 
         let selectedPokemon;
-        if (caughtList.length < 3) {
+        if (caughtList.length < TUTORIAL_POKEMON_IDS.length) {
             // Tutorial mode: spawn specific Pokemon in order
             const tutorialIndex = caughtList.length;
             const tutorialId = tutorialPokemonIds[tutorialIndex];
-            selectedPokemon = availablePokemon.find(p => p.id === tutorialId);
+            selectedPokemon = availablePokemon.find(p => p.id === tutorialId)
+                || Phaser.Utils.Array.GetRandom(availablePokemon);
             this.isTutorialCatch = true;
             console.log(`Tutorial mode: Spawning ${selectedPokemon.name} (${tutorialIndex + 1}/3)`);
         } else {
@@ -719,160 +682,24 @@ export class MainGameScene extends Phaser.Scene {
         });
     }
 
-    update() {
-        // Check if the "no pokeballs" popup is showing
-        if (this.noPokeballsPopupElements && this.noPokeballsPopupElements.length > 0) {
-            // Check if player now has pokeballs (they bought some from the store)
-            if (hasPokeballs()) {
-                // Clean up popup
-                this.noPokeballsPopupElements.forEach(el => {
-                    if (el && el.destroy) {
-                        el.destroy();
-                    }
-                });
-                this.noPokeballsPopupElements = null;
-
-                // Start a new encounter since they now have pokeballs
-                this.startNewEncounter();
-            }
+    // Called when the store or Pokedex overlay closes. The scene was paused
+    // while it was open; refresh anything that could have changed in there.
+    onOverlayClosed() {
+        if (this.scene.isPaused && this.scene.isPaused()) {
+            this.scene.resume();
         }
+        updateInventoryHUD(this.inventoryHUD);
+        this.dismissNoPokeballsPopupIfStocked();
     }
 
-    showPokemonInfoPopup(pokeball) {
-        const width = this.cameras.main.width;
-        const height = this.cameras.main.height;
-
-        // Get Pokemon details from local POKEMON_DATA
-        const data = POKEMON_DATA.find(p => p.id === this.currentPokemon.id);
-        if (!data) {
-            console.error('Pokemon data not found for ID:', this.currentPokemon.id);
-            this.isAnimating = false;
-            this.startNewEncounter();
-            return;
-        }
-
-        // Create semi-transparent background overlay
-        const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
-        overlay.setInteractive();
-        overlay.setDepth(this.DEPTH.POPUP_OVERLAY);
-
-        // Create popup background (taller to fit image)
-        const popupWidth = 450;
-        const popupHeight = 450;
-        const popup = this.add.rectangle(width / 2, height / 2, popupWidth, popupHeight, 0xFFFFFF);
-        popup.setStrokeStyle(4, 0x000000);
-        popup.setDepth(this.DEPTH.POPUP_BACKGROUND);
-
-        // Pokemon image
-        const pokemonImage = this.add.image(width / 2, height / 2 - 120, `pokemon_${this.currentPokemon.id}`);
-        pokemonImage.setScale(0.4);
-        pokemonImage.setDepth(this.DEPTH.POPUP_CONTENT);
-
-        // Pokemon number
-        const numberText = this.add.text(width / 2, height / 2 + 10, `#${String(data.id).padStart(3, '0')}`, {
-            font: 'bold 24px Arial',
-            fill: '#666666'
-        }).setOrigin(0.5);
-        numberText.setDepth(this.DEPTH.POPUP_CONTENT);
-
-        // Pokemon name
-        const nameText = this.add.text(width / 2 - 30, height / 2 + 45, data.name.toUpperCase(), {
-            font: 'bold 32px Arial',
-            fill: '#000000'
-        }).setOrigin(0.5);
-        nameText.setDepth(this.DEPTH.POPUP_CONTENT);
-
-        // Speaker button to play Pokemon name audio
-        const speakerBtn = this.add.text(width / 2 + 80, height / 2 + 45, '🔊', {
-            font: '36px Arial',
-            padding: { y: 7 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-        speakerBtn.setDepth(this.DEPTH.POPUP_CONTENT);
-
-        // Hover effects for speaker
-        speakerBtn.on('pointerover', () => {
-            speakerBtn.setScale(1.2);
+    dismissNoPokeballsPopupIfStocked() {
+        if (!this.noPokeballsPopupElements || this.noPokeballsPopupElements.length === 0) return;
+        if (!hasPokeballs()) return;
+        this.noPokeballsPopupElements.forEach(el => {
+            if (el && el.destroy) el.destroy();
         });
-
-        speakerBtn.on('pointerout', () => {
-            speakerBtn.setScale(1.0);
-        });
-
-        // Play audio on click
-        speakerBtn.on('pointerdown', () => {
-            speakerBtn.setScale(0.9);
-            this.time.delayedCall(100, () => {
-                speakerBtn.setScale(1.0);
-            });
-
-            // Play Pokemon name audio
-            const audioKey = `pokemon_audio_${data.id}`;
-            this.sound.play(audioKey);
-        });
-
-        // Pokemon types - display type icons (circular icons are smaller, so scale more)
-        const typeIconSize = 100;
-        const typeSpacing = 15;
-        const numTypes = data.types.length;
-        const totalTypeWidth = numTypes * typeIconSize + (numTypes - 1) * typeSpacing;
-        const startX = (width - totalTypeWidth) / 2 + typeIconSize / 2;
-        const typeY = height / 2 + 85;
-
-        const typeIcons = [];
-        data.types.forEach((typeId, index) => {
-            const x = startX + index * (typeIconSize + typeSpacing);
-
-            // Type icon (circular icons need more scaling since they're 60x40 instead of 200x40)
-            const typeIcon = this.add.image(x, typeY, `type_${typeId}`);
-            typeIcon.setScale(3.5); // Increased scale for circular icons
-            typeIcon.setDepth(this.DEPTH.POPUP_CONTENT);
-            typeIcons.push(typeIcon);
-        });
-
-        // Height and Weight
-        const statsText = this.add.text(width / 2, height / 2 + 120, `Height: ${data.height / 10}m  |  Weight: ${data.weight / 10}kg`, {
-            font: '18px Arial',
-            fill: '#666666'
-        }).setOrigin(0.5);
-        statsText.setDepth(this.DEPTH.POPUP_CONTENT);
-
-        // Continue button
-        const continueBtn = this.add.rectangle(width / 2, height / 2 + 170, 150, 40, 0x4CAF50);
-        continueBtn.setStrokeStyle(2, 0x000000);
-        continueBtn.setInteractive({ useHandCursor: true });
-        continueBtn.setDepth(this.DEPTH.POPUP_CONTENT);
-
-        const continueText = this.add.text(width / 2, height / 2 + 170, 'CONTINUE', {
-            font: 'bold 18px Arial',
-            fill: '#FFFFFF'
-        }).setOrigin(0.5);
-        continueText.setDepth(this.DEPTH.POPUP_BUTTON_TEXT);
-
-        continueBtn.on('pointerover', () => {
-            continueBtn.setFillStyle(0x66BB6A);
-        });
-
-        continueBtn.on('pointerout', () => {
-            continueBtn.setFillStyle(0x4CAF50);
-        });
-
-        continueBtn.on('pointerdown', () => {
-            // Clean up popup
-            overlay.destroy();
-            popup.destroy();
-            pokemonImage.destroy();
-            numberText.destroy();
-            nameText.destroy();
-            speakerBtn.destroy();
-            typeIcons.forEach(icon => icon.destroy());
-            statsText.destroy();
-            continueBtn.destroy();
-            continueText.destroy();
-            pokeball.destroy();
-
-            this.isAnimating = false;
-            this.startNewEncounter();
-        });
+        this.noPokeballsPopupElements = null;
+        this.startNewEncounter();
     }
 
     catchFailed(pokeball) {
@@ -1134,8 +961,8 @@ export class MainGameScene extends Phaser.Scene {
     saveCaughtPokemon() {
         const caughtList = this.registry.get('caughtPokemon') || [];
 
-        // Check if already caught
-        if (!caughtList.find(p => p.id === this.currentPokemon.id)) {
+        // Check if already caught (the list may contain legacy plain ids)
+        if (!caughtIdSet(caughtList).has(this.currentPokemon.id)) {
             // Save without types - they come from POKEMON_DATA
             caughtList.push({
                 id: this.currentPokemon.id,
@@ -1144,7 +971,7 @@ export class MainGameScene extends Phaser.Scene {
             });
 
             this.registry.set('caughtPokemon', caughtList);
-            localStorage.setItem('pokemonCaughtList', JSON.stringify(caughtList));
+            saveCaughtPokemonList(caughtList);
         }
 
         // Clear current Pokemon from registry so next encounter generates a new one

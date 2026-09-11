@@ -220,7 +220,7 @@ describe('ClockListeningMode', () => {
     });
 
     describe('wrong answer', () => {
-        it('reveals the correct time, resets progress and streak, then lets the player retry', () => {
+        it('reveals and speaks the correct time, resets progress and streak, then asks the same time again', () => {
             incrementStreak();
             setCorrectTime(scene, mode);
             scene.click(submitButton(scene));
@@ -229,22 +229,26 @@ describe('ClockListeningMode', () => {
 
             const { currentHour, currentMinute } = mode;
             const wrongHour = currentHour === 12 ? 1 : currentHour + 1;
+            const before = scene.playedAudio().length;
             setTime(scene, mode, wrongHour, currentMinute);
             scene.click(submitButton(scene));
             expect(mode.correctInRow).toBe(0);
-            expect(getStreak()).toBe(0);
             expect(mode.isRevealing).toBe(true);
+            // The right time is spoken while the clock shakes
+            expect(scene.playedAudio().slice(before)).toEqual([audioKeyFor(currentHour, currentMinute)]);
 
             // Hands animate to the correct time (shake 400ms + 800ms tween)
             scene.advance(1300);
             expect(mode.hourHand.angle).toBeCloseTo(expectedHourAngle(currentHour, currentMinute));
             expect(mode.minuteHand.angle).toBeCloseTo(expectedMinuteAngle(currentMinute));
             expect(mode.hourHand.fillColor).toBe(0xFFD700);
+            expect(mode.hourHand.x).toBe(mode.clockCenter.x);
 
-            // Then reset to 12:00, same challenge, answerable again
+            // Then a fresh clock at 12:00 with the same time asked again, streak reset
             scene.advance(800);
             expect(mode.isRevealing).toBe(false);
             expect(mode.inputLocked).toBe(false);
+            expect(getStreak()).toBe(0);
             expect(mode.setHour).toBe(12);
             expect(mode.setMinute).toBe(0);
             expect(mode.hourHand.angle).toBe(0);
@@ -259,6 +263,23 @@ describe('ClockListeningMode', () => {
             scene.click(submitButton(scene));
             scene.advance(1200);
             expect(mode.correctInRow).toBe(1);
+        });
+
+        it('re-asks a missed time immediately and once more two rounds later', () => {
+            mode.requiredCorrect = 10;
+            const missed = { hour: mode.currentHour, minute: mode.currentMinute };
+            setTime(scene, mode, missed.hour === 12 ? 1 : missed.hour + 1, missed.minute);
+            scene.click(submitButton(scene));
+            scene.advance(2100);
+            expect(mode.challengeData).toEqual(missed);
+            setCorrectTime(scene, mode);
+            scene.click(submitButton(scene));
+            scene.advance(1200);
+            expect(mode.challengeData).not.toEqual(missed);
+            setCorrectTime(scene, mode);
+            scene.click(submitButton(scene));
+            scene.advance(1200);
+            expect(mode.challengeData).toEqual(missed);
         });
 
         it('ignores submit taps and drags while the answer is being revealed', () => {

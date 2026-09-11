@@ -15,14 +15,26 @@ body {
 }
 
 #game-container {
+    /* Phaser's FIT scale mode sizes the canvas to this box. */
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
     display: flex;
     justify-content: center;
     align-items: center;
+    /* A child's stray pinch, double-tap or long-press must never zoom the
+       page, select text or pop the iOS callout menu. */
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 canvas {
     border-radius: 10px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    touch-action: none;
 }
 
 /* Pokedex Overlay */
@@ -88,8 +100,9 @@ canvas {
 
 .pokedex-grid {
     display: grid;
-    grid-template-columns: repeat(10, 1fr);
-    gap: 6px;
+    /* ~6 columns on an iPad in landscape, more on a desktop */
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
     width: 100%;
     max-width: 100vw;
     margin: 0 auto;
@@ -107,8 +120,7 @@ canvas {
     align-items: center;
     position: relative;
     transition: transform 0.2s, box-shadow 0.2s;
-    aspect-ratio: 1;
-    font-size: 9px;
+    font-size: 12px;
 }
 
 .pokemon-card.caught {
@@ -139,7 +151,7 @@ canvas {
 }
 
 .pokemon-card-name {
-    font-size: 8px;
+    font-size: 16px;
     font-weight: bold;
     color: #ffffff;
     text-align: center;
@@ -157,26 +169,34 @@ canvas {
 }
 
 .pokemon-card-number {
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    font-size: 10px;
-    color: #95A5A6;
+    /* Learning content: big, high contrast, and tappable to hear the number */
+    font-size: 32px;
+    line-height: 1.1;
+    color: #ffffff;
     font-weight: bold;
     background-color: rgba(0, 0, 0, 0.6);
-    padding: 2px 4px;
-    border-radius: 3px;
+    padding: 4px 14px;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.pokemon-card-number:active {
+    transform: scale(1.15);
+    background-color: #F39C12;
 }
 
 .pokemon-card-number.uncaught {
-    color: #546E7A;
+    color: #BDC3C7;
 }
 
 .pokemon-card-stars {
     position: absolute;
-    top: 3px;
-    left: 3px;
-    font-size: 8px;
+    top: 6px;
+    left: 6px;
+    font-size: 14px;
     background-color: rgba(0, 0, 0, 0.7);
     padding: 2px 4px;
     border-radius: 3px;
@@ -190,8 +210,8 @@ canvas {
 }
 
 .pokemon-type-icon {
-    width: 14px;
-    height: 14px;
+    width: 28px;
+    height: 28px;
     object-fit: contain;
 }
 
@@ -288,8 +308,8 @@ canvas {
     color: white;
     border: 2px solid #000;
     border-radius: 8px;
-    padding: 12px 30px;
-    font-size: 18px;
+    padding: 12px 40px;
+    font-size: 40px;
     font-weight: bold;
     cursor: pointer;
     transition: background 0.2s;
@@ -306,14 +326,14 @@ canvas {
 /* Responsive for smaller screens */
 @media (max-width: 1024px) {
     .pokedex-grid {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(5, 1fr);
     }
 }
 
 @media (max-width: 768px) {
     .pokedex-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 20px;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
     }
 
     .pokedex-title {

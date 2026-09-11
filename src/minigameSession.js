@@ -7,29 +7,18 @@
 // when a mode is chosen in normal (non-forced) play and cleared when that game
 // is completed or declined at the wheel.
 
+import { getString, setString, remove } from './storage.js';
+
 const ACTIVE_MINIGAME_KEY = 'activeMinigameMode';
 
 export function saveActiveMinigame(modeName) {
-    try {
-        localStorage.setItem(ACTIVE_MINIGAME_KEY, modeName);
-    } catch (error) {
-        console.warn('Failed to save active minigame:', error);
-    }
+    setString(ACTIVE_MINIGAME_KEY, modeName);
 }
 
 export function loadActiveMinigame() {
-    try {
-        return localStorage.getItem(ACTIVE_MINIGAME_KEY);
-    } catch (error) {
-        console.warn('Failed to load active minigame:', error);
-        return null;
-    }
+    return getString(ACTIVE_MINIGAME_KEY, null);
 }
 
 export function clearActiveMinigame() {
-    try {
-        localStorage.removeItem(ACTIVE_MINIGAME_KEY);
-    } catch (error) {
-        console.warn('Failed to clear active minigame:', error);
-    }
+    remove(ACTIVE_MINIGAME_KEY);
 }

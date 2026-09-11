@@ -1,8 +1,10 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { getConfiguredLetters } from '../letterData.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
-import { resetStreak } from '../streak.js';
-import { updateBoosterBar } from '../boosterBar.js';
+import { pickAdaptive, pickDistractors, HARD_LETTERS } from '../adaptive.js';
+import { COLORS, TEXT, wireButtonHover } from './uiKit.js';
+
+const MODE_NAME = 'LetterListeningMode';
 
 /**
  * Letter Listening game mode
@@ -12,13 +14,10 @@ export class LetterListeningMode extends BasePokeballGameMode {
     constructor() {
         super();
         this.usedLetters = new Set();
-        this.currentAudio = null;
         this.hasError = false; // Track if player made an error
-        this.isRevealing = false; // Track if we're showing the answer
         this.letterButtons = []; // Store button references
         this.correctInRow = 0; // Track consecutive correct answers
         this.requiredCorrect = 3; // Need 3 correct to get Pokemon
-        this.ballIndicators = []; // Visual progress indicators
         // Start with default letters, will be updated when config is loaded
         this.availableLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
             'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Å', 'Ä', 'Ö'];
@@ -32,28 +31,25 @@ export class LetterListeningMode extends BasePokeballGameMode {
     }
 
     generateChallenge() {
-        // Get unused letters from configured set
-        const availableLetters = this.availableLetters.filter(
-            letter => !this.usedLetters.has(letter)
-        );
+        // A letter the child just missed comes straight back; otherwise pick
+        // from the unused letters, favouring the ones he mixes up.
+        const retry = this.takeRetry();
+        let correctLetter = retry && this.availableLetters.includes(retry) ? retry : null;
 
-        // If all letters used, reset
-        if (availableLetters.length === 0) {
-            this.usedLetters.clear();
-            return this.generateChallenge();
+        if (!correctLetter) {
+            let unused = this.availableLetters.filter(letter => !this.usedLetters.has(letter));
+            if (unused.length === 0) {
+                this.usedLetters.clear();
+                unused = [...this.availableLetters];
+            }
+            correctLetter = pickAdaptive(MODE_NAME, unused, { seedList: HARD_LETTERS });
         }
-
-        // Pick random letter
-        const correctLetter = Phaser.Utils.Array.GetRandom(availableLetters);
         this.usedLetters.add(correctLetter);
 
-        // Generate 5 distractors (letters that are not the correct one)
-        const otherLetters = this.availableLetters.filter(l => l !== correctLetter);
-        const distractors = Phaser.Utils.Array.Shuffle(otherLetters).slice(0, 5);
-
-        // Shuffle all choices (correct + distractors)
-        const allChoices = [correctLetter, ...distractors];
-        const shuffledChoices = Phaser.Utils.Array.Shuffle([...allChoices]);
+        // 5 distractors: the confusable partner(s) first (b next to d), then
+        // random fillers from the configured letters.
+        const distractors = pickDistractors(MODE_NAME, correctLetter, this.availableLetters, 5);
+        const shuffledChoices = Phaser.Utils.Array.Shuffle([correctLetter, ...distractors]);
 
         this.challengeData = {
             correctLetter: correctLetter,
@@ -65,7 +61,6 @@ export class LetterListeningMode extends BasePokeballGameMode {
 
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
-        const height = scene.cameras.main.height;
 
         // A fresh challenge always starts accepting input again.
         this.inputLocked = false;
@@ -75,42 +70,19 @@ export class LetterListeningMode extends BasePokeballGameMode {
         this.playLetterAudio(scene, this.challengeData.correctLetter);
 
         // Speaker button to replay audio (larger, centered)
-        const speakerBtn = scene.add.text(width / 2, 180, '🔊', {
-            font: '80px Arial',
-            padding: { y: 20 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-        speakerBtn.setData('clearOnNewChallenge', true);
-        this.uiElements.push(speakerBtn);
-
-        // Hover effects for speaker
-        speakerBtn.on('pointerover', () => {
-            speakerBtn.setScale(1.1);
-        });
-
-        speakerBtn.on('pointerout', () => {
-            speakerBtn.setScale(1.0);
-        });
-
-        // Replay audio on click
-        speakerBtn.on('pointerdown', () => {
-            speakerBtn.setScale(0.9);
-            this.delayedCall(scene, 100, () => {
-                speakerBtn.setScale(1.0);
-            });
+        this.createSpeakerButton(scene, width / 2, 180, () => {
             this.playLetterAudio(scene, this.challengeData.correctLetter);
         });
 
-        // Create ball indicators showing progress
-        this.createBallIndicators(scene);
+        // Progress balls showing how many in a row so far
+        this.createProgressBalls(scene, { total: this.requiredCorrect, completed: this.correctInRow, y: 310 });
 
         // Create letter buttons in a grid (2 rows of 3)
         const letterButtonSize = 100;
         const letterSpacing = 30;
         const cols = 3;
-        const rows = Math.ceil(this.challengeData.letters.length / cols);
 
         const gridWidth = cols * (letterButtonSize + letterSpacing) - letterSpacing;
-        const gridHeight = rows * (letterButtonSize + letterSpacing) - letterSpacing;
         const startX = (width - gridWidth) / 2 + letterButtonSize / 2;
         const startY = 400;
 
@@ -121,43 +93,25 @@ export class LetterListeningMode extends BasePokeballGameMode {
             const y = startY + row * (letterButtonSize + letterSpacing);
 
             // Background button
-            const button = scene.add.rectangle(x, y, letterButtonSize, letterButtonSize, 0xFFFFFF);
-            button.setStrokeStyle(4, 0x3498DB);
+            const button = scene.add.rectangle(x, y, letterButtonSize, letterButtonSize, COLORS.NEUTRAL_FILL);
+            button.setStrokeStyle(4, COLORS.NEUTRAL_STROKE);
             button.setInteractive({ useHandCursor: true });
-            button.setData('clearOnNewChallenge', true);
             button.setData('letter', letter);
             this.uiElements.push(button);
 
             // Letter text
-            const letterText = scene.add.text(x, y, letter, {
-                font: 'bold 56px Arial',
-                fill: '#2C3E50'
-            }).setOrigin(0.5);
-            letterText.setData('clearOnNewChallenge', true);
+            const letterText = scene.add.text(x, y, letter, TEXT.big).setOrigin(0.5);
             this.uiElements.push(letterText);
 
             // Store button reference
             this.letterButtons.push({ button, letterText, letter, x, y });
 
-            // Hover effects
-            button.on('pointerover', () => {
-                if (!this.isRevealing) {
-                    button.setFillStyle(0xECF0F1);
-                    button.setStrokeStyle(6, 0x2980B9);
-                }
-            });
-
-            button.on('pointerout', () => {
-                if (!this.isRevealing) {
-                    button.setFillStyle(0xFFFFFF);
-                    button.setStrokeStyle(4, 0x3498DB);
-                }
-            });
+            wireButtonHover(button, () => this.isInputBlocked());
 
             // Click handler
             button.on('pointerdown', () => {
                 // Ignore taps during the reveal and while an answer is being resolved
-                if (this.isRevealing || this.inputLocked) return;
+                if (this.isInputBlocked()) return;
                 this.inputLocked = true;
 
                 const isCorrect = this.checkAnswer(letter);
@@ -168,11 +122,11 @@ export class LetterListeningMode extends BasePokeballGameMode {
                 } else {
                     // Correct answer!
                     this.correctInRow++;
-                    this.updateBallIndicators();
+                    this.updateProgressBalls(this.correctInRow);
 
                     // Show success feedback
-                    button.setFillStyle(0x27AE60, 0.5); // Green
-                    button.setStrokeStyle(6, 0x27AE60);
+                    button.setFillStyle(COLORS.CORRECT, 0.5);
+                    button.setStrokeStyle(6, COLORS.CORRECT);
 
                     // Check if won
                     if (this.correctInRow >= this.requiredCorrect) {
@@ -193,50 +147,8 @@ export class LetterListeningMode extends BasePokeballGameMode {
         });
     }
 
-    createBallIndicators(scene) {
-        const width = scene.cameras.main.width;
-        const y = 310;
-        const spacing = 60;
-
-        const startX = width / 2 - ((this.requiredCorrect - 1) * spacing) / 2;
-
-        this.ballIndicators = [];
-
-        for (let i = 0; i < this.requiredCorrect; i++) {
-            const x = startX + i * spacing;
-
-            // Create circle indicator
-            const circle = scene.add.circle(x, y, 20,
-                i < this.correctInRow ? 0x27AE60 : 0xffffff, 1);
-            circle.setStrokeStyle(3, 0x000000);
-
-            this.ballIndicators.push(circle);
-            this.uiElements.push(circle);
-        }
-
-        // Add gift emoji at the end
-        const giftX = startX + this.requiredCorrect * spacing;
-        const giftEmoji = scene.add.text(giftX, y, '🎁', {
-            fontSize: '48px',
-            padding: { y: 10 }
-        }).setOrigin(0.5);
-        this.uiElements.push(giftEmoji);
-    }
-
-    updateBallIndicators() {
-        // Update ball colors based on correctInRow
-        for (let i = 0; i < this.ballIndicators.length; i++) {
-            if (i < this.correctInRow) {
-                this.ballIndicators[i].setFillStyle(0x27AE60); // Green
-            } else {
-                this.ballIndicators[i].setFillStyle(0xffffff); // White
-            }
-        }
-    }
-
     playLetterAudio(scene, letter) {
-        const audioKey = `letter_audio_${letter.toLowerCase()}`;
-        scene.sound.play(audioKey);
+        this.playAudio(scene, `letter_audio_${letter.toLowerCase()}`);
     }
 
     checkAnswer(selectedLetter) {
@@ -247,107 +159,41 @@ export class LetterListeningMode extends BasePokeballGameMode {
         // Track wrong answer
         const wrongLetter = wrongButton.getData('letter');
         trackWrongAnswer(
-            'LetterListeningMode',
+            MODE_NAME,
             this.challengeData.correctLetter,
             wrongLetter
         );
 
         // Reset progress
         this.correctInRow = 0;
-        this.updateBallIndicators();
+        this.updateProgressBalls(0);
 
-        // Red flash on the wrong button
-        wrongButton.setFillStyle(0xFF0000, 0.5); // Red fill
-        wrongButton.setStrokeStyle(6, 0xFF0000); // Red border
-
-        // Shake animation
-        const originalX = wrongButton.x;
-        this.addTween(scene, {
-            targets: wrongButton,
-            x: originalX - 10,
-            duration: 50,
-            yoyo: true,
-            repeat: 3,
-            onComplete: () => {
-                // Reset button appearance
-                wrongButton.setFillStyle(0xFFFFFF);
-                wrongButton.setStrokeStyle(4, 0x3498DB);
-                wrongButton.x = originalX;
-
-                // ONE ERROR = GAME OVER
-                // Highlight the correct answer
-                this.hasError = true;
-                this.highlightCorrectAnswer(scene);
-            }
+        // Red shake on the wrong button, then ONE ERROR = GAME OVER:
+        // highlight and say the correct answer.
+        this.shakeWrong(scene, wrongButton, {
+            onComplete: () => this.highlightCorrectAnswer(scene)
         });
     }
 
     highlightCorrectAnswer(scene) {
-        this.isRevealing = true;
+        const correctLetter = this.challengeData.correctLetter;
+        const correctButton = this.letterButtons.find(item => item.letter === correctLetter);
 
-        // Disable all buttons
-        this.letterButtons.forEach(item => {
-            item.button.disableInteractive();
-        });
+        // Ask the missed letter again right away, and once more a bit later.
+        this.queueRetry(correctLetter);
+        this.queueRetry(correctLetter, 2);
 
-        // Find the correct button
-        const correctButton = this.letterButtons.find(item =>
-            item.letter === this.challengeData.correctLetter
-        );
-
-        if (!correctButton) return;
-
-        // Change to gold/attention-grabbing color
-        correctButton.button.setFillStyle(0xFFD700, 0.5); // Gold fill
-        correctButton.button.setStrokeStyle(6, 0xFFD700); // Thick gold border
-
-        // Pulsing scale animation
-        this.addTween(scene, {
-            targets: [correctButton.button, correctButton.letterText],
-            scaleX: 1.2,
-            scaleY: 1.2,
-            duration: 500,
-            yoyo: true,
-            repeat: 3, // Pulse 4 times total (2 seconds)
-            ease: 'Sine.easeInOut'
-        });
-
-        // Pulsing alpha on button
-        this.addTween(scene, {
-            targets: correctButton.button,
-            alpha: 0.7,
-            duration: 500,
-            yoyo: true,
-            repeat: 3,
-            ease: 'Sine.easeInOut'
-        });
-
-        // After 2 seconds of pulsing, restart with new challenge
-        this.delayedCall(scene, 2000, () => {
-            // Clean up current UI
-            this.cleanup(scene);
-
-            // Reset state
-            this.hasError = false;
-            this.isRevealing = false;
-
-            // Reset streak since player made an error
-            resetStreak();
-
-            // Update booster bar visual immediately
-            if (scene.boosterBarElements) {
-                updateBoosterBar(scene.boosterBarElements, 0, scene);
-            }
-
-            // Generate new challenge
-            this.generateChallenge();
-            this.createChallengeUI(scene);
+        // Gold pulse on the right letter while it is spoken; after 2 seconds
+        // the streak is reset and a new challenge starts.
+        this.revealAnswer(scene, {
+            targets: correctButton ? [correctButton.button, correctButton.letterText] : [],
+            disable: this.letterButtons.map(item => item.button),
+            audioKey: `letter_audio_${correctLetter.toLowerCase()}`
         });
     }
 
     cleanup(scene) {
         super.cleanup(scene);
         this.letterButtons = [];
-        this.ballIndicators = [];
     }
 }

@@ -52,3 +52,75 @@ describe('source lint', () => {
         expect(missing).toEqual([]);
     });
 });
+
+describe('shared-module conventions', () => {
+    const codeLines = (file) => fs.readFileSync(file, 'utf8').split('\n')
+        .map((line, i) => ({ line, n: i + 1 }))
+        .filter(({ line }) => !line.trim().startsWith('//') && !line.trim().startsWith('*'));
+
+    it('only storage.js touches localStorage', () => {
+        const hits = [];
+        for (const file of files) {
+            if (['storage.js', 'utils/clearStorage.js'].includes(rel(file))) continue;
+            for (const { line, n } of codeLines(file)) {
+                if (/\blocalStorage\./.test(line)) hits.push(`${rel(file)}:${n}`);
+            }
+        }
+        expect(hits).toEqual([]);
+    });
+
+    it('only minigameConfig.js fetches the minigame config', () => {
+        const hits = [];
+        for (const file of files) {
+            if (rel(file) === 'minigameConfig.js') continue;
+            for (const { line, n } of codeLines(file)) {
+                if (/fetch\(\s*['"`]\/?config\/minigames\.json/.test(line)) hits.push(`${rel(file)}:${n}`);
+            }
+        }
+        expect(hits).toEqual([]);
+    });
+
+    it('game modes play audio through the base helpers (never scene.sound.play/add)', () => {
+        const dir = path.join(SRC, 'pokeballGameModes');
+        const hits = [];
+        for (const name of fs.readdirSync(dir)) {
+            if (!name.endsWith('.js') || name === 'BasePokeballGameMode.js') continue;
+            for (const { line, n } of codeLines(path.join(dir, name))) {
+                if (/scene\.sound\.(play|add)\(/.test(line)) hits.push(`pokeballGameModes/${name}:${n}`);
+            }
+        }
+        expect(hits).toEqual([]);
+    });
+
+    it('game modes never duplicate the shared progress/particle/dashed-rect helpers', () => {
+        const dir = path.join(SRC, 'pokeballGameModes');
+        const hits = [];
+        for (const name of fs.readdirSync(dir)) {
+            if (!name.endsWith('.js') || ['BasePokeballGameMode.js', 'uiKit.js'].includes(name) || name.endsWith('Base.js')) continue;
+            const src = fs.readFileSync(path.join(dir, name), 'utf8');
+            for (const method of ['createBallIndicators', 'updateBallIndicators', 'drawDashedRect', 'parseNumberRange']) {
+                // A method definition: `    name(args) {` — call sites end in `;`
+                if (new RegExp(`^\\s{4}${method}\\s*\\([^)]*\\)\\s*\\{`, 'm').test(src)) hits.push(`pokeballGameModes/${name}: ${method}()`);
+            }
+        }
+        expect(hits).toEqual([]);
+    });
+});
+
+describe('no instructional text for the non-reading player', () => {
+    // Known status/instruction strings that used to be drawn on screen. The
+    // child cannot read them; state must be shown with icons and audio.
+    const BANNED = ['Väntar på', 'Lyssnar', 'Tryck för', 'Tryck på', 'Försök igen', 'Du sa', 'Mikrofon', 'Läs ordet', 'CONTINUE', 'Cleared:', 'Tillbaka'];
+    it('modes and scenes never draw the old status/instruction strings', () => {
+        const hits = [];
+        for (const file of files) {
+            const r = rel(file);
+            if (!r.startsWith('pokeballGameModes/') && !r.startsWith('scenes/') && !r.startsWith('components/')) continue;
+            fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+                if (line.trim().startsWith('//') || line.trim().startsWith('*')) return;
+                if (BANNED.some(b => line.includes(`'${b}`) || line.includes(`\`${b}`) || line.includes(`"${b}`))) hits.push(`${r}:${i + 1}`);
+            });
+        }
+        expect(hits).toEqual([]);
+    });
+});

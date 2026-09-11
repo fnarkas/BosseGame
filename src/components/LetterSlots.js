@@ -188,8 +188,11 @@ export function createLetterSlots(scene, word, config = {}) {
  * @param {Phaser.Scene} scene - The Phaser scene
  * @param {number} x - X position
  * @param {number} y - Y position
+ * @param {BasePokeballGameMode} [owner] - Mode that owns the effect. When given,
+ *   the emitter goes into owner.uiElements and its self-destruct timer is a
+ *   mode-owned timer, so cleanup() can never leave a burst behind or fire late.
  */
-export function showSlotParticleEffect(scene, x, y) {
+export function showSlotParticleEffect(scene, x, y, owner = null) {
     // Create star texture if needed
     if (!scene.textures.exists('correctLetterStar')) {
         const graphics = scene.add.graphics();
@@ -231,17 +234,24 @@ export function showSlotParticleEffect(scene, x, y) {
     particles.explode();
 
     // Clean up
-    scene.time.delayedCall(900, () => {
-        particles.destroy();
-    });
+    const selfDestruct = () => { if (particles.scene) particles.destroy(); };
+    if (owner) {
+        owner.uiElements.push(particles);
+        owner.delayedCall(scene, 900, selfDestruct);
+    } else {
+        scene.time.delayedCall(900, selfDestruct);
+    }
+    return particles;
 }
 
 /**
  * Shake/flash error effect on slot
  * @param {Phaser.Scene} scene - The Phaser scene
  * @param {Object} slotData - Slot data from createLetterSlots
+ * @param {BasePokeballGameMode} [owner] - Mode that owns the effect; its
+ *   addTween() is used so cleanup() stops the shake.
  */
-export function showSlotErrorEffect(scene, slotData) {
+export function showSlotErrorEffect(scene, slotData, owner = null) {
     if (!slotData || !slotData.bg) return;
 
     const { bg, text, glow } = slotData;
@@ -260,23 +270,28 @@ export function showSlotErrorEffect(scene, slotData) {
 
     const targets = [bg, text, glow].filter(t => t !== null);
 
-    scene.tweens.add({
+    const config = {
         targets,
         x: originalX - 5,
         duration: 50,
         yoyo: true,
         repeat: 3,
         onComplete: () => {
+            // The slots may have been replaced mid-shake
+            if (!bg.scene) return;
+
             // Return to original position
             bg.x = originalX;
-            if (text) text.x = originalTextX;
-            if (glow) glow.x = glowOriginalX;
+            if (text && text.scene) text.x = originalTextX;
+            if (glow && glow.scene) glow.x = glowOriginalX;
 
             // Return to original color
             bg.setFillStyle(originalBgColor);
             bg.setStrokeStyle(5, originalBorderColor);
         }
-    });
+    };
+    if (owner) owner.addTween(scene, config);
+    else scene.tweens.add(config);
 }
 
 /**

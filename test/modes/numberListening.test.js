@@ -73,11 +73,15 @@ describe('NumberListeningMode', () => {
             expect(failing.availableNumbers).toHaveLength(90);
         });
 
-        it('parses ranges, lists and skips invalid parts', () => {
-            const m = new NumberListeningMode();
-            expect(m.parseNumberRange('12-15, 30,40')).toEqual([12, 13, 14, 15, 30, 40]);
-            expect(m.parseNumberRange('5-3, x, -2')).toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
-            expect(m.parseNumberRange('7, 7, 7')).toEqual([7]);
+        it('parses ranges and lists from the config and falls back to 10-99 for junk', async () => {
+            setTestConfig({ numbers: { required: 1, numbers: '12-15, 30,40' } });
+            let m = new NumberListeningMode();
+            await m.loadConfig();
+            expect(m.availableNumbers).toEqual([12, 13, 14, 15, 30, 40]);
+            setTestConfig({ numbers: { required: 1, numbers: '5-3, x, -2' } });
+            m = new NumberListeningMode();
+            await m.loadConfig();
+            expect(m.availableNumbers).toHaveLength(90);
         });
 
         it('always picks a configured number, splits digits correctly and never repeats back to back', async () => {
@@ -163,8 +167,8 @@ describe('NumberListeningMode', () => {
             await setup({ required: 2, numbers: '456, 34' });
             enter();
             expect(mode.correctInRow).toBe(1);
-            expect(mode.ballIndicators[0].fillColor).toBe(0x27AE60);
-            expect(mode.ballIndicators[1].fillColor).toBe(0xffffff);
+            expect(mode.progressBalls.circles[0].fillColor).toBe(0x27AE60);
+            expect(mode.progressBalls.circles[1].fillColor).toBe(0xffffff);
             scene.advance(1000);
             // A new challenge is on screen
             expect(mode.correctInRow).toBe(1);
@@ -212,34 +216,39 @@ describe('NumberListeningMode', () => {
             expect(scene.findTexts('🔊')).toHaveLength(1);
         });
 
-        it('resets progress and streak on a wrong answer, reveals the answer, then lets the child retry', async () => {
+        it('resets progress and streak on a wrong answer, reveals and speaks the answer, then asks the same number again', async () => {
             await setup({ required: 2, numbers: '456' });
             incrementStreak();
             enter();
             scene.advance(1000);
             expect(mode.correctInRow).toBe(1);
 
+            const before = scene.playedAudio().length;
             enter(true);
             expect(mode.correctInRow).toBe(0);
-            expect(getStreak()).toBe(0);
             expect(mode.isRevealing).toBe(true);
-            expect(mode.ballIndicators.every(b => b.fillColor === 0xffffff)).toBe(true);
+            expect(mode.progressBalls.circles.every(b => b.fillColor === 0xffffff)).toBe(true);
 
-            // The answer is revealed in gold after the shake
+            // The answer is revealed in gold after the shake, and spoken
             scene.advance(500);
             expect(mode.onesZone.getData('label').text).toBe('6');
             expect(mode.tensZone.getData('label').text).toBe('5');
             expect(mode.hundredsZone.getData('label').text).toBe('4');
+            expect(mode.tensZone.fillColor).toBe(0xFFD700);
+            expect(scene.playedAudio().slice(before)).toEqual(['number_audio_400']);
+            scene.advance(600);
+            expect(scene.playedAudio().slice(before)).toEqual(['number_audio_400', 'number_audio_56']);
 
             // Drops during the reveal are ignored
             drop(1, mode.onesZone);
             expect(mode.onesZone.getData('label').text).toBe('6');
             expect(calls).toHaveLength(0);
 
-            // Then everything is cleared and the same number is asked again
-            scene.advance(1500);
+            // Then a fresh board with the same number, and the streak is reset
+            scene.advance(1400);
             expect(mode.isRevealing).toBe(false);
             expect(mode.inputLocked).toBe(false);
+            expect(getStreak()).toBe(0);
             expect(mode.currentNumber).toBe(456);
             expect(mode.getZones().every(z => z.getData('value') === null)).toBe(true);
             expect(mode.getZones().every(z => z.getData('label').text === '')).toBe(true);
@@ -253,12 +262,27 @@ describe('NumberListeningMode', () => {
             expect(calls).toHaveLength(1);
         });
 
+        it('re-asks a missed number immediately and once more two rounds later', async () => {
+            await setup({ required: 6, numbers: '34, 456' });
+            const missed = mode.currentNumber;
+            const other = missed === 34 ? 456 : 34;
+            enter(true);
+            scene.advance(2500);
+            expect(mode.currentNumber).toBe(missed);
+            enter();
+            scene.advance(1000);
+            expect(mode.currentNumber).toBe(other);
+            enter();
+            scene.advance(1000);
+            expect(mode.currentNumber).toBe(missed);
+        });
+
         it('tracks a zero in the hundreds place for numbers like 1034', async () => {
             await setup({ required: 1, numbers: '1034' });
             enter(true);
             scene.advance(500);
             expect(mode.hundredsZone.getData('label').text).toBe('0');
-            scene.advance(1500);
+            scene.advance(2000);
             enter();
             scene.advance(1000);
             expect(calls).toHaveLength(1);

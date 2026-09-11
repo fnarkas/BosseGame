@@ -175,7 +175,7 @@ describe('PianoLearningMode', () => {
         });
 
         it('has a loaded sound for every keyboard note and never asks for an unknown key', () => {
-            for (const k of PIANO_KEYS) expect(mode.audioCache[k.note]).toBeDefined();
+            for (const k of PIANO_KEYS) expect(scene.cache.audio.exists(`piano-${k.note}`), k.note).toBe(true);
             expect(scene._missingAudio).toEqual([]);
         });
 
@@ -183,13 +183,13 @@ describe('PianoLearningMode', () => {
             for (const song of PIANO_SONGS) {
                 for (const note of flatNotes(song)) {
                     expect(mode.pianoKeys[note]).toBeDefined();
-                    expect(mode.audioCache[note]).toBeDefined();
+                    expect(scene.cache.audio.exists(`piano-${note}`), note).toBe(true);
                 }
             }
         });
 
         it('shows one progress ball per pattern with the first one marked current', () => {
-            const balls = mode.ballIndicators;
+            const balls = mode.progressBalls.circles;
             expect(balls).toHaveLength(mode.challengeData.totalPatterns);
             expect(balls[0].fillColor).toBe(0xFFEB3B);
             balls.slice(1).forEach(b => expect(b.fillColor).toBe(0xCCCCCC));
@@ -261,8 +261,8 @@ describe('PianoLearningMode', () => {
         it('completes a pattern, advances the progress balls and auto-plays the next pattern', async () => {
             playPattern();
             expect(mode.currentPatternIndex).toBe(1);
-            expect(mode.ballIndicators[0].fillColor).toBe(0x4CAF50);
-            expect(mode.ballIndicators[1].fillColor).toBe(0xFFEB3B);
+            expect(mode.progressBalls.circles[0].fillColor).toBe(0x4CAF50);
+            expect(mode.progressBalls.circles[1].fillColor).toBe(0xFFEB3B);
             expect(mode.inputLocked).toBe(true);
             const before = scene.playedAudio().length;
             await run(scene, 3000);
@@ -291,7 +291,7 @@ describe('PianoLearningMode', () => {
                 await run(scene, 3000);
             }
             expect(mode.currentPatternIndex).toBe(total);
-            mode.ballIndicators.forEach(b => expect(b.fillColor).toBe(0x4CAF50));
+            mode.progressBalls.circles.forEach(b => expect(b.fillColor).toBe(0x4CAF50));
             expect(calls).toHaveLength(0);
             // Full melody replays at 2x tempo (12 bars * 4 beats * 250ms = 12s)
             await run(scene, 15000, 100);

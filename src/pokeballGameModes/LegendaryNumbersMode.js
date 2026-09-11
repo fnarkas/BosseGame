@@ -1,13 +1,27 @@
-import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
+import { COLORS, updateZoneHover } from './uiKit.js';
 import { showNumberProgressPopup } from './numberProgressPopup.js';
 import { saveActiveMinigame, clearActiveMinigame } from '../minigameSession.js';
+import { loadModeConfig } from '../minigameConfig.js';
+import { parseNumberRange, range } from '../utils/parseNumberRange.js';
 
 /**
  * Legendary Numbers Mode
- * Player must correctly identify all numbers from 0-99
- * Similar to NumberListeningMode but with progress tracking and matrix visualization
+ * Player must correctly identify every configured number from 0-99 before
+ * running out of hearts. A miss costs a heart, shows the right digits in gold
+ * while the number is spoken, and the same number is asked again.
+ * No coin streak: the whole run pays one treasure reward at the end.
  */
+
+const DEFAULT_CONFIG = { coinReward: 200, maxErrors: 5, numbers: '0-99' };
+const ALL_NUMBERS = range(0, 99);
+
+const HEARTS_Y = 70;
+const DROP_ZONE_Y = 200;
+const DROP_ZONE_SIZE = 120;
+const DROP_ZONE_SPACING = 40;
+const DROP_ZONE_ALPHA = 0.2;
+
 export class LegendaryNumbersMode extends BasePokeballGameMode {
     constructor() {
         super();
@@ -18,121 +32,56 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
         this.tensZone = null;
         this.onesZone = null;
         this.digitBoxes = [];
-        this.currentAudio = null;
-        this.isRevealing = false;
-        this.heartsDisplay = null;
         this.numberMatrix = null;
-        this.speakerButton = null;
 
-        // Default config (will be loaded from server)
-        this.config = {
-            coinReward: 200,
-            maxErrors: 5,
-            numbers: '0-99' // Default to all numbers
-        };
+        // Default config (loaded from server)
+        this.config = { ...DEFAULT_CONFIG };
         this.configLoaded = false;
-        this.errorsRemaining = 5;
-    }
-
-    parseNumberRange(input) {
-        try {
-            const parts = input.split(',');
-            const numbers = new Set();
-
-            for (const part of parts) {
-                const trimmed = part.trim();
-                if (trimmed.includes('-')) {
-                    const [start, end] = trimmed.split('-').map(n => parseInt(n.trim()));
-                    if (isNaN(start) || isNaN(end) || start > end || start < 0) {
-                        return null; // Invalid
-                    }
-                    for (let i = start; i <= end; i++) {
-                        numbers.add(i);
-                    }
-                } else {
-                    const num = parseInt(trimmed);
-                    if (isNaN(num) || num < 0) {
-                        return null; // Invalid
-                    }
-                    numbers.add(num);
-                }
-            }
-
-            return Array.from(numbers).sort((a, b) => a - b);
-        } catch (error) {
-            return null;
-        }
+        this.errorsRemaining = DEFAULT_CONFIG.maxErrors;
     }
 
     async loadConfig() {
-        try {
-            const response = await fetch('/config/minigames.json');
-            if (response.ok) {
-                const serverConfig = await response.json();
-                if (serverConfig.legendaryNumbers) {
-                    const section = serverConfig.legendaryNumbers;
-                    if (Number.isFinite(section.coinReward) && section.coinReward >= 0) {
-                        this.config.coinReward = section.coinReward;
-                    }
-                    if (Number.isFinite(section.maxErrors) && section.maxErrors >= 1) {
-                        this.config.maxErrors = section.maxErrors;
-                    }
-                    if (typeof section.numbers === 'string' && section.numbers.trim()) {
-                        this.config.numbers = section.numbers;
-                    }
-                    console.log('LegendaryNumbersMode loaded config:', this.config);
-                }
-            }
-        } catch (error) {
-            console.warn('Failed to load legendary numbers config, using defaults:', error);
-        }
+        const config = await loadModeConfig('legendaryNumbers', DEFAULT_CONFIG);
+        this.config = {
+            coinReward: config.coinReward >= 0 ? config.coinReward : DEFAULT_CONFIG.coinReward,
+            maxErrors: config.maxErrors >= 1 ? config.maxErrors : DEFAULT_CONFIG.maxErrors,
+            numbers: String(config.numbers || '').trim() || DEFAULT_CONFIG.numbers
+        };
 
         // Always derive the playable set from the (possibly default) config, so a
-        // missing section or a failed fetch still yields a solvable challenge.
+        // missing section or an invalid list still yields a solvable challenge.
         this.errorsRemaining = this.config.maxErrors;
-        const parsedNumbers = this.parseNumberRange(this.config.numbers);
-        const inRange = parsedNumbers ? parsedNumbers.filter(n => n >= 0 && n <= 99) : [];
-        if (inRange.length > 0) {
-            this.activeNumbers = new Set(inRange);
-        } else {
-            // Fallback to all numbers 0-99
-            this.activeNumbers = new Set();
-            for (let i = 0; i <= 99; i++) {
-                this.activeNumbers.add(i);
-            }
-        }
-        console.log('Active numbers count:', this.activeNumbers.size);
+        const inRange = parseNumberRange(this.config.numbers, []).filter(n => n >= 0 && n <= 99);
+        this.activeNumbers = new Set(inRange.length > 0 ? inRange : ALL_NUMBERS);
         this.configLoaded = true;
     }
 
     getTotalNumbers() {
-        return this.activeNumbers.size; // Count of active numbers
+        return this.activeNumbers.size;
     }
 
     generateChallenge() {
-        // Pick a random number from active numbers that hasn't been cleared yet
-        const unclearedNumbers = [];
-        for (const num of this.activeNumbers) {
-            if (!this.clearedNumbers.has(num)) {
-                unclearedNumbers.push(num);
+        // A missed number comes back first (unless it has been cleared since)
+        let number = this.takeRetry();
+        while (number !== undefined && this.clearedNumbers.has(number)) number = this.takeRetry();
+
+        if (number === undefined) {
+            const uncleared = [...this.activeNumbers].filter(n => !this.clearedNumbers.has(n));
+            if (uncleared.length === 0) {
+                // All active numbers cleared - shouldn't happen as completion is checked first
+                number = [...this.activeNumbers][0] || 0;
+            } else {
+                number = uncleared[Math.floor(Math.random() * uncleared.length)];
             }
         }
 
-        if (unclearedNumbers.length === 0) {
-            // All active numbers cleared - this shouldn't happen as we check completion
-            this.currentNumber = Array.from(this.activeNumbers)[0] || 0;
-        } else {
-            const randomIndex = Math.floor(Math.random() * unclearedNumbers.length);
-            this.currentNumber = unclearedNumbers[randomIndex];
-        }
-
+        this.currentNumber = number;
         this.challengeData = {
-            number: this.currentNumber,
-            tens: Math.floor(this.currentNumber / 10),
-            ones: this.currentNumber % 10
+            number,
+            tens: Math.floor(number / 10),
+            ones: number % 10
         };
-
-        console.log('Generated legendary number challenge:', this.currentNumber);
+        return this.challengeData;
     }
 
     createChallengeUI(scene) {
@@ -143,94 +92,57 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
         this.isRevealing = false;
         this.inputLocked = false;
 
-        // Show hearts at the top
-        const heartsText = '❤️'.repeat(this.errorsRemaining) + '🖤'.repeat(this.config.maxErrors - this.errorsRemaining);
-        this.heartsDisplay = scene.add.text(width / 2, 70, heartsText, {
-            fontSize: '36px',
-            fontFamily: 'Arial'
-        }).setOrigin(0.5);
-        this.uiElements.push(this.heartsDisplay);
-
-        // Create drop zones for tens and ones (at top)
+        this.createHearts(scene, { max: this.config.maxErrors, remaining: this.errorsRemaining, y: HEARTS_Y });
         this.createDropZones(scene);
-
-        // Update drop zone visibility based on current number
         this.updateDropZoneVisibility();
-
-        // Create number matrix visualization between drop zones and digit boxes
         this.createNumberMatrix(scene);
-
-        // Create speaker button to replay audio
-        this.createSpeakerButton(scene);
-
-        // Create draggable digit boxes (0-9) at bottom
+        this.createSpeakerButton(scene, width / 2 + 140, height / 2 + 20, () => this.playNumberAudio(scene), { fontSize: '48px' });
         this.createDigitBoxes(scene);
 
-        // Play audio for the current number
         this.playNumberAudio(scene);
     }
-
 
     createNumberMatrix(scene) {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
 
-        // Matrix positioned between drop zones and digit boxes
+        // Small 10x10 chart between the drop zones and the digit boxes
         const matrixX = width / 2;
-        const matrixY = height / 2 + 20; // Centered vertically between top zones and bottom digits
-        const cellSize = 18; // Much smaller
-        const cols = 10; // 10 columns (0-9 for ones digit)
-        const rows = 10; // 10 rows (0-9, 10-19, 20-29, ..., 80-89, 90-99)
-
+        const matrixY = height / 2 + 20;
+        const cellSize = 18;
+        const cols = 10;
+        const rows = 10;
         const matrixWidth = cols * cellSize;
         const matrixHeight = rows * cellSize;
 
-        // Background for matrix - make it interactive
-        const matrixBg = scene.add.rectangle(matrixX, matrixY, matrixWidth + 12, matrixHeight + 12, 0x000000, 0.7);
+        const matrixBg = scene.add.rectangle(matrixX, matrixY, matrixWidth + 12, matrixHeight + 12, COLORS.OUTLINE, 0.7);
         matrixBg.setOrigin(0.5);
         matrixBg.setInteractive({ useHandCursor: true });
-        matrixBg.on('pointerdown', () => {
-            this.showMatrixPopup();
-        });
+        matrixBg.on('pointerdown', () => this.showMatrixPopup());
         this.uiElements.push(matrixBg);
 
         this.numberMatrix = [];
-
-        // Create grid of number cells (0-99)
         for (let row = 0; row < rows; row++) {
             for (let col = 0; col < cols; col++) {
-                const number = row * 10 + col; // 0-99
-
-                // Only show numbers 0-99
-                if (number > 99) continue;
-
+                const number = row * 10 + col;
                 const x = matrixX - matrixWidth / 2 + col * cellSize + cellSize / 2;
                 const y = matrixY - matrixHeight / 2 + row * cellSize + cellSize / 2;
 
-                // Cell background - color based on status
                 const isCleared = this.clearedNumbers.has(number);
                 const isActive = this.activeNumbers.has(number);
-
-                let cellColor;
-                let cellAlpha;
+                let cellColor, cellAlpha;
                 if (isCleared) {
-                    cellColor = 0x27AE60; // Green for cleared
-                    cellAlpha = 0.9;
+                    cellColor = COLORS.CORRECT; cellAlpha = 0.9;
                 } else if (isActive) {
-                    cellColor = 0x555555; // Gray for active but not cleared
-                    cellAlpha = 0.9;
+                    cellColor = 0x555555; cellAlpha = 0.9;
                 } else {
-                    cellColor = 0x0d0d0d; // Very dark for inactive
-                    cellAlpha = 0.35; // More transparent
+                    cellColor = 0x0d0d0d; cellAlpha = 0.35;
                 }
 
                 const cell = scene.add.rectangle(x, y, cellSize - 3, cellSize - 3, cellColor, cellAlpha);
                 cell.setInteractive({ useHandCursor: true });
-                cell.on('pointerdown', () => {
-                    this.showMatrixPopup();
-                });
+                cell.on('pointerdown', () => this.showMatrixPopup());
                 this.uiElements.push(cell);
-
                 this.numberMatrix.push({ number, cell, isActive });
             }
         }
@@ -241,128 +153,83 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
             this.clearedNumbers,
             this.numbersRange.min,
             this.numbersRange.max,
-            'Progress: Numbers 0-99',
+            undefined,
             this.activeNumbers
         );
     }
 
     updateNumberMatrix(clearedNumber) {
-        const entry = this.numberMatrix.find(e => e.number === clearedNumber);
-        if (entry) {
-            entry.cell.setFillStyle(0x27AE60, 0.9);
-        }
-    }
-
-    createSpeakerButton(scene) {
-        const width = scene.cameras.main.width;
-        const height = scene.cameras.main.height;
-
-        // Speaker button to replay audio - positioned next to matrix
-        const speakerX = width / 2 + 140;
-        const speakerY = height / 2 + 20;
-
-        this.speakerButton = scene.add.text(speakerX, speakerY, '🔊', {
-            fontSize: '48px',
-            fontFamily: 'Arial'
-        }).setOrigin(0.5);
-        this.speakerButton.setInteractive({ useHandCursor: true });
-        this.speakerButton.on('pointerdown', () => {
-            this.playNumberAudio(scene);
-        });
-        this.uiElements.push(this.speakerButton);
+        const entry = this.numberMatrix && this.numberMatrix.find(e => e.number === clearedNumber);
+        if (entry) entry.cell.setFillStyle(COLORS.CORRECT, 0.9);
     }
 
     createDropZones(scene) {
-        const width = scene.cameras.main.width;
-        const height = scene.cameras.main.height;
+        const centerX = scene.cameras.main.width / 2;
+        const makeZone = (x, place) => {
+            const zone = scene.add.rectangle(x, DROP_ZONE_Y, DROP_ZONE_SIZE, DROP_ZONE_SIZE, COLORS.NEUTRAL_FILL, DROP_ZONE_ALPHA);
+            zone.setStrokeStyle(4, COLORS.NEUTRAL_FILL, 1);
+            zone.setData('digit', place);
+            zone.setData('value', null);
+            zone.setData('originalAlpha', DROP_ZONE_ALPHA);
+            this.uiElements.push(zone);
 
-        const zoneWidth = 120;
-        const zoneHeight = 120;
-        const spacing = 40;
-        const centerX = width / 2;
-        const centerY = 200; // Move to top area
+            const label = scene.add.text(x, DROP_ZONE_Y, '', {
+                fontSize: '72px',
+                fontFamily: 'Arial',
+                color: '#FFFFFF',
+                fontStyle: 'bold'
+            }).setOrigin(0.5);
+            zone.setData('label', label);
+            this.uiElements.push(label);
+            return zone;
+        };
 
-        // Tens zone (left)
-        const tensX = centerX - zoneWidth / 2 - spacing / 2;
-        this.tensZone = scene.add.rectangle(tensX, centerY, zoneWidth, zoneHeight, 0xFFFFFF, 0.2);
-        this.tensZone.setStrokeStyle(4, 0xFFFFFF, 1);
-        this.tensZone.setData('digit', 'tens');
-        this.tensZone.setData('value', null);
-        this.uiElements.push(this.tensZone);
+        this.tensZone = makeZone(centerX - DROP_ZONE_SIZE / 2 - DROP_ZONE_SPACING / 2, 'tens');
+        this.onesZone = makeZone(centerX + DROP_ZONE_SIZE / 2 + DROP_ZONE_SPACING / 2, 'ones');
+    }
 
-        // Tens zone label
-        const tensLabel = scene.add.text(tensX, centerY, '', {
-            fontSize: '72px',
-            fontFamily: 'Arial',
-            color: '#FFFFFF',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-        this.tensZone.setData('label', tensLabel);
-        this.uiElements.push(tensLabel);
+    getZones() {
+        return [this.tensZone, this.onesZone].filter(Boolean);
+    }
 
-        // Ones zone (right)
-        const onesX = centerX + zoneWidth / 2 + spacing / 2;
-        this.onesZone = scene.add.rectangle(onesX, centerY, zoneWidth, zoneHeight, 0xFFFFFF, 0.2);
-        this.onesZone.setStrokeStyle(4, 0xFFFFFF, 1);
-        this.onesZone.setData('digit', 'ones');
-        this.onesZone.setData('value', null);
-        this.uiElements.push(this.onesZone);
-
-        // Ones zone label
-        const onesLabel = scene.add.text(onesX, centerY, '', {
-            fontSize: '72px',
-            fontFamily: 'Arial',
-            color: '#FFFFFF',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-        this.onesZone.setData('label', onesLabel);
-        this.uiElements.push(onesLabel);
+    isSingleDigit() {
+        return this.currentNumber < 10;
     }
 
     updateDropZoneVisibility() {
         // For single-digit numbers (0-9), hide the tens zone
-        const isSingleDigit = this.currentNumber < 10;
-
-        if (isSingleDigit) {
-            this.tensZone.setVisible(false);
-            this.tensZone.getData('label').setVisible(false);
-            this.onesZone.setVisible(true);
-            this.onesZone.getData('label').setVisible(true);
-        } else {
-            this.tensZone.setVisible(true);
-            this.tensZone.getData('label').setVisible(true);
-            this.onesZone.setVisible(true);
-            this.onesZone.getData('label').setVisible(true);
-        }
+        const showTens = !this.isSingleDigit();
+        this.tensZone.setVisible(showTens);
+        this.tensZone.getData('label').setVisible(showTens);
+        this.onesZone.setVisible(true);
+        this.onesZone.getData('label').setVisible(true);
     }
 
     createDigitBoxes(scene) {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
-
         const boxSize = 80;
         const spacing = 20;
         const cols = 5;
-        const startY = height - 160; // Keep at bottom
+        const startY = height - 160;
 
-        for (let i = 0; i <= 9; i++) {
-            const row = Math.floor(i / cols);
-            const col = i % cols;
+        this.digitBoxes = [];
+        for (let digit = 0; digit <= 9; digit++) {
+            const row = Math.floor(digit / cols);
+            const col = digit % cols;
             const x = width / 2 - (cols * (boxSize + spacing)) / 2 + col * (boxSize + spacing) + boxSize / 2;
             const y = startY + row * (boxSize + spacing);
 
-            // Box background
-            const box = scene.add.rectangle(x, y, boxSize, boxSize, 0x3498DB, 0.8);
-            box.setStrokeStyle(3, 0xFFFFFF);
+            const box = scene.add.rectangle(x, y, boxSize, boxSize, COLORS.NEUTRAL_STROKE, 0.8);
+            box.setStrokeStyle(3, COLORS.NEUTRAL_FILL);
             box.setInteractive({ useHandCursor: true, draggable: true });
-            box.setData('digit', i);
+            box.setData('digit', digit);
             box.setData('startX', x);
             box.setData('startY', y);
             this.digitBoxes.push(box);
             this.uiElements.push(box);
 
-            // Digit text
-            const digitText = scene.add.text(x, y, i.toString(), {
+            const digitText = scene.add.text(x, y, digit.toString(), {
                 fontSize: '48px',
                 fontFamily: 'Arial',
                 color: '#FFFFFF',
@@ -371,143 +238,76 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
             box.setData('text', digitText);
             this.uiElements.push(digitText);
 
-            // Drag events
             box.on('drag', (pointer, dragX, dragY) => {
-                if (this.isRevealing) return; // Frozen while feedback is shown
+                if (this.isInputBlocked()) return; // Frozen while feedback is shown
                 box.x = dragX;
                 box.y = dragY;
                 digitText.x = dragX;
                 digitText.y = dragY;
-
-                // Highlight drop zones on hover
-                this.checkHoverOverZones(scene, pointer);
+                updateZoneHover(this.getZones(), pointer);
             });
 
-            box.on('dragend', (pointer) => {
-                this.handleDrop(scene, box, pointer);
-            });
+            box.on('dragend', (pointer) => this.handleDrop(scene, box, pointer));
         }
 
         scene.input.setDraggable(this.digitBoxes);
     }
 
-    checkHoverOverZones(scene, pointer) {
-        const zones = [this.tensZone, this.onesZone];
-        zones.forEach(zone => {
-            const bounds = zone.getBounds();
-            if (Phaser.Geom.Rectangle.Contains(bounds, pointer.x, pointer.y)) {
-                zone.setFillStyle(0xFFD700, 0.5);
-            } else {
-                zone.setFillStyle(0xFFFFFF, 0.2);
-            }
-        });
-    }
-
     handleDrop(scene, box, pointer) {
-        if (this.isRevealing) return;
+        if (this.isInputBlocked()) return;
 
         const digit = box.getData('digit');
-        const text = box.getData('text');
-        const isSingleDigit = this.currentNumber < 10;
 
-        // Check if dropped on tens zone (only if visible for 2-digit numbers)
-        if (!isSingleDigit && this.tensZone.visible) {
-            const tensBounds = this.tensZone.getBounds();
-            if (Phaser.Geom.Rectangle.Contains(tensBounds, pointer.x, pointer.y)) {
-                this.tensZone.setData('value', digit);
-                const label = this.tensZone.getData('label');
-                label.setText(digit.toString());
-                this.tensZone.setFillStyle(0xFFFFFF, 0.2);
-            }
+        // updateZoneHover both finds the zone under the pointer and clears the
+        // hover highlight from the others. The hidden tens zone never accepts.
+        const zone = updateZoneHover(this.getZones(), pointer);
+        if (zone && !(zone === this.tensZone && this.isSingleDigit())) {
+            zone.setData('value', digit);
+            zone.getData('label').setText(digit.toString());
         }
+        this.getZones().forEach(z => z.setFillStyle(COLORS.NEUTRAL_FILL, DROP_ZONE_ALPHA));
 
-        // Check if dropped on ones zone
-        const onesBounds = this.onesZone.getBounds();
-        if (Phaser.Geom.Rectangle.Contains(onesBounds, pointer.x, pointer.y)) {
-            this.onesZone.setData('value', digit);
-            const label = this.onesZone.getData('label');
-            label.setText(digit.toString());
-            this.onesZone.setFillStyle(0xFFFFFF, 0.2);
-        }
-
-        // Always return digit box to start position (numbers are reusable)
+        // Boxes always snap home: digits are reusable
         this.addTween(scene, {
-            targets: [box, text],
+            targets: [box, box.getData('text')],
             x: box.getData('startX'),
             y: box.getData('startY'),
             duration: 200,
             ease: 'Back.easeOut'
         });
 
-        // Reset zone highlights
-        this.tensZone.setFillStyle(0xFFFFFF, 0.2);
-        this.onesZone.setFillStyle(0xFFFFFF, 0.2);
-
-        // Check if answer is complete
-        if (isSingleDigit) {
-            // For single-digit, only need ones zone
-            const onesValue = this.onesZone.getData('value');
-            if (onesValue !== null) {
-                this.checkAnswer(scene);
-            }
-        } else {
-            // For double-digit, need both zones
-            const tensValue = this.tensZone.getData('value');
-            const onesValue = this.onesZone.getData('value');
-            if (tensValue !== null && onesValue !== null) {
-                this.checkAnswer(scene);
-            }
-        }
+        const onesValue = this.onesZone.getData('value');
+        const tensValue = this.tensZone.getData('value');
+        const complete = this.isSingleDigit() ? onesValue !== null : (tensValue !== null && onesValue !== null);
+        if (complete) this.checkAnswer(scene);
     }
 
     checkAnswer(scene) {
-        if (this.isRevealing) return;
+        if (this.isInputBlocked()) return;
 
-        const isSingleDigit = this.currentNumber < 10;
-        let guessedNumber;
+        const onesValue = this.onesZone.getData('value');
+        const guessedNumber = this.isSingleDigit()
+            ? onesValue
+            : this.tensZone.getData('value') * 10 + onesValue;
 
-        if (isSingleDigit) {
-            // For single-digit numbers, only use ones zone
-            guessedNumber = this.onesZone.getData('value');
-        } else {
-            // For double-digit numbers, combine tens and ones
-            const tensValue = this.tensZone.getData('value');
-            const onesValue = this.onesZone.getData('value');
-            guessedNumber = tensValue * 10 + onesValue;
-        }
-
-        console.log(`Guessed: ${guessedNumber}, Correct: ${this.currentNumber}`);
-
-        if (guessedNumber === this.currentNumber) {
-            // Correct!
-            this.handleCorrectAnswer(scene);
-        } else {
-            // Wrong!
-            this.handleWrongAnswer(scene, guessedNumber);
-        }
+        if (guessedNumber === this.currentNumber) this.handleCorrectAnswer(scene);
+        else this.handleWrongAnswer(scene, guessedNumber);
     }
 
     handleCorrectAnswer(scene) {
         this.isRevealing = true;
         this.inputLocked = true;
 
-        // Add to cleared numbers
         this.clearedNumbers.add(this.currentNumber);
-
-        // Update matrix
         this.updateNumberMatrix(this.currentNumber);
-
-        // Visual feedback - green flash
-        this.tensZone.setFillStyle(0x27AE60, 0.6);
-        this.onesZone.setFillStyle(0x27AE60, 0.6);
+        this.getZones().forEach(zone => zone.setFillStyle(COLORS.CORRECT, 0.6));
 
         this.delayedCall(scene, 500, () => {
-            // Check if all numbers cleared
             if (this.clearedNumbers.size >= this.getTotalNumbers()) {
                 this.handleCompletion(scene);
             } else {
-                // Reset and continue
-                this.resetZones(scene);
+                // Reset and continue with the next number on the same board
+                this.resetZones();
                 this.generateChallenge();
                 this.updateDropZoneVisibility();
                 this.playNumberAudio(scene);
@@ -523,69 +323,71 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
 
         // Lose a heart
         this.errorsRemaining = Math.max(0, this.errorsRemaining - 1);
+        this.updateHearts(this.errorsRemaining);
 
-        // Update hearts display
-        const heartsText = '❤️'.repeat(Math.max(0, this.errorsRemaining)) + '🖤'.repeat(this.config.maxErrors - this.errorsRemaining);
-        if (this.heartsDisplay) {
-            this.heartsDisplay.setText(heartsText);
-        }
+        // The same number comes straight back (and once more later on)
+        this.queueRetry(this.currentNumber);
+        this.queueRetry(this.currentNumber, 2);
 
-        // Visual feedback - red flash
-        this.tensZone.setFillStyle(0xFF0000, 0.6);
-        this.onesZone.setFillStyle(0xFF0000, 0.6);
+        // Red shake, then the right digits in gold while the number is spoken.
+        // No coin streak in this mode, so the restart never resets one.
+        const zones = this.getZones();
+        zones.forEach((zone, index) => {
+            zone.setFillStyle(COLORS.WRONG, 0.6);
+            this.shakeWrong(scene, zone.getData('label'), { restore: false });
+            this.shakeWrong(scene, zone, {
+                restore: false,
+                onComplete: index === zones.length - 1 ? () => this.showCorrectAnswer(scene) : null
+            });
+        });
+    }
 
-        this.delayedCall(scene, 1000, () => {
-            // Check if out of hearts
-            if (this.errorsRemaining <= 0) {
-                this.handleGameOver(scene);
-            } else {
-                // Reset and try again with same number
-                this.resetZones(scene);
-                this.updateDropZoneVisibility();
-                this.playNumberAudio(scene);
-                this.isRevealing = false;
-                this.inputLocked = false;
+    showCorrectAnswer(scene) {
+        const { tens, ones } = this.challengeData;
+        const targets = [];
+        const reveal = (zone, value) => {
+            zone.setData('value', value);
+            zone.getData('label').setText(value.toString());
+            zone.getData('label').setColor('#FFD700');
+            targets.push(zone, zone.getData('label'));
+        };
+        if (!this.isSingleDigit()) reveal(this.tensZone, tens);
+        reveal(this.onesZone, ones);
+
+        this.revealAnswer(scene, {
+            targets,
+            disable: this.digitBoxes,
+            audioKey: `number_audio_${this.currentNumber}`,
+            delay: 1000,
+            resetStreak: false,
+            onDone: () => {
+                if (this.errorsRemaining <= 0) this.handleGameOver(scene);
+                else this.restartChallenge(scene, { resetStreak: false });
             }
         });
     }
 
-    resetZones(scene) {
-        // Clear zone data and labels
-        this.tensZone.setData('value', null);
-        this.onesZone.setData('value', null);
-        this.tensZone.getData('label').setText('');
-        this.onesZone.getData('label').setText('');
-        this.tensZone.setFillStyle(0xFFFFFF, 0.2);
-        this.onesZone.setFillStyle(0xFFFFFF, 0.2);
+    resetZones() {
+        this.getZones().forEach(zone => {
+            zone.setData('value', null);
+            zone.getData('label').setText('');
+            zone.getData('label').setColor('#FFFFFF');
+            zone.setFillStyle(COLORS.NEUTRAL_FILL, DROP_ZONE_ALPHA);
+        });
     }
 
     playNumberAudio(scene) {
-        // Stop and destroy any currently playing audio
-        if (this.currentAudio) {
-            if (this.currentAudio.isPlaying) {
-                this.currentAudio.stop();
-            }
-            this.currentAudio.destroy();
-            this.currentAudio = null;
-        }
-
-        const audioKey = `number_audio_${this.currentNumber}`;
-        if (scene.cache.audio.exists(audioKey)) {
-            this.currentAudio = scene.sound.add(audioKey);
-            this.currentAudio.play();
-        } else {
-            console.warn(`Audio not found for number: ${this.currentNumber}`);
-        }
+        this.playAudio(scene, `number_audio_${this.currentNumber}`);
     }
 
     async handleGameOver(scene) {
         console.log('💔 Game Over - All hearts lost!');
 
-        // Clean up current UI
         this.cleanup(scene);
 
         // Reset state for next time
         this.clearedNumbers.clear();
+        this.retryQueue = [];
         this.errorsRemaining = this.config.maxErrors;
 
         // This game is finished — forget it so a reload doesn't resume it.
@@ -597,18 +399,16 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
         scene.challengeCount++;
         await scene.selectGameMode();
 
-        // Set up callback for new mode
         scene.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
             scene.handleAnswer(isCorrect, answer, x, y);
         });
 
-        // Show dice animation for next mode
         const forcedMode = scene.registry.get('pokeballGameMode');
         if (!forcedMode) {
             saveActiveMinigame(scene.gameMode.constructor.name);
             scene.showDiceRollAnimation();
         } else {
-            // If in debug mode for legendary only, go back to main scene
+            // In forced debug mode there is no next mode: back to the main scene
             scene.scene.start('MainGameScene');
         }
     }
@@ -616,30 +416,16 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
     handleCompletion(scene) {
         console.log(`🎁 Legendary Numbers complete! Reward: ${this.config.coinReward} coins`);
 
-        // Return to main game - let the standard coin reward animation handle it
-        const x = scene.cameras.main.width / 2;
-        const y = scene.cameras.main.height / 2;
-        this.finish(true, 'legendary-numbers-complete', x, y);
+        // Return to main game - the standard reward animation handles it
+        this.finish(true, 'legendary-numbers-complete', scene.cameras.main.width / 2, scene.cameras.main.height / 2);
     }
 
     cleanup(scene) {
-        if (this.currentAudio) {
-            if (this.currentAudio.isPlaying) {
-                this.currentAudio.stop();
-            }
-            this.currentAudio.destroy();
-            this.currentAudio = null;
-        }
-
         super.cleanup(scene);
-
         this.digitBoxes = [];
         this.tensZone = null;
         this.onesZone = null;
         this.numberMatrix = null;
-        this.speakerButton = null;
-        this.heartsDisplay = null;
-        this.isRevealing = false;
     }
 }
 
@@ -651,7 +437,6 @@ if (typeof window !== 'undefined') {
             const scenes = window.phaserGame.scene.getScenes(true);
             const pokeballScene = scenes.find(s => s.scene.key === 'PokeballGameScene');
             if (pokeballScene && pokeballScene.gameMode && pokeballScene.gameMode.constructor.name === 'LegendaryNumbersMode') {
-                // Complete all numbers instantly
                 for (let i = pokeballScene.gameMode.numbersRange.min; i <= pokeballScene.gameMode.numbersRange.max; i++) {
                     pokeballScene.gameMode.clearedNumbers.add(i);
                 }

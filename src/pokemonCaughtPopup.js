@@ -58,7 +58,8 @@ export function showPokemonCaughtPopup(pokemonId, callback) {
     }
 
     // Populate stats
-    stats.textContent = `Height: ${pokemonData.height / 10}m  |  Weight: ${pokemonData.weight / 10}kg`;
+    // Numbers are learning content; the labels are icons so a non-reader gets it
+    stats.textContent = `📏 ${pokemonData.height / 10} m    ⚖️ ${pokemonData.weight / 10} kg`;
 
     // Show popup
     popup.style.display = 'flex';

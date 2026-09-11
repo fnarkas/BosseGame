@@ -39,7 +39,7 @@ describe('VowelSoundsMode', () => {
             expect(mode.requiredCorrect).toBe(2);
             expect(mode.stage).toBe(STAGE_LETTERS);
             expect(mode.showListenHelp).toBe(false);
-            expect(mode.ballIndicators).toHaveLength(2);
+            expect(mode.progressBalls.circles).toHaveLength(2);
             expect(listenBadges(scene)).toHaveLength(0);
         });
 
@@ -149,7 +149,7 @@ describe('VowelSoundsMode', () => {
                 expect(mode.roundType).toBe(ROUND_SOUND);
                 scene.click(correctCard(mode));
                 expect(mode.correctCount).toBe(i + 1);
-                expect(mode.ballIndicators[i].fillColor).toBe(0x27AE60);
+                expect(mode.progressBalls.circles[i].fillColor).toBe(0x27AE60);
                 scene.advance(NEXT_QUESTION_MS);
             }
             expect(calls).toHaveLength(1);
@@ -172,21 +172,41 @@ describe('VowelSoundsMode', () => {
             else expect(letter.scaleX).toBeLessThan(1);
         });
 
-        it('wrong answer: keeps progress, resets the streak, lights the right card and moves on', () => {
+        it('wrong answer: keeps progress, resets the streak, lights the right card and re-asks it', () => {
             incrementStreak();
+            const missed = vowelKey(mode);
             scene.click(wrongCard(mode));
-            expect(getStreak()).toBe(0);
             expect(mode.correctCount).toBe(0);
             expect(Object.keys(getGameModeMistakes('VowelSoundsMode'))).toHaveLength(1);
             scene.advance(450); // shake finished, reveal started
             expect(correctCard(mode).fillColor).toBe(0x27AE60);
-            expect(scene.lastAudio()).toBe(vowelKey(mode));
+            expect(scene.lastAudio()).toBe(missed);
             scene.advance(NEXT_QUESTION_MS);
+            expect(getStreak()).toBe(0);
             expect(calls).toHaveLength(0);
             expect(mode.isRevealing).toBe(false);
             expect(cards(mode)).toHaveLength(2);
             cards(mode).forEach(c => expect(c.input.enabled).toBe(true));
             expect(scene._useAfterDestroy).toEqual([]);
+            // The missed sound is asked again straight away ...
+            expect(vowelKey(mode)).toBe(missed);
+            scene.click(correctCard(mode));
+            scene.advance(NEXT_QUESTION_MS);
+            scene.click(correctCard(mode));
+            scene.advance(NEXT_QUESTION_MS);
+            // ... and once more two questions later
+            expect(vowelKey(mode)).toBe(missed);
+        });
+
+        it('shows no status or instruction text', () => {
+            const check = () => scene.liveTexts().forEach(t => {
+                expect(/[a-zåäö]{3,} [a-zåäö]/i.test(t.text), t.text).toBe(false);
+                expect(t.text.length).toBeLessThanOrEqual(2);
+            });
+            check();
+            scene.click(wrongCard(mode));
+            scene.advance(450);
+            check();
         });
 
         it('lockout: double taps and taps during a wrong reveal are ignored', () => {
@@ -256,19 +276,24 @@ describe('VowelSoundsMode', () => {
             expect(scene._useAfterDestroy).toEqual([]);
         });
 
-        it('wrong answer: reveals the word, keeps progress, resets the streak', () => {
+        it('wrong answer: reveals and speaks the word plus its vowel, keeps progress, resets the streak, re-asks', () => {
             incrementStreak();
             const { target } = mode.challengeData;
+            const missed = vowelKey(mode);
             scene.click(wrongCard(mode));
-            expect(getStreak()).toBe(0);
             scene.advance(450);
             expect(mode.letterObjects.map(l => l.text.text).join('')).toBe(target.toUpperCase());
             expect(scene.lastAudio()).toBe(`word_audio_${target}`);
+            scene.advance(600);
+            expect(scene.lastAudio()).toBe(missed);
             scene.advance(NEXT_QUESTION_MS);
+            expect(getStreak()).toBe(0);
             expect(mode.correctCount).toBe(0);
             expect(calls).toHaveLength(0);
             expect(cards(mode)).toHaveLength(2);
+            expect(mode.challengeData.target).toBe(target);
             expect(scene._useAfterDestroy).toEqual([]);
+            expect(scene._missingAudio).toEqual([]);
         });
 
         it('cleanup during the word reveal leaves nothing behind', () => {

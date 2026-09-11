@@ -2,6 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 import { beforeEach, vi } from 'vitest';
+import { invalidateMinigameConfig } from '../../src/minigameConfig.js';
 
 const PUBLIC_DIR = path.resolve(__dirname, '../../public');
 
@@ -22,6 +23,8 @@ globalThis.localStorage = new MemoryStorage();
 let configOverride = null;
 export function setTestConfig(partial) {
     configOverride = partial;
+    // The game memoises the config, so a new override must drop the cache.
+    invalidateMinigameConfig();
 }
 export function readDefaultConfig() {
     return JSON.parse(fs.readFileSync(path.join(PUBLIC_DIR, 'config/minigames.json'), 'utf8'));
@@ -70,3 +73,6 @@ beforeEach(() => {
     localStorage.clear();
     configOverride = null;
 });
+
+// The game memoises the config; tests override it per case, so forget it.
+beforeEach(() => invalidateMinigameConfig());

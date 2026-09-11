@@ -17,3 +17,15 @@ model of the Phaser scene API they use:
 - `setTestConfig({...})` – override sections of `public/config/minigames.json`.
 
 `test/assets.test.js` checks that every asset BootScene loads exists on disk.
+
+Also modelled:
+
+- `scene.load` – `image()/audio()` queue keys; `start()` marks them loaded and
+  fires `complete` synchronously, so `ensureAssets()` (src/lazyLoad.js) resolves
+  on the next microtask. `scene.loadedAssets` lists what was requested.
+- `scene.events` emits `shutdown` when `scene.scene.start()/restart()` is called,
+  before the display list is destroyed, like Phaser.
+- Every lazily-loaded key (Pokemon artwork/names, per-mode audio packs from
+  `src/assetManifest.js`) is treated as already in the cache, so modes can be
+  tested without a loader round-trip. `test/assets.test.js` and
+  `test/lazyLoad.test.js` check the files exist on disk.

@@ -1,8 +1,7 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { getEmojiWordDictionary, getLetterFilterEnabled, transformWordCase } from '../emojiWordDictionary.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
-import { resetStreak } from '../streak.js';
-import { updateBoosterBar } from '../boosterBar.js';
+import { COLORS, TEXT, wireButtonHover } from './uiKit.js';
 
 /**
  * Emoji-Word matching game mode (inverse of WordEmojiMatchMode)
@@ -13,14 +12,18 @@ export class EmojiWordMatchMode extends BasePokeballGameMode {
         super();
         this.usedChallengeIds = new Set();
         this.hasError = false; // Track if player made an error
-        this.isRevealing = false; // Track if we're showing the answer
         this.wordButtons = []; // Store button references
         this.currentLetter = null; // Track current letter for filtering
     }
 
-    generateChallenge() {
-        const dictionary = getEmojiWordDictionary();
-        const letterFilterEnabled = getLetterFilterEnabled();
+    pickChallenge(dictionary, letterFilterEnabled) {
+        // A word the child just missed comes straight back
+        const retry = this.takeRetry();
+        const retried = retry ? dictionary.find(item => item.id === retry.id) : null;
+        if (retried) {
+            if (letterFilterEnabled) this.currentLetter = retried.letter;
+            return retried;
+        }
 
         let availableChallenges;
 
@@ -58,7 +61,7 @@ export class EmojiWordMatchMode extends BasePokeballGameMode {
             if (availableChallenges.length === 0) {
                 this.usedChallengeIds.clear();
                 this.currentLetter = null;
-                return this.generateChallenge();
+                return this.pickChallenge(dictionary, letterFilterEnabled);
             }
         } else {
             // Normal mode: any word
@@ -69,12 +72,18 @@ export class EmojiWordMatchMode extends BasePokeballGameMode {
             // If all challenges used, reset
             if (availableChallenges.length === 0) {
                 this.usedChallengeIds.clear();
-                return this.generateChallenge();
+                return this.pickChallenge(dictionary, letterFilterEnabled);
             }
         }
 
-        // Pick random challenge
-        const challenge = Phaser.Utils.Array.GetRandom(availableChallenges);
+        return Phaser.Utils.Array.GetRandom(availableChallenges);
+    }
+
+    generateChallenge() {
+        const dictionary = getEmojiWordDictionary();
+        const letterFilterEnabled = getLetterFilterEnabled();
+
+        const challenge = this.pickChallenge(dictionary, letterFilterEnabled);
         this.usedChallengeIds.add(challenge.id);
 
         // Pick 4 random other words as distractors. Several words share an
@@ -99,6 +108,7 @@ export class EmojiWordMatchMode extends BasePokeballGameMode {
         const shuffledWords = Phaser.Utils.Array.Shuffle([...allWords]);
 
         this.challengeData = {
+            id: challenge.id,
             emoji: challenge.emoji,
             correctWord: challenge.word,
             words: shuffledWords
@@ -109,7 +119,6 @@ export class EmojiWordMatchMode extends BasePokeballGameMode {
 
     async createChallengeUI(scene) {
         const width = scene.cameras.main.width;
-        const height = scene.cameras.main.height;
 
         // A fresh challenge always starts accepting input again.
         this.inputLocked = false;
@@ -119,15 +128,17 @@ export class EmojiWordMatchMode extends BasePokeballGameMode {
         const emojiText = scene.add.text(width / 2, 200, this.challengeData.emoji, {
             font: '144px Arial'
         }).setOrigin(0.5);
-        emojiText.setData('clearOnNewChallenge', true);
         this.uiElements.push(emojiText);
+
+        // Speaker next to the emoji: says the word the child is looking for,
+        // so the sound of the word can be matched to its spelling.
+        this.createSpeakerButton(scene, width / 2 + 170, 200, () => this.playWordAudio(scene));
 
         // Create word buttons in a grid layout
         const buttonWidth = 280;
         const buttonHeight = 80;
         const spacing = 20;
         const wordsPerRow = 3;
-        const rows = Math.ceil(this.challengeData.words.length / wordsPerRow);
 
         // Pre-fetch all transformed words
         const transformedWords = await Promise.all(
@@ -147,10 +158,9 @@ export class EmojiWordMatchMode extends BasePokeballGameMode {
             const y = 380 + row * (buttonHeight + spacing);
 
             // Background button
-            const button = scene.add.rectangle(x, y, buttonWidth, buttonHeight, 0xFFFFFF);
-            button.setStrokeStyle(4, 0x3498DB);
+            const button = scene.add.rectangle(x, y, buttonWidth, buttonHeight, COLORS.NEUTRAL_FILL);
+            button.setStrokeStyle(4, COLORS.NEUTRAL_STROKE);
             button.setInteractive({ useHandCursor: true });
-            button.setData('clearOnNewChallenge', true);
             button.setData('word', word);
             this.uiElements.push(button);
 
@@ -158,33 +168,19 @@ export class EmojiWordMatchMode extends BasePokeballGameMode {
             const displayWord = transformedWords[index];
             const wordText = scene.add.text(x, y, displayWord, {
                 font: 'bold 36px Arial',
-                fill: '#2C3E50'
+                fill: COLORS.TEXT_DARK
             }).setOrigin(0.5);
-            wordText.setData('clearOnNewChallenge', true);
             this.uiElements.push(wordText);
 
             // Store button reference (keep original word for answer checking)
             this.wordButtons.push({ button, wordText, word, x, y });
 
-            // Hover effects
-            button.on('pointerover', () => {
-                if (!this.isRevealing) {
-                    button.setFillStyle(0xECF0F1);
-                    button.setStrokeStyle(6, 0x2980B9);
-                }
-            });
-
-            button.on('pointerout', () => {
-                if (!this.isRevealing) {
-                    button.setFillStyle(0xFFFFFF);
-                    button.setStrokeStyle(4, 0x3498DB);
-                }
-            });
+            wireButtonHover(button, () => this.isInputBlocked());
 
             // Click handler
             button.on('pointerdown', () => {
                 // Ignore taps during the reveal and while an answer is being resolved
-                if (this.isRevealing || this.inputLocked) return;
+                if (this.isInputBlocked()) return;
                 this.inputLocked = true;
 
                 const isCorrect = this.checkAnswer(word);
@@ -198,6 +194,14 @@ export class EmojiWordMatchMode extends BasePokeballGameMode {
                 }
             });
         });
+    }
+
+    wordAudioKey() {
+        return `word_audio_${this.challengeData.correctWord.toLowerCase()}`;
+    }
+
+    playWordAudio(scene) {
+        this.playAudio(scene, this.wordAudioKey());
     }
 
     checkAnswer(selectedWord) {
@@ -214,92 +218,25 @@ export class EmojiWordMatchMode extends BasePokeballGameMode {
             { emoji: this.challengeData.emoji }
         );
 
-        // Red flash on the wrong button
-        wrongButton.setFillStyle(0xFF0000, 0.5); // Red fill
-        wrongButton.setStrokeStyle(6, 0xFF0000); // Red border
-
-        // Shake animation
-        const originalX = wrongButton.x;
-        this.addTween(scene, {
-            targets: wrongButton,
-            x: originalX - 10,
-            duration: 50,
-            yoyo: true,
-            repeat: 3,
-            onComplete: () => {
-                // Reset button appearance
-                wrongButton.setFillStyle(0xFFFFFF);
-                wrongButton.setStrokeStyle(4, 0x3498DB);
-                wrongButton.x = originalX;
-
-                // ONE ERROR = GAME OVER
-                // Highlight the correct answer
-                this.hasError = true;
-                this.highlightCorrectAnswer(scene);
-            }
+        // Red shake on the wrong button, then ONE ERROR = GAME OVER:
+        // highlight the correct word and say it.
+        this.shakeWrong(scene, wrongButton, {
+            onComplete: () => this.highlightCorrectAnswer(scene)
         });
     }
 
     highlightCorrectAnswer(scene) {
-        this.isRevealing = true;
+        const { id, correctWord } = this.challengeData;
+        const correctButton = this.wordButtons.find(item => item.word === correctWord);
 
-        // Disable all buttons
-        this.wordButtons.forEach(item => {
-            item.button.disableInteractive();
-        });
+        // Ask the missed word again right away, and once more a bit later
+        this.queueRetry({ id }, 0);
+        this.queueRetry({ id }, 2);
 
-        // Find the correct button
-        const correctButton = this.wordButtons.find(item =>
-            item.word === this.challengeData.correctWord
-        );
-
-        if (!correctButton) return;
-
-        // Change to gold/attention-grabbing color
-        correctButton.button.setFillStyle(0xFFD700, 0.5); // Gold fill
-        correctButton.button.setStrokeStyle(6, 0xFFD700); // Thick gold border
-
-        // Pulsing scale animation
-        this.addTween(scene, {
-            targets: [correctButton.button, correctButton.wordText],
-            scaleX: 1.2,
-            scaleY: 1.2,
-            duration: 500,
-            yoyo: true,
-            repeat: 3, // Pulse 4 times total (2 seconds)
-            ease: 'Sine.easeInOut'
-        });
-
-        // Pulsing alpha on button
-        this.addTween(scene, {
-            targets: correctButton.button,
-            alpha: 0.7,
-            duration: 500,
-            yoyo: true,
-            repeat: 3,
-            ease: 'Sine.easeInOut'
-        });
-
-        // After 2 seconds of pulsing, restart with new challenge
-        this.delayedCall(scene, 2000, () => {
-            // Clean up current UI
-            this.cleanup(scene);
-
-            // Reset state
-            this.hasError = false;
-            this.isRevealing = false;
-
-            // Reset streak since player made an error
-            resetStreak();
-
-            // Update booster bar visual immediately
-            if (scene.boosterBarElements) {
-                updateBoosterBar(scene.boosterBarElements, 0, scene);
-            }
-
-            // Generate new challenge
-            this.generateChallenge();
-            this.createChallengeUI(scene);
+        this.revealAnswer(scene, {
+            targets: correctButton ? [correctButton.button, correctButton.wordText] : [],
+            disable: this.wordButtons.map(item => item.button),
+            audioKey: this.wordAudioKey()
         });
     }
 

@@ -134,8 +134,8 @@ describe('NumberReadingMode', () => {
             expect(scene.findText(String(mode.currentNumber))).not.toBeNull();
             expect(scene.findText('🎤')).not.toBeNull();
             expect(mode.micButton.input.enabled).toBe(true);
-            expect(mode.micButton.fillColor).toBe(0xFF6B6B);
-            expect(mode.ballIndicators).toHaveLength(2);
+            expect(mode.micButton.fillColor).toBe(0x95A5A6);
+            expect(mode.progressBalls.circles).toHaveLength(2);
             expect(scene.findText('🎁')).not.toBeNull();
         });
 
@@ -158,9 +158,9 @@ describe('NumberReadingMode', () => {
             await setup();
             tapMic();
             expect(FakeRecognition.current.started).toBe(true);
-            expect(mode.micButton.fillColor).toBe(0x27AE60);
+            expect(mode.micButton.fillColor).toBe(0xE74C3C);
             FakeRecognition.current.stop();
-            expect(mode.micButton.fillColor).toBe(0xFF6B6B);
+            expect(mode.micButton.fillColor).toBe(0x95A5A6);
         });
     });
 
@@ -170,7 +170,7 @@ describe('NumberReadingMode', () => {
             tapMic();
             speak(String(mode.currentNumber));
             expect(mode.correctInRow).toBe(1);
-            expect(mode.ballIndicators[0].fillColor).toBe(0x27AE60);
+            expect(mode.progressBalls.circles[0].fillColor).toBe(0x27AE60);
             const first = mode.currentNumber;
             scene.advance(1000);
             await flush();
@@ -205,7 +205,7 @@ describe('NumberReadingMode', () => {
             expect(calls).toHaveLength(1);
         });
 
-        it('resets progress and streak on a wrong answer, then lets the child retry the same number', async () => {
+        it('resets progress and streak on a wrong answer, speaks the number, then asks the same number again', async () => {
             await setup({ required: 2, numbers: '23, 45' });
             incrementStreak();
             tapMic();
@@ -218,10 +218,9 @@ describe('NumberReadingMode', () => {
             tapMic();
             speak('hej');
             expect(mode.correctInRow).toBe(0);
-            expect(getStreak()).toBe(0);
             expect(mode.isRevealing).toBe(true);
             expect(mode.displayedNumber.style.color).toBe('#FF0000');
-            expect(mode.ballIndicators.every(b => b.fillColor === 0xffffff)).toBe(true);
+            expect(mode.progressBalls.circles.every(b => b.fillColor === 0xffffff)).toBe(true);
             const redFlash = mode.wrongBg;
             expect(redFlash.destroyed).toBe(false);
 
@@ -232,9 +231,17 @@ describe('NumberReadingMode', () => {
             speak(String(number));
             expect(mode.correctInRow).toBe(0);
 
-            scene.advance(1900);
+            // After the shake the number turns gold and is spoken aloud
+            scene.advance(400);
+            expect(mode.displayedNumber.style.color).toBe('#FFD700');
+            expect(scene.lastAudio()).toBe(`number_audio_${number}`);
+
+            // Then a fresh board with the same number, and the streak is reset
+            scene.advance(2000);
+            await flush();
             expect(mode.isRevealing).toBe(false);
             expect(mode.inputLocked).toBe(false);
+            expect(getStreak()).toBe(0);
             expect(mode.currentNumber).toBe(number);
             expect(mode.displayedNumber.style.color).toBe('#000000');
             expect(mode.displayedNumber.x).toBe(640);
@@ -250,6 +257,27 @@ describe('NumberReadingMode', () => {
             speak(String(mode.currentNumber));
             scene.advance(1000);
             expect(calls).toHaveLength(1);
+        });
+
+        it('re-asks a missed number immediately and once more two rounds later', async () => {
+            await setup({ required: 6, numbers: '23, 45' });
+            const missed = mode.currentNumber;
+            const other = missed === 23 ? 45 : 23;
+            tapMic();
+            speak('hej');
+            scene.advance(2500);
+            await flush();
+            expect(mode.currentNumber).toBe(missed);
+            tapMic();
+            speak(String(missed));
+            scene.advance(1000);
+            await flush();
+            expect(mode.currentNumber).toBe(other);
+            tapMic();
+            speak(String(other));
+            scene.advance(1000);
+            await flush();
+            expect(mode.currentNumber).toBe(missed);
         });
 
         it('records the wrong answer', async () => {

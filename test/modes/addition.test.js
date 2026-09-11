@@ -140,7 +140,7 @@ describe('AdditionMode', () => {
             mode.digitBoxes.forEach(d => expect(d.box.input.draggable).toBe(true));
             expect(mode.tensZone.getData('value')).toBeNull();
             expect(mode.onesZone.getData('value')).toBeNull();
-            expect(mode.ballIndicators).toHaveLength(3);
+            expect(mode.progressBalls.circles).toHaveLength(3);
             expect(scene.playedAudio()).toEqual([]);
         });
 
@@ -203,7 +203,7 @@ describe('AdditionMode', () => {
                     expect(scene.objectsCreatedAfter(start).length).toBeGreaterThan(0);
                     expect(mode.tensZone.getData('value')).toBeNull();
                     expect(mode.inputLocked).toBe(false);
-                    expect(mode.ballIndicators.filter(b => b.fillColor === 0x27AE60)).toHaveLength(i + 1);
+                    expect(mode.progressBalls.circles.filter(b => b.fillColor === 0x27AE60)).toHaveLength(i + 1);
                 }
             }
             expect(calls).toHaveLength(1);
@@ -254,7 +254,7 @@ describe('AdditionMode', () => {
     // ---------------- wrong answers ----------------
 
     describe('wrong answers', () => {
-        it('resets progress and the streak, reveals the answer, then starts a new problem', () => {
+        it('resets progress and the streak, reveals and speaks the answer, then asks the same problem again', () => {
             answer(correct());
             scene.advance(1000);
             expect(mode.correctInRow).toBe(1);
@@ -267,13 +267,15 @@ describe('AdditionMode', () => {
             expect(mode.isRevealing).toBe(true);
             expect(mode.correctInRow).toBe(0);
             expect(mode.tensZone.fillColor).toBe(0xFF0000);
-            expect(mode.ballIndicators.every(b => b.fillColor === 0xffffff)).toBe(true);
+            expect(mode.progressBalls.circles.every(b => b.fillColor === 0xffffff)).toBe(true);
+            expect(scene.playedAudio()).toEqual([]);
 
-            // After the shake, the correct digits are shown in gold
+            // After the shake, the correct digits are shown in gold and the sum is spoken
             scene.advance(500);
             expect(mode.tensZone.fillColor).toBe(0xFFD700);
             expect(mode.tensZone.getData('label').text).toBe(String(problem.tens));
             expect(mode.onesZone.getData('label').text).toBe(String(problem.ones));
+            expect(scene.playedAudio()).toEqual([`number_audio_${problem.correctAnswer}`]);
 
             // Drops during the reveal are ignored (use a digit box that is still
             // at home, i.e. not one of the two used for the wrong answer)
@@ -289,6 +291,7 @@ describe('AdditionMode', () => {
             expect(mode.isRevealing).toBe(false);
             expect(mode.inputLocked).toBe(false);
             expect(mode.challengeData).not.toBe(problem);
+            expect(mode.challengeData.terms).toEqual(problem.terms); // re-asked
             expect(getStreak()).toBe(0);
             expect(scene.boosterBarElements.multiplierText.text).toBe('x1');
             expect(scene.objectsCreatedAfter(start).length).toBeGreaterThan(0);
@@ -298,6 +301,20 @@ describe('AdditionMode', () => {
             // And the new problem is answerable
             answer(correct());
             expect(mode.correctInRow).toBe(1);
+        });
+
+        it('re-asks a missed problem immediately and once more two rounds later', () => {
+            mode.requiredCorrect = 10;
+            const missed = mode.challengeData.terms;
+            answer(wrongAnswer());
+            scene.advance(2500);
+            expect(mode.challengeData.terms).toEqual(missed);
+            answer(correct());
+            scene.advance(1000);
+            expect(mode.challengeData.terms).not.toEqual(missed);
+            answer(correct());
+            scene.advance(1000);
+            expect(mode.challengeData.terms).toEqual(missed);
         });
 
         it('tracks the mistake', () => {

@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
-import { resetStreak } from '../streak.js';
-import { updateBoosterBar } from '../boosterBar.js';
+import { COLORS } from './uiKit.js';
 
 /**
  * Shape Directions game mode
@@ -16,11 +15,7 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
         super();
         this.correctInRow = 0;
         this.requiredCorrect = 3;
-        this.ballIndicators = [];
         this.shapes = [];
-        this.currentAudio = null;
-        this.prefixAudio = null;
-        this.comboAudio = null;
 
         // Shape and color definitions
         this.shapeTypes = [
@@ -62,8 +57,9 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
         Phaser.Utils.Array.Shuffle(availableShapes);
         this.shapes = availableShapes.slice(0, numShapes);
 
-        // Pick a reference shape (not at edges in the requested direction)
-        const direction = Math.random() < 0.5 ? 'hoger' : 'vanster';
+        // A direction the child just got wrong is asked again; otherwise pick
+        // at random. The reference must not sit at the edge in that direction.
+        const direction = this.takeRetry() ?? (Math.random() < 0.5 ? 'hoger' : 'vanster');
         let referenceIndex;
 
         if (direction === 'hoger') {
@@ -96,32 +92,16 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
 
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
-        const height = scene.cameras.main.height;
 
         // A new question is answerable again
         this.inputLocked = false;
-
-        // Pre-create audio instances for instant playback
-        const { direction, referenceShape } = this.challengeData;
-        const prefixKey = `shapedir_prefix_${direction}`;
-        const comboKey = `shapedir_${referenceShape.colorId}_${referenceShape.shapeType}`;
-
-        this.prefixAudio = scene.sound.add(prefixKey);
-        this.comboAudio = scene.sound.add(comboKey);
+        this.isRevealing = false;
 
         // Speaker button to replay audio
-        const speakerBtn = scene.add.text(width / 2, 150, '🔊', {
-            font: '80px Arial',
-            padding: { y: 20 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        this.createSpeakerButton(scene, width / 2, 150, () => this.playQuestionAudio(scene));
 
-        speakerBtn.on('pointerdown', () => {
-            this.playQuestionAudio(scene);
-        });
-        this.uiElements.push(speakerBtn);
-
-        // Create ball indicators showing progress
-        this.createBallIndicators(scene);
+        // Progress balls showing how many in a row so far
+        this.createProgressBalls(scene, { total: this.requiredCorrect, completed: this.correctInRow, y: 250 });
 
         // Draw shapes in a row
         this.drawShapes(scene);
@@ -149,8 +129,8 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
             container.setData('index', index);
 
             // Background
-            const bg = scene.add.rectangle(0, 0, shapeSize, shapeSize, 0xFFFFFF, 0.3);
-            bg.setStrokeStyle(3, 0x000000);
+            const bg = scene.add.rectangle(0, 0, shapeSize, shapeSize, COLORS.NEUTRAL_FILL, 0.3);
+            bg.setStrokeStyle(3, COLORS.OUTLINE);
             container.add(bg);
 
             // Draw the shape
@@ -160,18 +140,18 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
             // Click handler
             container.on('pointerdown', () => {
                 // Ignore taps while an answer is being resolved / revealed
-                if (this.inputLocked) return;
+                if (this.isInputBlocked()) return;
                 this.inputLocked = true;
                 this.handleShapeClick(scene, index);
             });
 
             // Hover effect (must not overwrite the answer feedback colour)
             container.on('pointerover', () => {
-                if (!this.inputLocked) bg.setFillStyle(0xECF0F1, 0.5);
+                if (!this.isInputBlocked()) bg.setFillStyle(COLORS.HOVER_FILL, 0.5);
             });
 
             container.on('pointerout', () => {
-                if (!this.inputLocked) bg.setFillStyle(0xFFFFFF, 0.3);
+                if (!this.isInputBlocked()) bg.setFillStyle(COLORS.NEUTRAL_FILL, 0.3);
             });
 
             this.uiElements.push(container);
@@ -181,7 +161,7 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
     createShape(scene, shapeType, colorHex) {
         const graphics = scene.add.graphics();
         graphics.fillStyle(colorHex, 1);
-        graphics.lineStyle(3, 0x000000, 1);
+        graphics.lineStyle(3, COLORS.OUTLINE, 1);
 
         switch (shapeType) {
             case 'circle':
@@ -230,62 +210,22 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
         graphics.strokePath();
     }
 
-    createBallIndicators(scene) {
-        const width = scene.cameras.main.width;
-        const startX = width / 2 - ((this.requiredCorrect - 1) * 60) / 2;
-        const y = 250;
-        const spacing = 60;
-
-        this.ballIndicators = [];
-
-        for (let i = 0; i < this.requiredCorrect; i++) {
-            const x = startX + i * spacing;
-
-            const circle = scene.add.circle(x, y, 20,
-                i < this.correctInRow ? 0x27AE60 : 0xffffff, 1);
-            circle.setStrokeStyle(3, 0x000000);
-
-            this.ballIndicators.push(circle);
-            this.uiElements.push(circle);
-        }
-
-        // Gift emoji
-        const giftX = startX + this.requiredCorrect * spacing;
-        const giftEmoji = scene.add.text(giftX, y, '🎁', {
-            fontSize: '48px',
-            padding: { y: 10 }
-        }).setOrigin(0.5);
-        this.uiElements.push(giftEmoji);
-    }
-
-    updateBallIndicators() {
-        for (let i = 0; i < this.ballIndicators.length; i++) {
-            if (i < this.correctInRow) {
-                this.ballIndicators[i].setFillStyle(0x27AE60);
-            } else {
-                this.ballIndicators[i].setFillStyle(0xffffff);
-            }
-        }
+    // "Tryck på formen till höger om den" + "blåa cirkeln"
+    questionAudioKeys() {
+        const { direction, referenceShape } = this.challengeData;
+        return [
+            `shapedir_prefix_${direction}`,
+            `shapedir_${referenceShape.colorId}_${referenceShape.shapeType}`
+        ];
     }
 
     playQuestionAudio(scene) {
-        if (!this.prefixAudio || !this.comboAudio) return;
+        // A replay restarts the sequence, so the combo is never queued twice
+        this.playSequence(scene, this.questionAudioKeys());
+    }
 
-        // Stop any currently playing audio (both parts) and drop the chained
-        // listener from a previous replay so the combo isn't queued twice.
-        this.prefixAudio.removeAllListeners('complete');
-        this.prefixAudio.stop();
-        this.comboAudio.stop();
-
-        // Use pre-created audio instances for instant playback with zero delay
-        this.currentAudio = this.prefixAudio;
-        this.prefixAudio.play();
-
-        // When prefix finishes, immediately play the color-shape combo
-        this.prefixAudio.once('complete', () => {
-            this.currentAudio = this.comboAudio;
-            this.comboAudio.play();
-        });
+    containerAt(index) {
+        return this.uiElements.find(el => el.getData && el.getData('index') === index);
     }
 
     handleShapeClick(scene, clickedIndex) {
@@ -300,13 +240,12 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
 
     handleCorrectAnswer(scene, clickedIndex) {
         this.correctInRow++;
-        this.updateBallIndicators();
+        this.updateProgressBalls(this.correctInRow);
 
         // Highlight correct shape in green
-        const container = this.uiElements.find(el => el.getData && el.getData('index') === clickedIndex);
+        const container = this.containerAt(clickedIndex);
         if (container) {
-            const bg = container.list[0];
-            bg.setFillStyle(0x27AE60, 0.7);
+            container.list[0].setFillStyle(COLORS.CORRECT, 0.7);
         }
 
         // Check if won
@@ -328,72 +267,43 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
 
     handleWrongAnswer(scene, clickedIndex) {
         this.correctInRow = 0;
-        this.updateBallIndicators();
+        this.updateProgressBalls(0);
 
-        // Reset streak since player made an error
-        resetStreak();
-        if (scene.boosterBarElements) {
-            updateBoosterBar(scene.boosterBarElements, 0, scene);
-        }
-
-        // Highlight wrong shape in red
-        const wrongContainer = this.uiElements.find(el => el.getData && el.getData('index') === clickedIndex);
+        // Red shake on the wrong shape (the container has no fill, so paint
+        // its background ourselves)
+        const wrongContainer = this.containerAt(clickedIndex);
         if (wrongContainer) {
-            const bg = wrongContainer.list[0];
-            bg.setFillStyle(0xFF0000, 0.7);
-
-            // Shake animation
-            this.addTween(scene, {
-                targets: wrongContainer,
-                x: wrongContainer.x - 10,
-                duration: 50,
-                yoyo: true,
-                repeat: 3
-            });
+            wrongContainer.list[0].setFillStyle(COLORS.WRONG, 0.7);
         }
+        this.shakeWrong(scene, wrongContainer, {
+            restore: false,
+            onComplete: () => this.revealTarget(scene)
+        });
+    }
 
-        // Highlight correct shape in gold
-        const correctContainer = this.uiElements.find(el => el.getData && el.getData('index') === this.challengeData.targetIndex);
+    revealTarget(scene) {
+        const { direction, targetIndex } = this.challengeData;
+        const correctContainer = this.containerAt(targetIndex);
         if (correctContainer) {
-            this.delayedCall(scene, 400, () => {
-                const bg = correctContainer.list[0];
-                bg.setFillStyle(0xFFD700, 0.7);
-
-                // Pulse animation
-                this.addTween(scene, {
-                    targets: correctContainer,
-                    scaleX: 1.2,
-                    scaleY: 1.2,
-                    duration: 500,
-                    yoyo: true,
-                    repeat: 2,
-                    ease: 'Sine.easeInOut'
-                });
-            });
+            correctContainer.list[0].setFillStyle(COLORS.REVEAL, 0.7);
         }
 
-        // Restart with new challenge after 2.5 seconds
-        this.delayedCall(scene, 2500, () => {
-            this.cleanup(scene);
-            this.generateChallenge();
-            this.createChallengeUI(scene);
+        // Ask the same direction again next time
+        this.queueRetry(direction);
+
+        // Gold pulse on the right shape while the question is repeated, so
+        // the child hears "till höger om den blåa cirkeln" while looking at
+        // the answer. 400 ms shake + 2100 ms reveal = 2.5 s, then the streak
+        // is reset and a new challenge starts.
+        this.revealAnswer(scene, {
+            targets: correctContainer ? [correctContainer] : [],
+            audioKeys: this.questionAudioKeys(),
+            delay: 2100
         });
     }
 
     cleanup(scene) {
-        // Stop and destroy both audio parts (not just the one playing)
-        [this.prefixAudio, this.comboAudio].forEach(audio => {
-            if (!audio) return;
-            audio.removeAllListeners('complete');
-            if (audio.isPlaying) audio.stop();
-            audio.destroy();
-        });
-        this.prefixAudio = null;
-        this.comboAudio = null;
-        this.currentAudio = null;
-
         super.cleanup(scene);
-        this.ballIndicators = [];
         this.shapes = [];
     }
 }

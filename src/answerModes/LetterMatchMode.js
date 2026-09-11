@@ -1,4 +1,5 @@
 import { BaseAnswerMode } from './BaseAnswerMode.js';
+import { loadModeConfig } from '../minigameConfig.js';
 
 /**
  * Letter matching game mode
@@ -45,19 +46,7 @@ export class LetterMatchMode extends BaseAnswerMode {
     }
 
     async loadConfig() {
-        try {
-            const response = await fetch('/config/minigames.json');
-            if (response.ok) {
-                const serverConfig = await response.json();
-                if (serverConfig.pokemonCatching) {
-                    this.config.nameCase = serverConfig.pokemonCatching.nameCase || this.config.nameCase;
-                    this.config.alphabetCase = serverConfig.pokemonCatching.alphabetCase || this.config.alphabetCase;
-                    console.log('LetterMatchMode loaded config:', this.config);
-                }
-            }
-        } catch (error) {
-            console.warn('Failed to load Pokemon catching config, using defaults:', error);
-        }
+        this.config = await loadModeConfig('pokemonCatching', this.config);
         this.configLoaded = true;
     }
 

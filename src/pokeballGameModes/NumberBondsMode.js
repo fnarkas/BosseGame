@@ -1,5 +1,7 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
+import { COLORS, LAYOUT, wireButtonHover, resetButtonStyle } from './uiKit.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { loadModeConfig } from '../minigameConfig.js';
 
 /**
  * Number bonds game mode ("tiokompisar")
@@ -11,18 +13,23 @@ import { trackWrongAnswer } from '../wrongAnswers.js';
  *
  * Timed, and paid like SpeedReadingMode: the reward accelerates with the number
  * of correct answers and reaches maxCoins at targetCount, which also ends the
- * round early. A wrong tap costs nothing but the seconds it took.
+ * round early. A wrong tap costs nothing but the seconds it took; the same
+ * problem stays up until it is solved and comes back once more later on.
  */
 
 // ⚙️ DEFAULTS (overridable from public/config/minigames.json → numberBonds)
-const DEFAULT_SUM = 10;             // "Tiokompisar" - the whole is ten
-const DEFAULT_DURATION = 60;        // Seconds on the clock
-const DEFAULT_TARGET_COUNT = 20;    // Correct answers for the full reward
-const DEFAULT_MAX_COINS = 100;      // Reward at (and capped to) the target
+const DEFAULT_CONFIG = {
+    sum: 10,                // "Tiokompisar" - the whole is ten
+    durationSeconds: 60,    // Seconds on the clock
+    targetCount: 20,        // Correct answers for the full reward
+    maxCoins: 100,          // Reward at (and capped to) the target
+    showTenFrame: true
+};
 
 // Layout for the 1280x900 canvas
-const TIMER_Y = 150;
-const COIN_Y = 240;
+const TIMER_Y = LAYOUT.TIMER_Y;
+const COIN_Y = LAYOUT.COIN_Y;
+const BAR_MARGIN = LAYOUT.BAR_MARGIN;
 const FRAME_TOP = 330;
 const PROBLEM_Y = 500;
 const KEYPAD_TOP = 610;
@@ -37,18 +44,18 @@ export class NumberBondsMode extends BasePokeballGameMode {
         super();
 
         // Config (loaded from server, falls back to defaults)
-        this.sum = DEFAULT_SUM;
-        this.durationSeconds = DEFAULT_DURATION;
-        this.targetCount = DEFAULT_TARGET_COUNT;
-        this.maxCoins = DEFAULT_MAX_COINS;
-        this.showTenFrame = true;
+        this.sum = DEFAULT_CONFIG.sum;
+        this.durationSeconds = DEFAULT_CONFIG.durationSeconds;
+        this.targetCount = DEFAULT_CONFIG.targetCount;
+        this.maxCoins = DEFAULT_CONFIG.maxCoins;
+        this.showTenFrame = DEFAULT_CONFIG.showTenFrame;
         this.configLoaded = false;
 
         // Scoring / timing
         this.correctCount = 0;
         this.earnedCoins = 0;       // Read by PokeballGameScene for the reward
         this.paysOwnCoins = true;   // ... instead of the streak/multiplier payout
-        this.timeLeft = DEFAULT_DURATION;
+        this.timeLeft = DEFAULT_CONFIG.durationSeconds;
         this.timerEvent = null;
         this.gameActive = false;
         this.finished = false;
@@ -63,44 +70,33 @@ export class NumberBondsMode extends BasePokeballGameMode {
         this.progressBarX = 0;
         this.coinCountText = null;
         this.problemText = null;
-        this.frameSlots = [];       // { shape, filled }
+        this.frameSlots = [];       // { cell, ball }
         this.keyButtons = [];       // { rect, label, value }
     }
 
     async loadConfig() {
-        try {
-            const response = await fetch('/config/minigames.json');
-            if (response.ok) {
-                const serverConfig = await response.json();
-                if (serverConfig.numberBonds) {
-                    this.sum = serverConfig.numberBonds.sum || this.sum;
-                    this.durationSeconds = serverConfig.numberBonds.durationSeconds || this.durationSeconds;
-                    this.targetCount = serverConfig.numberBonds.targetCount || this.targetCount;
-                    this.maxCoins = serverConfig.numberBonds.maxCoins || this.maxCoins;
-                    this.showTenFrame = serverConfig.numberBonds.showTenFrame !== false;
-                }
-            }
-        } catch (error) {
-            console.warn('Failed to load number bonds config, using defaults:', error);
-        }
+        const config = await loadModeConfig('numberBonds', DEFAULT_CONFIG);
+        this.sum = config.sum || DEFAULT_CONFIG.sum;
+        this.durationSeconds = config.durationSeconds || DEFAULT_CONFIG.durationSeconds;
+        this.targetCount = config.targetCount || DEFAULT_CONFIG.targetCount;
+        this.maxCoins = config.maxCoins || DEFAULT_CONFIG.maxCoins;
+        this.showTenFrame = config.showTenFrame !== false;
         this.timeLeft = this.durationSeconds;
         this.configLoaded = true;
-        console.log('NumberBondsMode loaded with settings:', {
-            sum: this.sum,
-            durationSeconds: this.durationSeconds,
-            targetCount: this.targetCount,
-            maxCoins: this.maxCoins,
-            showTenFrame: this.showTenFrame
-        });
     }
 
     generateChallenge() {
-        // Never the same first term twice in a row - a repeat can be answered
+        const previous = this.challengeData ? this.challengeData.given : null;
+
+        // A missed first term comes back later, otherwise a random one - but
+        // never the same first term twice in a row: a repeat can be answered
         // without looking, which is free points in a timed game.
-        let given;
-        do {
-            given = Phaser.Math.Between(0, this.sum);
-        } while (this.challengeData && given === this.challengeData.given && this.sum > 0);
+        let given = this.takeRetry();
+        if (given === undefined || given === previous) {
+            do {
+                given = Math.floor(Math.random() * (this.sum + 1));
+            } while (given === previous && this.sum > 0);
+        }
 
         this.challengeData = { given, answer: this.sum - given };
         return this.challengeData;
@@ -110,6 +106,7 @@ export class NumberBondsMode extends BasePokeballGameMode {
         // The bars and the keypad outlive a single challenge - only the numbers
         // change - so build them once and just refresh them afterwards.
         if (this.keyButtons.length === 0) {
+            this.isResolving = false;
             this.createTimerBar(scene);
             this.createCoinBar(scene);
             this.createProblem(scene);
@@ -124,14 +121,13 @@ export class NumberBondsMode extends BasePokeballGameMode {
 
     createTimerBar(scene) {
         const width = scene.cameras.main.width;
-        const barMargin = 120;
-        this.timerBarX = barMargin;
-        this.timerBarWidth = width - barMargin * 2;
+        this.timerBarX = BAR_MARGIN;
+        this.timerBarWidth = width - BAR_MARGIN * 2;
 
-        const clock = scene.add.text(barMargin - 70, TIMER_Y, '⏱️', { fontSize: '48px' }).setOrigin(0.5);
+        const clock = scene.add.text(BAR_MARGIN - 70, TIMER_Y, '⏱️', { fontSize: '48px' }).setOrigin(0.5);
         this.uiElements.push(clock);
 
-        const bg = scene.add.rectangle(this.timerBarX, TIMER_Y, this.timerBarWidth, 34, 0xffffff)
+        const bg = scene.add.rectangle(this.timerBarX, TIMER_Y, this.timerBarWidth, 34, COLORS.NEUTRAL_FILL)
             .setOrigin(0, 0.5);
         bg.setStrokeStyle(3, 0x2C3E50);
         this.uiElements.push(bg);
@@ -143,19 +139,18 @@ export class NumberBondsMode extends BasePokeballGameMode {
 
     createCoinBar(scene) {
         const width = scene.cameras.main.width;
-        const barMargin = 120;
-        this.progressBarX = barMargin;
-        this.progressBarWidth = width - barMargin * 2;
+        this.progressBarX = BAR_MARGIN;
+        this.progressBarWidth = width - BAR_MARGIN * 2;
 
-        const coinIcon = scene.add.text(barMargin - 70, COIN_Y, '🪙', { fontSize: '48px' }).setOrigin(0.5);
+        const coinIcon = scene.add.text(BAR_MARGIN - 70, COIN_Y, '🪙', { fontSize: '48px' }).setOrigin(0.5);
         this.uiElements.push(coinIcon);
 
-        const bg = scene.add.rectangle(this.progressBarX, COIN_Y, this.progressBarWidth, 40, 0xffffff)
+        const bg = scene.add.rectangle(this.progressBarX, COIN_Y, this.progressBarWidth, 40, COLORS.NEUTRAL_FILL)
             .setOrigin(0, 0.5);
         bg.setStrokeStyle(3, 0xB8860B);
         this.uiElements.push(bg);
 
-        this.progressBarFill = scene.add.rectangle(this.progressBarX, COIN_Y, 0, 40, 0xFFD700)
+        this.progressBarFill = scene.add.rectangle(this.progressBarX, COIN_Y, 0, 40, COLORS.REVEAL)
             .setOrigin(0, 0.5);
         this.uiElements.push(this.progressBarFill);
 
@@ -172,7 +167,7 @@ export class NumberBondsMode extends BasePokeballGameMode {
         }).setOrigin(0.5);
         this.uiElements.push(trophy);
 
-        this.coinCountText = scene.add.text(scene.cameras.main.width / 2, COIN_Y, '0', {
+        this.coinCountText = scene.add.text(width / 2, COIN_Y, '0', {
             fontSize: '28px',
             fontFamily: 'Arial',
             color: '#7A5C00',
@@ -184,7 +179,7 @@ export class NumberBondsMode extends BasePokeballGameMode {
     createProblem(scene) {
         this.problemText = scene.add.text(scene.cameras.main.width / 2, PROBLEM_Y, '', {
             font: 'bold 76px Arial',
-            fill: '#2C3E50'
+            fill: COLORS.TEXT_DARK
         }).setOrigin(0.5);
         this.uiElements.push(this.problemText);
     }
@@ -205,7 +200,7 @@ export class NumberBondsMode extends BasePokeballGameMode {
             const x = startX + col * FRAME_CELL;
             const y = FRAME_TOP + row * FRAME_CELL + (rows === 1 ? FRAME_CELL / 2 : 0);
 
-            const cell = scene.add.rectangle(x, y, FRAME_CELL - 6, FRAME_CELL - 6, 0xFFFFFF, 0.5);
+            const cell = scene.add.rectangle(x, y, FRAME_CELL - 6, FRAME_CELL - 6, COLORS.NEUTRAL_FILL, 0.5);
             cell.setStrokeStyle(3, 0x2C3E50);
             this.uiElements.push(cell);
 
@@ -220,6 +215,7 @@ export class NumberBondsMode extends BasePokeballGameMode {
     createKeypad(scene) {
         const width = scene.cameras.main.width;
         const count = this.sum + 1;                       // 0 through sum
+        const isLocked = () => this.isResolving || !this.gameActive;
 
         this.keyButtons = [];
         for (let value = 0; value < count; value++) {
@@ -230,27 +226,20 @@ export class NumberBondsMode extends BasePokeballGameMode {
             const x = width / 2 - rowWidth / 2 + KEY_SIZE / 2 + col * (KEY_SIZE + KEY_GAP);
             const y = KEYPAD_TOP + row * (KEY_SIZE + KEY_GAP);
 
-            const rect = scene.add.rectangle(x, y, KEY_SIZE, KEY_SIZE, 0xFFFFFF);
-            rect.setStrokeStyle(4, 0x3498DB);
+            const rect = scene.add.rectangle(x, y, KEY_SIZE, KEY_SIZE, COLORS.NEUTRAL_FILL);
+            rect.setStrokeStyle(4, COLORS.NEUTRAL_STROKE);
             rect.setInteractive({ useHandCursor: true });
             this.uiElements.push(rect);
 
             const label = scene.add.text(x, y, `${value}`, {
                 fontSize: '46px',
                 fontFamily: 'Arial',
-                color: '#2C3E50',
+                color: COLORS.TEXT_DARK,
                 fontStyle: 'bold'
             }).setOrigin(0.5);
             this.uiElements.push(label);
 
-            rect.on('pointerover', () => {
-                if (this.isResolving || !this.gameActive) return;
-                rect.setFillStyle(0xECF0F1);
-            });
-            rect.on('pointerout', () => {
-                if (this.isResolving || !this.gameActive) return;
-                rect.setFillStyle(0xFFFFFF);
-            });
+            wireButtonHover(rect, isLocked);
             rect.on('pointerdown', () => this.handleKey(scene, value, rect));
 
             this.keyButtons.push({ rect, label, value });
@@ -267,13 +256,10 @@ export class NumberBondsMode extends BasePokeballGameMode {
         this.frameSlots.forEach((slot, i) => {
             const filled = i < given;
             slot.ball.setVisible(filled);
-            slot.cell.setFillStyle(0xFFFFFF, filled ? 0.5 : 0.18);
+            slot.cell.setFillStyle(COLORS.NEUTRAL_FILL, filled ? 0.5 : 0.18);
         });
 
-        this.keyButtons.forEach(({ rect }) => {
-            rect.setFillStyle(0xFFFFFF);
-            rect.setStrokeStyle(4, 0x3498DB);
-        });
+        this.keyButtons.forEach(({ rect }) => resetButtonStyle(rect));
     }
 
     // ---------------- Answering ----------------
@@ -285,11 +271,11 @@ export class NumberBondsMode extends BasePokeballGameMode {
             this.handleCorrect(scene, rect);
         } else {
             trackWrongAnswer('NumberBondsMode', `${this.challengeData.given}+?=${this.sum}`, String(value));
-            rect.setFillStyle(0xE74C3C, 0.6);
-            this.delayedCall(scene, 220, () => {
-                if (rect.scene) rect.setFillStyle(0xFFFFFF);
-            });
-            // No penalty beyond the seconds it cost - the same challenge stays up.
+            // A quick red flash; the same challenge stays up (no penalty beyond
+            // the seconds it cost) and comes back once more later on.
+            this.queueRetry(this.challengeData.given, 2);
+            rect.setFillStyle(COLORS.WRONG, 0.6);
+            this.delayedCall(scene, 220, () => resetButtonStyle(rect));
         }
     }
 
@@ -299,15 +285,15 @@ export class NumberBondsMode extends BasePokeballGameMode {
         this.earnedCoins = this.coinsForCount(this.correctCount);
         this.updateProgressBar();
 
-        rect.setFillStyle(0x27AE60, 0.6);
+        rect.setFillStyle(COLORS.CORRECT, 0.6);
 
         // The payoff: the empty slots fill in, completing the ten.
         const { given } = this.challengeData;
         this.frameSlots.forEach((slot, i) => {
             if (i < given) return;
             slot.ball.setVisible(true);
-            slot.ball.setTint(0x27AE60);
-            slot.cell.setFillStyle(0x27AE60, 0.35);
+            slot.ball.setTint(COLORS.CORRECT);
+            slot.cell.setFillStyle(COLORS.CORRECT, 0.35);
         });
 
         if (this.correctCount >= this.targetCount) {
@@ -318,7 +304,7 @@ export class NumberBondsMode extends BasePokeballGameMode {
         this.delayedCall(scene, 320, () => {
             if (!this.gameActive) return;
             this.frameSlots.forEach(slot => slot.ball.clearTint());
-            rect.setFillStyle(0xFFFFFF);
+            resetButtonStyle(rect);
             this.isResolving = false;
             this.generateChallenge();
             this.refreshChallenge();
@@ -339,6 +325,8 @@ export class NumberBondsMode extends BasePokeballGameMode {
         this.gameActive = true;
         this.timeLeft = this.durationSeconds;
 
+        // A looping event; the base helpers only cover one-shot timers, so this
+        // one is removed explicitly in finishGame()/cleanup().
         this.timerEvent = scene.time.addEvent({
             delay: 100,
             loop: true,
@@ -392,9 +380,7 @@ export class NumberBondsMode extends BasePokeballGameMode {
 
         // Hand the earned coins to the scene for the reward animation.
         this.delayedCall(scene, 900, () => {
-            const x = scene.cameras.main.width / 2;
-            const y = scene.cameras.main.height / 2;
-            this.finish(true, this.challengeData.answer, x, y);
+            this.finish(true, this.challengeData.answer, scene.cameras.main.width / 2, scene.cameras.main.height / 2);
         });
     }
 

@@ -9,6 +9,15 @@ import {
 import { SpeedReadingMode } from '../../src/pokeballGameModes/SpeedReadingMode.js';
 import { getTopCommonWords } from '../../src/commonSwedishWords.js';
 
+// Status lives on the mic button; the only text is the word being read, the
+// coin count and the bar emoji.
+function assertNoStatusText(scene, mode) {
+    const allowed = new Set([mode.challengeData.word.toUpperCase(), '⏱️', '🪙', '🏆', '🎤', '✅', '❌', '🚫']);
+    scene.liveTexts().forEach(t => {
+        expect(allowed.has(t.text) || /^\d+$/.test(t.text), `unexpected text "${t.text}"`).toBe(true);
+    });
+}
+
 const CONFIG = { wordCount: 50, durationSeconds: 10, targetWords: 5, maxCoins: 100 };
 
 describe('SpeedReadingMode', () => {
@@ -64,11 +73,12 @@ describe('SpeedReadingMode', () => {
         expect(rec.interimResults).toBe(true);
         expect(mic.getUserMedia).not.toHaveBeenCalled();
         expect(mode.micState).toBe('listening');
-        expect(mode.listenRing.visible).toBe(true);
+        expect(mode.mic.ring.visible).toBe(true);
         expect(scene.clock.pendingTweens()).toHaveLength(1);
         expect(mode.wordText.text).toBe(word().toUpperCase());
         expect(mode.coinCountText.text).toBe('0');
         expect(scene.interactives()).toContain(mode.micButton);
+        assertNoStatusText(scene, mode);
     });
 
     it('counts each word read, shows a new one, and ends early with the full reward at the target', () => {
@@ -90,8 +100,10 @@ describe('SpeedReadingMode', () => {
         expect(mode.finished).toBe(true);
         expect(mode.earnedCoins).toBe(100);
         expect(mode.progressBarFill.width).toBe(mode.progressBarWidth);
-        expect(mode.statusText.text).toBe('🎉 100 🪙');
-        expect(mode.listenRing.visible).toBe(false);
+        expect(mode.coinCountText.text).toBe('100');
+        expect(mode.micState).toBe('idle');
+        expect(mode.mic.ring.visible).toBe(false);
+        assertNoStatusText(scene, mode);
         endSession(); // the last session ends - must not restart
         expect(rec.startCalls).toBe(5);
         scene.advance(900);
@@ -121,12 +133,15 @@ describe('SpeedReadingMode', () => {
         const current = word();
         readAloud(['xyzzy'], { isFinal: false }); // an interim miss is not judged yet
         expect(mode.correctWords).toBe(0);
-        expect(mode.statusText.text).toBe('Läs ordet!');
+        expect(mode.micState).toBe('listening');
         rec.fireResult(['xyzzy'], { isFinal: true });
         expect(mode.correctWords).toBe(0);
         expect(word()).toBe(current);
-        expect(mode.statusText.text).toBe('❌ "xyzzy"');
-        expect(mode.micState).toBe('evaluating');
+        expect(mode.micState).toBe('wrong');
+        expect(mode.mic.emoji.text).toBe('❌');
+        // The word is not played back: the open microphone would hear it
+        expect(scene.playedAudio()).toEqual([]);
+        assertNoStatusText(scene, mode);
         expect(calls).toHaveLength(0);
         endSession();
         expect(rec.startCalls).toBe(2);
@@ -140,7 +155,16 @@ describe('SpeedReadingMode', () => {
         rec.fireResult([word()]); // a duplicate final result for the same session
         expect(mode.correctWords).toBe(1);
         rec.fireResult(['xyzzy']);
-        expect(mode.statusText.text).toBe('✅ Rätt!');
+        expect(mode.micState).toBe('correct');
+        expect(mode.mic.emoji.text).toBe('✅');
+    });
+
+    it('shows the evaluating look when the child stops talking before a result arrives', () => {
+        rec.fireStart();
+        rec.fireSpeechEnd();
+        expect(mode.micState).toBe('evaluating');
+        expect(mode.mic.ring.visible).toBe(true);
+        expect(scene.clock.pendingTweens()).toHaveLength(0);
     });
 
     it('finishes when the clock runs out, pays for what was read, and is dead afterwards', () => {
@@ -152,7 +176,8 @@ describe('SpeedReadingMode', () => {
         expect(mode.timeLeft).toBe(0);
         expect(mode.timerBarFill.width).toBe(0);
         expect(mode.earnedCoins).toBe(mode.coinsForWords(1));
-        expect(rec.stopCalls).toBe(2); // once for the match, once at the end
+        expect(rec.stopCalls).toBe(2); // once for the match, once when the silent session timed out
+        expect(mode.micState).toBe('idle');
         endSession();
         expect(rec.startCalls).toBe(2); // no restart after the end
         scene.advance(1000);
@@ -175,26 +200,36 @@ describe('SpeedReadingMode', () => {
         expect(mode.timerBarFill.fillColor).toBe(0xE74C3C);
     });
 
-    it('drops permission on not-allowed, stops the loop, and a tap retries', () => {
+    it('drops permission on not-allowed (🚫), stops the loop, and a tap retries', () => {
         rec.fireError('not-allowed');
-        expect(mode.permissionGranted).toBe(false);
-        expect(mode.micState).toBe('idle');
+        expect(mode.speechHelper.permissionGranted).toBe(false);
+        expect(mode.micState).toBe('blocked');
+        expect(mode.mic.emoji.text).toBe('🚫');
         rec.fireEnd();
         scene.advance(1000);
         expect(rec.startCalls).toBe(1); // no auto-restart without permission
         expect(mode.gameActive).toBe(true);
+        expect(mode.micState).toBe('blocked');
         scene.click(mode.micButton);
-        expect(mode.permissionGranted).toBe(true);
+        expect(mode.speechHelper.permissionGranted).toBe(true);
+        expect(rec.startCalls).toBe(2);
+        expect(mode.micState).toBe('listening');
+    });
+
+    it('restarts the loop after a silent session times out', () => {
+        scene.advance(5000);
+        expect(rec.stopCalls).toBe(1);
+        endSession();
         expect(rec.startCalls).toBe(2);
         expect(mode.micState).toBe('listening');
     });
 
     it('cleans up mid-game: timer, tween, UI and late recognition events are all inert', () => {
         readAloud([word()]); // particles pending, ring tween running
-        const ring = mode.listenRing;
+        const ring = mode.mic.ring;
         mode.cleanup(scene);
         expect(rec.abortCalls).toBe(1);
-        expect(mode.recognition).toBeNull();
+        expect(mode.speechHelper.recognition).toBeNull();
         rec.fireError('aborted'); // async fallout of abort()
         rec.fireEnd();
         const t = scene.time.now;

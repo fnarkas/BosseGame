@@ -49,6 +49,19 @@ describe('NumberBondsMode', () => {
         expect(mode.challengeData.given).not.toBe(given);
     });
 
+    it('flashes a wrong key red, restores it, and queues the problem for a later repeat', () => {
+        const given = mode.challengeData.given;
+        const wrongKey = keyFor((mode.challengeData.answer + 1) % 11);
+        // pointerdown only: a finger held on the key (click() would also fire pointerout)
+        wrongKey.emit('pointerdown', scene.pointerAt(wrongKey.x, wrongKey.y));
+        expect(wrongKey.fillColor).toBe(0xFF0000);
+        scene.advance(300);
+        expect(wrongKey.fillColor).toBe(0xFFFFFF);
+        expect(mode.retryQueue).toEqual([{ item: given, after: 2 }]);
+        // The same problem stays up until it is solved
+        expect(mode.challengeData.given).toBe(given);
+    });
+
     it('finishes when the clock runs out and pays for what was done', () => {
         scene.click(keyFor(mode.challengeData.answer));
         scene.advance(400);

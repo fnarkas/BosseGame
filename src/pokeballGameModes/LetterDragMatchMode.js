@@ -1,28 +1,47 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
-import { SWEDISH_LETTERS } from '../letterData.js';
+import { SWEDISH_LETTERS, getConfiguredLetters } from '../letterData.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
-import { resetStreak } from '../streak.js';
-import { updateBoosterBar } from '../boosterBar.js';
+import { pickAdaptive, pickDistractors, HARD_LETTERS } from '../adaptive.js';
+import { COLORS, drawDashedRect, updateZoneHover } from './uiKit.js';
+
+const MODE_NAME = 'LetterDragMatchMode';
+const BOX_STROKE = 0x4A90E2;
+const LETTERS_PER_ROUND = 4;
 
 export class LetterDragMatchMode extends BasePokeballGameMode {
     constructor() {
         super();
         this.correctMatches = 0;
-        this.requiredMatches = 4; // Match all 4 letters
+        this.requiredMatches = LETTERS_PER_ROUND; // Match all 4 letters
         this.currentLetters = [];
         this.dropZones = [];
         this.draggableLetters = [];
         this.draggableBoxes = []; // Store boxes for draggable letters
-        this.currentHoverZone = null; // Track which zone is being hovered
         this.hasError = false; // Track if player made an error
-        this.isRevealing = false; // Track if we're showing the answer
+        // The admin-configured letters; all letters until the config is loaded
+        this.availableLetters = [...SWEDISH_LETTERS];
+        this.configLoaded = false;
+    }
+
+    async loadConfig() {
+        const configured = await getConfiguredLetters();
+        // A round needs 4 different letters; with fewer configured, use them all
+        this.availableLetters = configured.length >= LETTERS_PER_ROUND ? configured : [...SWEDISH_LETTERS];
+        this.configLoaded = true;
     }
 
     generateChallenge() {
-        // Pick 4 random Swedish letters
-        const shuffled = [...SWEDISH_LETTERS].sort(() => Math.random() - 0.5);
-        this.currentLetters = shuffled.slice(0, 4);
+        // The letter the child just missed is always in the next round;
+        // otherwise favour the letters he mixes up. The other three are its
+        // confusable partners first (b with d), then random fillers.
+        const pool = this.availableLetters;
+        const retry = this.takeRetry();
+        const target = retry && pool.includes(retry)
+            ? retry
+            : pickAdaptive(MODE_NAME, pool, { seedList: HARD_LETTERS });
+        const others = pickDistractors(MODE_NAME, target, pool, LETTERS_PER_ROUND - 1);
+        this.currentLetters = Phaser.Utils.Array.Shuffle([target, ...others]);
 
         this.challengeData = {
             letters: this.currentLetters
@@ -31,9 +50,9 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
 
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
-        const height = scene.cameras.main.height;
 
         // A fresh challenge always starts accepting input again.
+        this.inputLocked = false;
         this.isRevealing = false;
         this.hasError = false;
 
@@ -46,7 +65,7 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
             const x = startX + index * spacing;
 
             // Drop zone background with dashed border
-            const dropZone = scene.add.rectangle(x, upperY, 150, 150, 0xFFFFFF, 0.2);
+            const dropZone = scene.add.rectangle(x, upperY, 150, 150, COLORS.NEUTRAL_FILL, 0.2);
             dropZone.setInteractive();
             dropZone.setData('letter', letter);
             dropZone.setData('matched', false);
@@ -56,13 +75,9 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
 
             // Create dashed border using graphics
             const graphics = scene.add.graphics();
-            graphics.lineStyle(4, 0x000000, 1);
+            graphics.lineStyle(4, COLORS.OUTLINE, 1);
             const boxSize = 150;
-            const dashLength = 10;
-            const gapLength = 8;
-
-            // Draw dashed rectangle
-            this.drawDashedRect(graphics, x - boxSize / 2, upperY - boxSize / 2, boxSize, boxSize, dashLength, gapLength);
+            drawDashedRect(graphics, x - boxSize / 2, upperY - boxSize / 2, boxSize, boxSize, 10, 8);
 
             dropZone.setData('dashedBorder', graphics);
             this.uiElements.push(graphics);
@@ -82,14 +97,14 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
 
         // Create lowercase letters (draggable) at bottom - shuffled
         const lowerY = 550;
-        const shuffledLetters = [...this.currentLetters].sort(() => Math.random() - 0.5);
+        const shuffledLetters = Phaser.Utils.Array.Shuffle([...this.currentLetters]);
 
         shuffledLetters.forEach((letter, index) => {
             const x = startX + index * spacing;
 
             // Solid box for draggable letter - make THIS draggable, not the text
-            const box = scene.add.rectangle(x, lowerY, 150, 150, 0xFFFFFF, 0.3);
-            box.setStrokeStyle(4, 0x4A90E2); // Solid blue border
+            const box = scene.add.rectangle(x, lowerY, 150, 150, COLORS.NEUTRAL_FILL, 0.3);
+            box.setStrokeStyle(4, BOX_STROKE); // Solid blue border
             box.setInteractive({ useHandCursor: true, draggable: true }); // Make box draggable
             box.setData('letter', letter);
             box.setData('startX', x);
@@ -113,14 +128,14 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
 
             // Set up drag events on the BOX
             box.on('drag', (pointer, dragX, dragY) => {
-                if (this.isRevealing) return; // Frozen while the answer is shown
+                if (this.isInputBlocked()) return; // Frozen while the answer is shown
                 box.x = dragX;
                 box.y = dragY;
                 lowerText.x = dragX;
                 lowerText.y = dragY;
 
-                // Check hover over drop zones
-                this.checkHoverOverZones(scene, pointer);
+                // Highlight the zone under the pointer
+                updateZoneHover(this.dropZones, pointer);
             });
 
             box.on('dragend', (pointer) => {
@@ -133,65 +148,20 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
     }
 
     playLetterAudio(scene, letter) {
-        const audioKey = `letter_audio_${letter.toLowerCase()}`;
-        console.log('🔊 Playing audio:', audioKey);
-        scene.sound.play(audioKey);
+        this.playAudio(scene, `letter_audio_${letter.toLowerCase()}`);
     }
 
-    drawDashedRect(graphics, x, y, width, height, dashLength, gapLength) {
-        const perimeter = [
-            { x1: x, y1: y, x2: x + width, y2: y }, // Top
-            { x1: x + width, y1: y, x2: x + width, y2: y + height }, // Right
-            { x1: x + width, y1: y + height, x2: x, y2: y + height }, // Bottom
-            { x1: x, y1: y + height, x2: x, y2: y } // Left
-        ];
-
-        perimeter.forEach(line => {
-            const dx = line.x2 - line.x1;
-            const dy = line.y2 - line.y1;
-            const length = Math.sqrt(dx * dx + dy * dy);
-            const steps = Math.floor(length / (dashLength + gapLength));
-
-            for (let i = 0; i < steps; i++) {
-                const t1 = i * (dashLength + gapLength) / length;
-                const t2 = (i * (dashLength + gapLength) + dashLength) / length;
-
-                const startX = line.x1 + dx * t1;
-                const startY = line.y1 + dy * t1;
-                const endX = line.x1 + dx * t2;
-                const endY = line.y1 + dy * t2;
-
-                graphics.lineBetween(startX, startY, endX, endY);
-            }
-        });
-    }
-
-    checkHoverOverZones(scene, pointer) {
-        let foundHover = false;
-
+    resetZoneHover() {
         this.dropZones.forEach(zone => {
-            const bounds = zone.getBounds();
-            const isOver = Phaser.Geom.Rectangle.Contains(bounds, pointer.x, pointer.y);
-
-            if (isOver && !zone.getData('matched')) {
-                // Highlight this zone
-                zone.setFillStyle(0xFFD700, 0.5); // Gold highlight
-                foundHover = true;
-                this.currentHoverZone = zone;
-            } else if (!zone.getData('matched')) {
-                // Reset to original
-                zone.setFillStyle(0xFFFFFF, zone.getData('originalAlpha'));
+            if (!zone.getData('matched')) {
+                zone.setFillStyle(COLORS.NEUTRAL_FILL, zone.getData('originalAlpha'));
             }
         });
-
-        if (!foundHover && this.currentHoverZone) {
-            this.currentHoverZone = null;
-        }
     }
 
     handleDrop(scene, draggedBox, pointer) {
         // Don't allow drops during reveal animation
-        if (this.isRevealing) return;
+        if (this.isInputBlocked()) return;
 
         const letter = draggedBox.getData('letter');
         const letterText = draggedBox.getData('letterText');
@@ -221,18 +191,18 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
                     letterText.x = zone.x;
                     letterText.y = zone.y;
 
-                    letterText.setTint(0x27AE60); // Green tint
-                    draggedBox.setStrokeStyle(4, 0x27AE60); // Green border
-                    draggedBox.setFillStyle(0x27AE60, 0.2); // Light green fill
+                    letterText.setTint(COLORS.CORRECT); // Green tint
+                    draggedBox.setStrokeStyle(4, COLORS.CORRECT); // Green border
+                    draggedBox.setFillStyle(COLORS.CORRECT, 0.2); // Light green fill
                     draggedBox.disableInteractive(); // Can't drag anymore
 
                     // Reset zone appearance and change to solid green border
-                    zone.setFillStyle(0x27AE60, 0.2); // Light green fill
+                    zone.setFillStyle(COLORS.CORRECT, 0.2); // Light green fill
                     const dashedBorder = zone.getData('dashedBorder');
                     if (dashedBorder) {
                         dashedBorder.destroy(); // Remove dashed border
                     }
-                    zone.setStrokeStyle(4, 0x27AE60); // Solid green border
+                    zone.setStrokeStyle(4, COLORS.CORRECT); // Solid green border
 
                     // Visual feedback animation
                     this.addTween(scene, {
@@ -247,10 +217,8 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
 
                             // Update the drop zone text to show both uppercase and lowercase
                             const upperText = zone.getData('upperText');
-                            if (upperText) {
-                                const upperLetter = letter.toUpperCase();
-                                const lowerLetter = letter.toLowerCase();
-                                upperText.setText(`${upperLetter}${lowerLetter}`);
+                            if (upperText && upperText.scene) {
+                                upperText.setText(`${letter.toUpperCase()}${letter.toLowerCase()}`);
                                 upperText.setColor('#27AE60'); // Green color for matched text
                             }
                         }
@@ -280,13 +248,14 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
             if (droppedOnWrongZone) {
                 // Track wrong answer - player confused letter with wrongZoneLetter
                 trackWrongAnswer(
-                    'LetterDragMatchMode',
+                    MODE_NAME,
                     letter, // Correct letter (lowercase)
                     wrongZoneLetter // Wrong zone letter (lowercase)
                 );
 
                 // Wrong zone - show error feedback. Freeze the other letters
                 // right away: one error ends this round.
+                this.inputLocked = true;
                 this.isRevealing = true;
                 this.showWrongDropFeedback(scene, draggedBox, letterText);
             } else {
@@ -301,33 +270,30 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
             }
 
             // Reset any hover effects
-            this.dropZones.forEach(zone => {
-                if (!zone.getData('matched')) {
-                    zone.setFillStyle(0xFFFFFF, zone.getData('originalAlpha'));
-                }
-            });
+            this.resetZoneHover();
         }
     }
 
     showWrongDropFeedback(scene, draggedBox, letterText) {
-        // Red flash on the box and letter
-        letterText.setTint(0xFF0000); // Red tint
-        draggedBox.setStrokeStyle(4, 0xFF0000); // Red border
-        draggedBox.setFillStyle(0xFF0000, 0.3); // Red fill
-
-        // Shake animation
-        const originalX = draggedBox.x;
+        // Red flash on the letter; the box is shaken (and painted red) by
+        // shakeWrong, the text shakes along with it.
+        letterText.setTint(COLORS.WRONG);
         this.addTween(scene, {
-            targets: [draggedBox, letterText],
-            x: originalX - 10,
+            targets: letterText,
+            x: letterText.x - 10,
             duration: 50,
             yoyo: true,
-            repeat: 3,
+            repeat: 3
+        });
+
+        this.shakeWrong(scene, draggedBox, {
+            restore: false,
             onComplete: () => {
+                if (!draggedBox.scene) return;
                 // Clear red tint
                 letterText.clearTint();
-                draggedBox.setStrokeStyle(4, 0x4A90E2); // Back to blue border
-                draggedBox.setFillStyle(0xFFFFFF, 0.3); // Back to white fill
+                draggedBox.setStrokeStyle(4, BOX_STROKE); // Back to blue border
+                draggedBox.setFillStyle(COLORS.NEUTRAL_FILL, 0.3); // Back to white fill
 
                 // Return to start position
                 this.addTween(scene, {
@@ -338,10 +304,8 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
                     ease: 'Back.easeOut',
                     onComplete: () => {
                         // ONE ERROR = GAME OVER
-                        // Highlight the correct zone for this letter
-                        this.hasError = true;
-                        const letter = draggedBox.getData('letter');
-                        this.highlightCorrectZone(scene, letter);
+                        // Highlight and say the correct zone for this letter
+                        this.highlightCorrectZone(scene, draggedBox.getData('letter'));
                     }
                 });
             }
@@ -349,69 +313,25 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
     }
 
     highlightCorrectZone(scene, letter) {
-        this.isRevealing = true;
-
-        // Disable all dragging (the boxes are the draggable objects, not the text)
-        this.draggableBoxes.forEach(box => {
-            box.disableInteractive();
-        });
-
         // Find the correct drop zone for this letter
         const correctZone = this.dropZones.find(zone => zone.getData('letter') === letter);
-        if (!correctZone) return;
 
-        // Change to gold/attention-grabbing color
-        correctZone.setFillStyle(0xFFD700, 0.5); // Gold fill
-
-        // Replace dashed border with solid pulsing border
-        const dashedBorder = correctZone.getData('dashedBorder');
-        if (dashedBorder) {
+        // Replace the dashed border with the solid pulsing gold one
+        const dashedBorder = correctZone && correctZone.getData('dashedBorder');
+        if (dashedBorder && dashedBorder.scene) {
             dashedBorder.destroy();
         }
-        correctZone.setStrokeStyle(6, 0xFFD700); // Thick gold border
 
-        // Pulsing scale animation
-        this.addTween(scene, {
-            targets: correctZone,
-            scaleX: 1.15,
-            scaleY: 1.15,
-            duration: 500,
-            yoyo: true,
-            repeat: 3, // Pulse 4 times total (2 seconds)
-            ease: 'Sine.easeInOut'
-        });
+        // The missed letter is in the next round, and in one more a bit later
+        this.queueRetry(letter);
+        this.queueRetry(letter, 2);
 
-        // Pulsing alpha on fill
-        this.addTween(scene, {
-            targets: correctZone,
-            alpha: 0.7,
-            duration: 500,
-            yoyo: true,
-            repeat: 3,
-            ease: 'Sine.easeInOut'
-        });
-
-        // After 2 seconds of pulsing, restart with new letters
-        this.delayedCall(scene, 2000, () => {
-            // Clean up current UI
-            this.cleanup(scene);
-
-            // Reset state
-            this.hasError = false;
-            this.isRevealing = false;
-            this.correctMatches = 0;
-
-            // Reset streak since player made an error
-            resetStreak();
-
-            // Update booster bar visual immediately
-            if (scene.boosterBarElements) {
-                updateBoosterBar(scene.boosterBarElements, 0, scene);
-            }
-
-            // Generate new challenge with different letters
-            this.generateChallenge();
-            this.createChallengeUI(scene);
+        // Gold pulse on the right zone while the letter is spoken; after 2
+        // seconds the streak is reset and a new round starts.
+        this.revealAnswer(scene, {
+            targets: correctZone ? [correctZone] : [],
+            disable: this.draggableBoxes,
+            audioKey: `letter_audio_${letter.toLowerCase()}`
         });
     }
 
@@ -421,7 +341,5 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         this.draggableLetters = [];
         this.draggableBoxes = [];
         this.correctMatches = 0;
-        this.currentHoverZone = null;
-        // Note: Don't reset hasError or isRevealing here - they're managed by revealCorrectAnswers
     }
 }

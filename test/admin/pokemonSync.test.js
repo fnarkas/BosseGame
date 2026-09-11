@@ -1,0 +1,85 @@
+import { describe, it, expect } from 'vitest';
+import { mergeCaughtLists, decodeSyncPayload, encodeSyncPayload, countCaughtAvailable, normalizeCaughtEntry } from '../../src/admin/sections/pokemon.js';
+import { groupWordsByLetter, textCaseFromConfig } from '../../src/admin/sections/emojiWords.js';
+import { weightPercentages, currentWeights } from '../../src/admin/sections/weights.js';
+import { MINIGAMES } from '../../src/minigameRegistry.js';
+import { DEFAULT_MODE_WEIGHTS } from '../../src/minigameWheel.js';
+import { escapeHtml, html, toHtml, raw } from '../../src/admin/html.js';
+
+describe('admin pokemon sync', () => {
+    it('normalizes legacy plain ids to entries', () => {
+        expect(normalizeCaughtEntry(25, () => 'now')).toEqual({ id: 25, name: 'Pikachu', caughtDate: 'now' });
+        expect(normalizeCaughtEntry({ id: 1, name: 'Bulbasaur', caughtDate: 'x' })).toEqual({ id: 1, name: 'Bulbasaur', caughtDate: 'x' });
+        expect(normalizeCaughtEntry({ junk: true })).toBeNull();
+        expect(normalizeCaughtEntry(null)).toBeNull();
+    });
+
+    it('merges an import over the existing list, keeping existing dates', () => {
+        const existing = [{ id: 1, name: 'Bulbasaur', caughtDate: 'old' }, 4];
+        const imported = [{ id: 1, name: 'Bulbasaur', caughtDate: 'new' }, { id: 7, name: 'Squirtle', caughtDate: 'new' }];
+        const { list, added } = mergeCaughtLists(existing, imported);
+        expect(added).toBe(1);
+        expect(list.map(p => p.id)).toEqual([1, 4, 7]);
+        expect(list[0].caughtDate).toBe('old');
+        expect(list[1].name).toBe('Charmander');
+    });
+
+    it('encodes and decodes the sync payload, rejecting non-arrays', () => {
+        const list = [{ id: 1, name: 'Bulbasaur', caughtDate: 'x' }, 25];
+        const decoded = decodeSyncPayload(encodeSyncPayload(list));
+        expect(decoded.map(p => p.id)).toEqual([1, 25]);
+        expect(decoded[1].name).toBe('Pikachu');
+        expect(() => decodeSyncPayload(btoa('{"a":1}'))).toThrow(/Invalid/);
+        expect(() => decodeSyncPayload('not base64 json')).toThrow();
+    });
+
+    it('counts only available (Gen 1) Pokemon', () => {
+        expect(countCaughtAvailable([1, { id: 151 }, { id: 152 }, 9999])).toBe(2);
+    });
+});
+
+describe('admin emoji words data', () => {
+    it('groups words by letter in sorted order', () => {
+        const groups = groupWordsByLetter([
+            { id: 1, word: 'BIL', emoji: '🚗', letter: 'B' },
+            { id: 2, word: 'APA', emoji: '🐵', letter: 'A' },
+            { id: 3, word: 'BOK', emoji: '📖', letter: 'B' }
+        ]);
+        expect(groups.map(g => g.letter)).toEqual(['A', 'B']);
+        expect(groups[1].words.map(w => w.word)).toEqual(['BIL', 'BOK']);
+    });
+
+    it('falls back to uppercase for an unknown text case', () => {
+        expect(textCaseFromConfig({ emojiWord: { textCase: 'lowercase' } })).toBe('lowercase');
+        expect(textCaseFromConfig({ emojiWord: { textCase: 'weird' } })).toBe('uppercase');
+        expect(textCaseFromConfig({})).toBe('uppercase');
+    });
+});
+
+describe('admin weights data', () => {
+    it('merges stored weights over the registry defaults', () => {
+        expect(currentWeights({})).toEqual(DEFAULT_MODE_WEIGHTS);
+        const merged = currentWeights({ weights: { wordSpelling: '5', addition: -1, bogus: 3 } });
+        expect(merged.wordSpelling).toBe(5);
+        expect(merged.addition).toBe(DEFAULT_MODE_WEIGHTS.addition);
+        expect(merged.bogus).toBeUndefined();
+    });
+
+    it('turns weights into percentages, one row per registry entry', () => {
+        const zero = Object.fromEntries(MINIGAMES.map(g => [g.key, 0]));
+        const rows = weightPercentages({ ...zero, addition: 3, wordSpelling: 1 });
+        expect(rows).toHaveLength(MINIGAMES.length);
+        expect(rows.find(r => r.key === 'addition').percent).toBe(75);
+        expect(rows.find(r => r.key === 'wordSpelling').percent).toBe(25);
+        // All zero: equal split, so the chart is never empty.
+        const equal = weightPercentages(zero);
+        expect(new Set(equal.map(r => r.percent)).size).toBe(1);
+    });
+});
+
+describe('admin html helpers', () => {
+    it('escapes interpolations unless marked raw', () => {
+        expect(escapeHtml('<a href="x">&\'')).toBe('&lt;a href=&quot;x&quot;&gt;&amp;&#39;');
+        expect(toHtml(html`<b>${'<i>'}</b>${raw('<u>')}${['a', '<']}${null}${false}`)).toBe('<b>&lt;i&gt;</b><u>a&lt;');
+    });
+});

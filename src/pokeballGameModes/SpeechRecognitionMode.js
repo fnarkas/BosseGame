@@ -1,48 +1,63 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { getRandomWord, getRandomSentence } from '../speechVocabulary.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
-import { playSentenceAudio, playWordAudio } from '../wordAudioData.js';
-import { registerRecognition, releaseRecognition, restoreAudioAfterMic } from '../utils/micSession.js';
+import { getWordAudioKey } from '../wordAudioData.js';
+import { SpeechRecognitionHelper } from '../utils/speechRecognitionHelper.js';
+import { createMicButton } from '../components/MicButton.js';
 
 // ⚙️ CONFIGURATION: How many words must be read correctly to win
 const REQUIRED_CORRECT_WORDS = 1; // Change this number: 1 = easy, 3 = medium, 5 = hard
 
+const WORD_Y = 250;
+const MIC_Y = 450;
+const BALLS_Y = 650;
+
 /**
  * Speech Recognition Reading game mode
- * Player sees a Swedish word, reads it aloud, and system validates pronunciation
+ * Player sees a Swedish word, reads it aloud, and system validates pronunciation.
+ *
+ * The microphone is only ever opened when the child taps the mic button: on
+ * iOS any eager capture flips the audio session into a heavily attenuated
+ * play-and-record mode that sticks for the life of the tab (see micSession.js).
+ * All microphone state is shown on the button itself (see MicButton.js);
+ * there is no status text, because the child cannot read.
  */
 export class SpeechRecognitionMode extends BasePokeballGameMode {
     constructor() {
         super();
         this.currentWord = null;
-        this.recognition = null;
-        this.isListening = false;
-        this.micButton = null;
-        this.statusText = null;
         this.correctCount = 0;
         this.requiredCorrect = REQUIRED_CORRECT_WORDS; // Configurable requirement
-        this.ballIndicators = [];
-        this.permissionGranted = false;
-        this.networkTested = false;
-        this.hasNetworkConnection = false;
-        this.recognitionTimeout = null; // Timeout for Safari/iOS
         this.isSentence = false; // Track if current challenge is a sentence
-        this.wordText = null; // Reference to displayed text
+        this.wordText = null;    // Reference to displayed text
+        this.mic = null;         // MicButton api
+        this.micButton = null;   // The tappable circle (mic.button)
+        this.speechHelper = new SpeechRecognitionHelper('sv-SE');
+    }
+
+    get micState() {
+        return this.mic ? this.mic.state : 'idle';
     }
 
     generateChallenge() {
+        // A word the child stumbled on comes back a little later.
+        const retry = this.takeRetry();
+        if (retry) {
+            this.isSentence = retry.isSentence;
+            this.challengeData = { word: retry.word, translation: retry.translation };
+            return;
+        }
+
         // 50% chance for word, 50% for sentence
         this.isSentence = Math.random() < 0.5;
 
         if (this.isSentence) {
-            // Get random sentence
             const sentenceData = getRandomSentence('easy');
             this.challengeData = {
                 word: sentenceData.sentence,
                 translation: sentenceData.translation
             };
         } else {
-            // Get random Swedish word
             this.currentWord = getRandomWord('easy');
             this.challengeData = {
                 word: this.currentWord.word,
@@ -53,17 +68,13 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
 
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
-        const height = scene.cameras.main.height;
 
         // A fresh challenge always starts accepting input again.
         this.inputLocked = false;
 
-        // Adjust font size based on content type
-        const fontSize = this.isSentence ? '60px' : '120px';
-
         // Display the word/sentence to read (LARGE and clear)
-        this.wordText = scene.add.text(width / 2, 250, this.challengeData.word.toUpperCase(), {
-            fontSize: fontSize,
+        this.wordText = scene.add.text(width / 2, WORD_Y, this.challengeData.word.toUpperCase(), {
+            fontSize: this.isSentence ? '60px' : '120px',
             fontFamily: 'Arial',
             color: '#2C3E50',
             fontStyle: 'bold',
@@ -75,346 +86,72 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         this.wordText.setOrigin(0.5);
         this.uiElements.push(this.wordText);
 
-        // Microphone button (large, centered) - start disabled
-        const micBtnSize = 150;
-        this.micButton = scene.add.circle(width / 2, 450, micBtnSize / 2, 0x95A5A6, 1); // Gray = disabled
-        this.micButton.setStrokeStyle(6, 0xFFFFFF);
-        this.uiElements.push(this.micButton);
-
-        // Microphone emoji
-        const micEmoji = scene.add.text(width / 2, 450, '🎤', {
-            fontSize: '80px',
-            padding: { y: 20 }
+        // Microphone button (large, centered). Grey and dead until speech
+        // recognition exists.
+        this.mic = createMicButton(scene, this, {
+            x: width / 2,
+            y: MIC_Y,
+            onTap: () => this.onMicTap(scene)
         });
-        micEmoji.setOrigin(0.5);
-        this.uiElements.push(micEmoji);
+        this.micButton = this.mic.button;
 
-        // Status text (below button)
-        this.statusText = scene.add.text(width / 2, 580, 'Väntar på mikrofon...', {
-            fontSize: '24px',
-            fontFamily: 'Arial',
-            color: '#95A5A6'
-        });
-        this.statusText.setOrigin(0.5);
-        this.uiElements.push(this.statusText);
+        this.createProgressBalls(scene, { total: this.requiredCorrect, completed: this.correctCount, y: BALLS_Y });
 
-        // Progress indicators (balls)
-        this.createBallIndicators(scene);
-
-        // Initialize Web Speech API and request permission
         this.initializeSpeechRecognition(scene);
     }
 
-    createBallIndicators(scene) {
-        const width = scene.cameras.main.width;
-        const y = 650;
-        const spacing = 60;
-
-        // Calculate total width to center properly
-        // Total width = circle radius + (circles * spacing) + gift half-width
-        const totalWidth = this.requiredCorrect * spacing + 44;
-        const startX = width / 2 - totalWidth / 2 + 20;
-
-        this.ballIndicators = [];
-
-        for (let i = 0; i < this.requiredCorrect; i++) {
-            const x = startX + i * spacing;
-
-            const circle = scene.add.circle(x, y, 20,
-                i < this.correctCount ? 0x27AE60 : 0xffffff, 1);
-            circle.setStrokeStyle(3, 0x000000);
-
-            this.ballIndicators.push(circle);
-            this.uiElements.push(circle);
-        }
-
-        // Add gift emoji at the end
-        const giftX = startX + this.requiredCorrect * spacing;
-        const giftEmoji = scene.add.text(giftX, y, '🎁', {
-            fontSize: '48px',
-            padding: { y: 10 }
-        }).setOrigin(0.5);
-        this.uiElements.push(giftEmoji);
-    }
-
-    updateBallIndicators() {
-        for (let i = 0; i < this.ballIndicators.length; i++) {
-            if (i < this.correctCount) {
-                this.ballIndicators[i].setFillStyle(0x27AE60); // Green
-            } else {
-                this.ballIndicators[i].setFillStyle(0xffffff); // White
-            }
-        }
-    }
-
     initializeSpeechRecognition(scene) {
-        // Check if Web Speech API is supported
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const helper = this.speechHelper;
 
-        if (!SpeechRecognition) {
-            console.error('Web Speech API not supported in this browser');
-            if (this.statusText) {
-                this.statusText.setText('Mikrofon stöds ej i denna webbläsare');
-            }
-            return;
-        }
-
-        // Check for HTTPS (required for production)
-        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-            console.warn('⚠️ Speech recognition requires HTTPS or localhost');
-        }
-
-        console.log('🎤 Initializing Speech Recognition:', {
-            protocol: location.protocol,
-            hostname: location.hostname,
-            browser: navigator.userAgent.split(' ').pop()
-        });
-
-        // Create recognition instance
-        this.recognition = new SpeechRecognition();
-        this.recognition.lang = 'sv-SE'; // Swedish
-        this.recognition.continuous = false; // Stop after one result
-        this.recognition.interimResults = false;
-        this.recognition.maxAlternatives = 5; // Get multiple alternatives
-
-        // Handle results
-        this.recognition.onresult = (event) => {
-            // Clear timeout since we got a result
-            if (this.recognitionTimeout) {
-                this.recognitionTimeout.remove();
-                this.recognitionTimeout = null;
-            }
-
+        helper.onResult = (transcript, results) => {
             // An answer is already accepted and its feedback is running; a
             // second utterance must not count again.
             if (this.inputLocked) return;
-
-            const results = event.results[0];
-            const transcript = results[0].transcript.toLowerCase().trim();
-
             console.log('Heard:', transcript, 'Expected:', this.challengeData.word);
-            console.log('All alternatives:', Array.from(results).map(r => r.transcript));
-
             this.handleSpeechResult(scene, transcript, results);
         };
-
-        // Handle errors
-        this.recognition.onerror = (event) => {
-            // Clear timeout since we got an error
-            if (this.recognitionTimeout) {
-                this.recognitionTimeout.remove();
-                this.recognitionTimeout = null;
-            }
-
-            console.error('Speech recognition error:', event.error, {
-                message: event.message,
-                error: event.error,
-                type: event.type,
-                timestamp: new Date().toISOString()
-            });
-            this.isListening = false;
-
-            // Back to red (tap to retry) whatever the error - the button
-            // stays tappable so a 'not-allowed' can be retried.
-            if (this.micButton) {
-                this.micButton.setFillStyle(0xFF6B6B);
-            }
-
-            if (this.statusText) {
-                if (event.error === 'no-speech') {
-                    this.statusText.setText('Ingen röst hördes. Försök igen!');
-                    this.statusText.setColor('#95A5A6');
-                } else if (event.error === 'not-allowed') {
-                    this.statusText.setText('Mikrofon ej tillåten - tryck på knappen igen');
-                    this.statusText.setColor('#E74C3C');
-                    this.permissionGranted = false;
-                } else if (event.error === 'network') {
-                    console.error('🔴 Network error details:', {
-                        protocol: location.protocol,
-                        isSecure: location.protocol === 'https:',
-                        isLocalhost: location.hostname === 'localhost',
-                        online: navigator.onLine,
-                        hasConnection: this.hasNetworkConnection
-                    });
-
-                    this.statusText.setText('⚠️ Kan inte nå röstigenkänning');
-                    this.statusText.setColor('#FFA500');
-                    this.hasNetworkConnection = false;
-
-                    // Wait longer before retrying (5 seconds)
-                    this.delayedCall(scene, 5000, () => {
-                        if (this.statusText && this.permissionGranted) {
-                            this.statusText.setText('Tryck för att försöka igen');
-                            this.statusText.setColor('#95A5A6');
-                        }
-                    });
-                } else if (event.error === 'aborted') {
-                    this.statusText.setText('Avbruten. Tryck igen!');
-                    this.statusText.setColor('#95A5A6');
-                } else if (event.error === 'audio-capture') {
-                    this.statusText.setText('Mikrofonfel. Kolla inställningar');
-                    this.statusText.setColor('#E74C3C');
-                } else if (event.error === 'service-not-allowed') {
-                    this.statusText.setText('Röstigenkänning inte tillåten');
-                    this.statusText.setColor('#E74C3C');
-                } else {
-                    this.statusText.setText(`Fel (${event.error}). Försök igen!`);
-                    this.statusText.setColor('#E74C3C');
-                }
+        helper.onError = (error) => {
+            if (!this.mic) return;
+            if (error === 'not-allowed' || error === 'service-not-allowed' || error === 'audio-capture') {
+                // Still tappable: a tap retries and the browser prompts again.
+                this.mic.setState('blocked');
+            } else if (this.micState === 'listening') {
+                this.mic.setState('idle');
             }
         };
-
-        // Handle start
-        this.recognition.onstart = () => {
-            console.log('🎤 Recognition session started');
+        helper.onStart = () => {
+            if (this.mic && !this.inputLocked) this.mic.setState('listening');
+        };
+        helper.onEnd = () => {
+            // Keep ✅/❌ on screen; only a plain listening session goes idle.
+            if (this.mic && this.micState === 'listening') this.mic.setState('idle');
+        };
+        // The helper reports its state as text; the child can't read it, so
+        // the only thing taken from it is "the session stopped on its own"
+        // (the silence timeout), which turns the button grey again.
+        helper.onStatusChange = () => {
+            if (this.mic && !helper.isListening && this.micState === 'listening') this.mic.setState('idle');
         };
 
-        // Handle end of recognition
-        this.recognition.onend = () => {
-            console.log('🎤 Recognition session ended');
-            this.isListening = false;
-            // Mic released - cycle the audio context so iOS leaves the
-            // attenuated play-and-record mode (see micSession.js).
-            restoreAudioAfterMic(scene);
-            if (this.micButton) {
-                this.micButton.setFillStyle(0xFF6B6B);
-            }
-        };
-
-        registerRecognition(this.recognition);
-        this.enableMicrophoneButton(scene);
-    }
-
-    enableMicrophoneButton(scene) {
-        // Do NOT open the microphone here (no getUserMedia). On iOS any capture
-        // flips the audio session into a heavily attenuated play-and-record
-        // mode that can stick for the life of the tab. SpeechRecognition asks
-        // for permission itself on the first start(), so treat permission as
-        // granted until the browser reports 'not-allowed'.
-        this.permissionGranted = true;
-
-        if (this.micButton) {
-            this.micButton.setFillStyle(0xFF6B6B); // Red = ready
-            this.micButton.setInteractive({ useHandCursor: true });
-
-            this.micButton.on('pointerdown', () => {
-                // Ignore taps while a correct answer's feedback is running.
-                if (!this.isListening && !this.inputLocked) {
-                    // Allow a retry after a 'not-allowed' error.
-                    this.permissionGranted = true;
-                    this.startListening(scene);
-                }
-            });
-        }
-
-        // Test network connection to speech API
-        this.testNetworkConnection(scene);
-    }
-
-    async testNetworkConnection(scene) {
-        // Test actual connectivity by making a simple request
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-        try {
-            await fetch('https://www.google.com/favicon.ico', {
-                mode: 'no-cors',
-                signal: controller.signal
-            });
-
-            clearTimeout(timeoutId);
-
-            // Connection successful
-            this.hasNetworkConnection = true;
-            this.networkTested = true;
-
-            if (this.statusText && this.permissionGranted) {
-                this.statusText.setText('Tryck för att prata');
-                this.statusText.setColor('#95A5A6');
-            }
-
-            console.log('Network connection test: SUCCESS');
-
-        } catch (error) {
-            clearTimeout(timeoutId);
-
-            // No connection
-            this.hasNetworkConnection = false;
-            this.networkTested = true;
-
-            if (this.statusText) {
-                this.statusText.setText('⚠️ Ingen internet - behövs för röstigenkänning');
-                this.statusText.setColor('#FFA500');
-            }
-
-            console.log('Network connection test: FAILED', error.message);
-
-            // Retry after 5 seconds - unless the mode was cleaned up while
-            // the probe was in flight (statusText is nulled by cleanup).
-            if (!this.statusText) return;
-            this.delayedCall(scene, 5000, () => {
-                if (this.statusText && !this.hasNetworkConnection) {
-                    this.testNetworkConnection(scene);
-                }
-            });
-        }
-    }
-
-    startListening(scene) {
-        if (!this.recognition || this.isListening || !this.permissionGranted) {
-            console.log('Cannot start listening:', {
-                hasRecognition: !!this.recognition,
-                isListening: this.isListening,
-                permissionGranted: this.permissionGranted
-            });
+        // The recognizer is created synchronously; the network probe the
+        // helper runs afterwards is only advisory, so the button is usable at
+        // once. No microphone is opened here.
+        helper.initialize(scene);
+        if (!helper.recognition) {
+            this.mic.setState('blocked');
             return;
         }
+        this.mic.enable();
+        this.mic.setState('idle');
+    }
 
-        // Allow retry even without network test passing
-        // (network test might fail but speech API might still work)
-
-        console.log('🎙️ Starting speech recognition...');
-        this.isListening = true;
-        this.micButton.setFillStyle(0x27AE60); // Green = listening
-        if (this.statusText) {
-            this.statusText.setText('Lyssnar...');
-            this.statusText.setColor('#95A5A6');
-        }
-
-        try {
-            this.recognition.start();
-            console.log('✅ Recognition started successfully');
-
-            // Safari/iOS workaround: Set timeout to stop recognition after 5 seconds
-            // This prevents infinite listening state
-            this.recognitionTimeout = this.delayedCall(scene, 5000, () => {
-                console.log('⏱️ Recognition timeout - stopping');
-                if (this.recognition && this.isListening) {
-                    try {
-                        this.recognition.stop();
-                    } catch (e) {
-                        console.error('Error stopping recognition:', e);
-                    }
-                    this.isListening = false;
-                    if (this.micButton) {
-                        this.micButton.setFillStyle(0xFF6B6B);
-                    }
-                    if (this.statusText) {
-                        this.statusText.setText('Ingen röst hördes. Försök igen!');
-                        this.statusText.setColor('#FFA500');
-                    }
-                }
-            });
-        } catch (e) {
-            console.error('❌ Failed to start recognition:', e);
-            this.isListening = false;
-            this.micButton.setFillStyle(0xFF6B6B);
-            if (this.statusText) {
-                if (e.message.includes('already started')) {
-                    this.statusText.setText('Redan igång - vänta lite');
-                } else {
-                    this.statusText.setText('Fel! Försök igen');
-                }
-            }
+    onMicTap(scene) {
+        // Ignore taps while a correct answer's feedback is running.
+        if (this.isInputBlocked() || this.speechHelper.isListening) return;
+        if (this.speechHelper.startListening(scene)) {
+            this.mic.setState('listening');
+        } else {
+            this.mic.setState('idle');
         }
     }
 
@@ -458,19 +195,13 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         // Lock out further taps/results until the next word is up (or the
         // reward is handed over) so one word can never count twice.
         this.inputLocked = true;
-
-        if (this.statusText) {
-            this.statusText.setText('✅ Rätt!');
-            this.statusText.setColor('#27AE60');
-        }
+        this.mic.setState('correct');
 
         this.correctCount++;
-        this.updateBallIndicators();
+        this.updateProgressBalls(this.correctCount);
 
-        // Success particles
-        this.showSuccessParticles(scene, scene.cameras.main.width / 2, 450);
+        this.showSuccessParticles(scene, scene.cameras.main.width / 2, MIC_Y, { quantity: 20 });
 
-        // Check if won
         if (this.correctCount >= this.requiredCorrect) {
             this.delayedCall(scene, 1000, () => {
                 const x = scene.cameras.main.width / 2;
@@ -478,7 +209,6 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
                 this.finish(true, this.challengeData.word, x, y);
             });
         } else {
-            // Load next word
             this.delayedCall(scene, 1500, () => {
                 this.loadNextWord(scene);
             });
@@ -486,39 +216,37 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
     }
 
     handleWrongAnswer(scene, transcript) {
-        // Track wrong answer
         trackWrongAnswer(
             'SpeechRecognitionMode',
             this.challengeData.word,
             transcript
         );
 
-        if (this.statusText) {
-            this.statusText.setText(`❌ Du sa: "${transcript}"`);
-            this.statusText.setColor('#E74C3C');
-
-            // Allow retry (don't overwrite "Lyssnar..." if the child already
-            // tapped again before the two seconds were up)
-            this.delayedCall(scene, 2000, () => {
-                if (this.statusText && !this.isListening) {
-                    this.statusText.setText('Tryck för att försöka igen');
-                    this.statusText.setColor('#95A5A6');
-                }
-            });
+        this.mic.setState('wrong');
+        // Let the child hear how the word sounds before trying again, and
+        // bring it back a couple of words later.
+        this.playAnswerAudio(scene);
+        const { word, translation } = this.challengeData;
+        if (!this.retryQueue.some(entry => entry.item.word === word)) {
+            this.queueRetry({ word, translation, isSentence: this.isSentence }, 2);
         }
+
+        // Back to "tap to talk" (unless the child already tapped again)
+        this.delayedCall(scene, 2000, () => {
+            if (this.mic && this.micState === 'wrong') this.mic.setState('idle');
+        });
+    }
+
+    // The word, or the words of the sentence stitched together.
+    playAnswerAudio(scene) {
+        const keys = this.challengeData.word.toLowerCase().split(' ').filter(Boolean).map(getWordAudioKey);
+        this.playSequence(scene, keys);
     }
 
     loadNextWord(scene) {
         // The next word is answerable again.
         this.inputLocked = false;
 
-        // Clean up current UI
-        if (this.statusText) {
-            this.statusText.setText('');
-            this.statusText.setColor('#95A5A6');
-        }
-
-        // Generate new word or sentence
         this.generateChallenge();
 
         // Update text with proper styling for word vs sentence
@@ -527,85 +255,22 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
             this.wordText.setFontSize(this.isSentence ? '60px' : '120px');
             this.wordText.setStroke('#FFFFFF', this.isSentence ? 4 : 8);
         }
-
-        if (this.statusText) {
-            this.statusText.setText('Tryck för att prata');
-        }
-    }
-
-    showSuccessParticles(scene, x, y) {
-        // Create star texture if needed
-        if (!scene.textures.exists('star')) {
-            const graphics = scene.add.graphics();
-            graphics.fillStyle(0xFFFF00, 1);
-            graphics.lineStyle(2, 0xFFD700);
-
-            const outerRadius = 12;
-            const innerRadius = 5;
-            const points = 5;
-
-            graphics.beginPath();
-            for (let i = 0; i < points * 2; i++) {
-                const radius = i % 2 === 0 ? outerRadius : innerRadius;
-                const angle = (i * Math.PI) / points;
-                const px = 12 + radius * Math.sin(angle);
-                const py = 12 - radius * Math.cos(angle);
-                if (i === 0) {
-                    graphics.moveTo(px, py);
-                } else {
-                    graphics.lineTo(px, py);
-                }
-            }
-            graphics.closePath();
-            graphics.fillPath();
-            graphics.strokePath();
-
-            graphics.generateTexture('star', 24, 24);
-            graphics.destroy();
-        }
-
-        const particles = scene.add.particles(x, y, 'star', {
-            speed: { min: 100, max: 200 },
-            angle: { min: 0, max: 360 },
-            scale: { start: 2, end: 0 },
-            lifespan: 600,
-            gravityY: 150,
-            tint: [0xFFFF00, 0xFFD700, 0xFFA500],
-            quantity: 20
-        });
-        particles.setDepth(100);
-        particles.explode();
-
-        // Tracked so cleanup() can't leave an emitter behind if it lands
-        // before the self-destruct timer.
-        this.uiElements.push(particles);
-        this.delayedCall(scene, 700, () => particles.destroy());
+        if (this.mic) this.mic.setState(this.speechHelper.recognition ? 'idle' : 'blocked');
     }
 
     cleanup(scene) {
-        // Clear timeout if active
-        if (this.recognitionTimeout) {
-            this.recognitionTimeout.remove();
-            this.recognitionTimeout = null;
-        }
-
         // Tear the capture session down immediately (abort, not stop) so the
         // microphone can never be left open when the mode goes away.
-        releaseRecognition(this.recognition);
-        this.recognition = null;
-
-        this.isListening = false;
-        this.ballIndicators = [];
+        this.speechHelper.cleanup();
 
         // Destroys uiElements and cancels every pending timer (next word,
-        // reward hand-over, network retry, particle self-destruct).
+        // reward hand-over, particle self-destruct) and the ring tween.
         super.cleanup(scene);
 
         // Drop the references so a late recognition onend/onerror (abort()
-        // fires them asynchronously) or an in-flight network probe can't
-        // touch destroyed objects.
+        // fires them asynchronously) can't touch destroyed objects.
         this.wordText = null;
+        this.mic = null;
         this.micButton = null;
-        this.statusText = null;
     }
 }

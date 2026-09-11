@@ -58,11 +58,13 @@ describe('LegendaryNumbersMode', () => {
             expect(heartsText(scene).text).toBe('❤️'.repeat(5));
         });
 
-        it('parseNumberRange rejects garbage and negatives', () => {
-            expect(mode.parseNumberRange('abc')).toBeNull();
-            expect(mode.parseNumberRange('-5')).toBeNull();
-            expect(mode.parseNumberRange('5-')).toBeNull();
-            expect(mode.parseNumberRange('1,1,2-3')).toEqual([1, 2, 3]);
+        it('rejects garbage and negatives in the numbers list and dedupes it', async () => {
+            await start({ coinReward: 100, maxErrors: 3, numbers: 'abc' });
+            expect(mode.activeNumbers.size).toBe(100);
+            await start({ coinReward: 100, maxErrors: 3, numbers: '-5' });
+            expect(mode.activeNumbers.size).toBe(100);
+            await start({ coinReward: 100, maxErrors: 3, numbers: '1,1,2-3' });
+            expect([...mode.activeNumbers]).toEqual([1, 2, 3]);
         });
     });
 
@@ -170,20 +172,32 @@ describe('LegendaryNumbersMode', () => {
             expect(mode.clearedNumbers.has(45)).toBe(true);
         });
 
-        it('loses a heart on a wrong answer and repeats the same number', () => {
+        it('loses a heart on a wrong answer, reveals and speaks the number, then repeats it', () => {
             const n = mode.currentNumber;
+            const before = scene.playedAudio().length;
             answer(wrongAnswerFor(n));
             expect(mode.errorsRemaining).toBe(2);
             expect(heartsText(scene).text).toBe('❤️❤️🖤');
             expect(mode.clearedNumbers.size).toBe(0);
-            scene.advance(1100);
+            expect(mode.onesZone.fillColor).toBe(0xFF0000);
+
+            // After the shake the right digits are shown in gold and spoken
+            scene.advance(500);
+            expect(mode.onesZone.fillColor).toBe(0xFFD700);
+            expect(mode.onesZone.getData('label').text).toBe(String(n % 10));
+            if (n >= 10) expect(mode.tensZone.getData('label').text).toBe(String(Math.floor(n / 10)));
+            expect(scene.playedAudio().slice(before)).toEqual([`number_audio_${n}`]);
+
+            // Then the same number again on a fresh board, with the audio replayed
+            scene.advance(1000);
             expect(mode.currentNumber).toBe(n);
             expect(mode.isRevealing).toBe(false);
+            expect(mode.inputLocked).toBe(false);
             expect(mode.tensZone.getData('value')).toBeNull();
             expect(mode.onesZone.getData('value')).toBeNull();
             expect(mode.tensZone.getData('label').text).toBe('');
             expect(mode.onesZone.getData('label').text).toBe('');
-            // Audio replayed for the retry
+            expect(heartsText(scene).text).toBe('❤️❤️🖤');
             expect(scene.lastAudio()).toBe(`number_audio_${n}`);
             expect(calls).toHaveLength(0);
         });
@@ -202,7 +216,7 @@ describe('LegendaryNumbersMode', () => {
                 expect(b.x).toBe(b.getData('startX'));
                 expect(b.y).toBe(b.getData('startY'));
             });
-            scene.advance(1100);
+            scene.advance(1500);
             expect(mode.errorsRemaining).toBe(2);
             expect(mode.isRevealing).toBe(false);
         });
@@ -238,7 +252,7 @@ describe('LegendaryNumbersMode', () => {
             patchSceneForGameOver();
             for (let i = 0; i < 3; i++) {
                 answer(wrongAnswerFor(mode.currentNumber));
-                scene.advance(1100);
+                scene.advance(1500);
             }
             await flush();
             expect(mode.errorsRemaining).toBe(3);
@@ -257,7 +271,7 @@ describe('LegendaryNumbersMode', () => {
             patchSceneForGameOver({ pokeballGameMode: 'legendary-numbers-only' });
             for (let i = 0; i < 3; i++) {
                 answer(wrongAnswerFor(mode.currentNumber));
-                scene.advance(1100);
+                scene.advance(1500);
             }
             await flush();
             expect(scene.showDiceRollAnimation).not.toHaveBeenCalled();

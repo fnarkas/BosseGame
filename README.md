@@ -1,127 +1,84 @@
 # Pokemon Bokstavs-Spel
 
-Ett pedagogiskt spel för barn som lär ut svenska alfabetet genom att fånga Pokemon!
+Ett pedagogiskt spel för barn som lär sig läsa, räkna och lyssna genom att fånga Pokemon.
+Byggt för en femåring som inte kan läsa: all vägledning sker med ljud och bilder.
 
-## Om Spelet
+## Om spelet
 
-Ditt barn får möta olika Pokemon i det vilda. För att fånga en Pokemon måste de matcha den lilla bokstaven med rätt stor bokstav. De har 3 försök på sig - lyckas de fångar de Pokemon, annars springer den iväg!
+Barnet möter en Pokemon och stavar dess namn genom att trycka på rätt bokstäver.
+Fångade Pokemon hamnar i Pokedexen. Pokébollar köps för mynt, och mynt tjänas i
+minispelen bakom lyckohjulet: bokstavslyssning, första bokstaven, ordbilder, siffror,
+klockan, addition, multiplikation, tiokompisar, vokaler, stavning, taligenkänning,
+piano med mera.
 
 ### Funktioner
 
-- **100 Pokemon** att fånga
-- **Svenska alfabetet** (A-Ö inkl. Å, Ä, Ö)
-- **Anti-fusk system** - bokstäver som redan provats blir gråa
-- **Pokedex** - se alla Pokemon du fångat
-- **Lokalt sparande** - alla fångade Pokemon sparas mellan sessioner
+- **151 Pokemon** (Gen 1) med bilder, typer och uttal
+- **Svenska alfabetet** (A–Ö) med inspelat ljud för varje bokstav
+- **23 minispel**, valda med ett lyckohjul vars sannolikheter styrs från adminpanelen
+- **Adaptiv svårighet** – bokstäver och tal som barnet blandar ihop kommer oftare,
+  och rätt svar sägs alltid högt när barnet svarar fel
+- **Streak-bonus** – fler mynt i rad, extra bonus vid 3 och 5 rätt
+- **Pokedex** med stora, tryckbara nummer som läses upp
+- **Lokalt sparande** – allt sparas i webbläsaren
 
-## Hur Man Spelar
+## Starta
 
-1. En Pokemon dyker upp
-2. En liten bokstav visas (t.ex. "a")
-3. Klicka på rätt stor bokstav (t.ex. "A")
-4. Du har 3 försök (visas med hjärtan ❤️)
-5. Lyckas du fångar du Pokemon!
-6. Klicka på "Pokedex" för att se alla du fångat
-
-## Hur Man Startar Spelet
-
-### Med Vite Dev Server (Rekommenderas - Hot Reload!)
-
-1. **Installera dependencies (första gången):**
 ```bash
 npm install
+python3 download_pokemon_images.py     # bilderna ligger inte i git
+python3 optimize_pokemon_images.py     # krymp dem för iPad (valfritt men rekommenderat)
+npm run dev                            # https://localhost:5173/
 ```
 
-2. **Starta utvecklingsservern:**
+Servern körs med HTTPS (krävs för taligenkänning). Bygg för produktion med `npm run build`.
+
+### Adresser
+
+| Adress | Vad |
+|---|---|
+| `/` | Huvudspelet (fånga Pokemon) |
+| `/pokeballs` | Lyckohjulet med slumpade minispel |
+| `/games` | Lista över alla minispel med direktlänkar (t.ex. `/letters`, `/addition`) |
+| `/store` | Affären |
+| `/admin` | Adminpanel: sannolikheter, inställningar per minispel, ordlista, Pokemon |
+| `/reset` | Nollställ allt |
+
+## Tester
+
 ```bash
-npm run dev
+npm test
 ```
 
-3. **Öppna spelet:**
-- Servern startar automatiskt på http://localhost:5173/
-- Ändringar i koden uppdateras direkt i webbläsaren! ⚡
+Vitest i Node. Phaser kan inte köras utan webbläsare, så minispelen körs mot
+`test/helpers/fakeScene.js`. Se `test/README.md`.
 
-### Bygga för Produktion
+## Struktur
 
-```bash
-npm run build
 ```
-Detta skapar en optimerad version i `dist/` mappen.
-
-## Teknisk Information
-
-### Struktur
-```
-PokemonCounting/
-├── index.html              # Huvudfil
-├── styles.css             # Styling
-├── package.json           # Dependencies
-├── vite.config.js         # Vite konfiguration
-├── src/
-│   ├── main.js           # Entry point
-│   ├── pokemonData.js    # Data för alla 100 Pokemon
-│   └── scenes/
-│       ├── BootScene.js      # Laddning
-│       ├── MainGameScene.js  # Huvudspel
-│       └── PokedexScene.js   # Pokedex
-└── public/pokemon_images/ # Pokemon-bilder (laddas ner, ej i git)
+src/
+├── main.js                  # routing och Phaser-bootstrap
+├── admin/                   # adminpanelen
+├── minigameRegistry.js      # ENDA listan över minispel (klass, rutt, vikt, ikon, färg)
+├── minigameWheel.js         # lyckohjulet, härlett ur registret
+├── minigameConfig.js        # en cachad läsning av public/config/minigames.json
+├── storage.js               # säker localStorage (all lagring går via denna)
+├── audio.js                 # säker ljuduppspelning (okända nycklar kastar aldrig)
+├── adaptive.js              # viktat urval utifrån barnets misstag
+├── streak.js, currency.js, inventory.js, caughtPokemon.js
+├── scenes/                  # BootScene, MainGameScene, PokeballGameScene, SettingsScene
+├── pokeballGameModes/       # ett minispel per fil + BasePokeballGameMode + uiKit
+└── pokemonData.js           # genereras av fetch_pokemon_data.py
+public/
+├── config/minigames.json    # inställningar (sparas från /admin i dev-läge)
+├── pokemon_images/          # laddas ner, ej i git
+└── *_audio/                 # inspelat tal (edge-tts, trimmat)
 ```
 
-### Teknologier
-- **Vite** - Snabb utvecklingsserver med hot reload ⚡
-- **Phaser 3** - Spelmotor (via npm)
-- **LocalStorage** - Sparar fångade Pokemon
-- **ES Modules** - Modern JavaScript
-
-## Framtida Funktioner (Fas 2)
-
-- [ ] Pokeballs-system (begränsat antal försök)
-- [ ] Olika utmaningstyper (matcha ord, stava Pokemon-namn)
-- [ ] Svårighetsgrader
-- [ ] Ljudeffekter och musik
-- [ ] Statistik (framgångsgrad, favorit-Pokemon)
-- [ ] Sällsynta Pokemon efter X antal fångster
-
-## Felsökning
-
-### Spelet laddar inte
-- Kontrollera att du har internetanslutning (för Phaser CDN)
-- Prova att köra med en lokal server (se ovan)
-- Öppna Developer Console (F12) för felmeddelanden
-
-### Pokemon-bilder visas inte
-- Kontrollera att `public/pokemon_images/` mappen finns
-- Kontrollera att alla 100 bilder finns i mappen
-
-### Pokedex sparar inte
-- Kontrollera att cookies/localStorage är aktiverat i webbläsaren
-- Testa i ett annat fönster (inte inkognitoläge)
-
-## För Utvecklare
-
-### Lägga till fler Pokemon
-1. Lägg till bilder i `public/pokemon_images/`
-2. Uppdatera `js/pokemonData.js` med nya Pokemon
-3. Klart!
-
-### Ändra svårighetsgrad
-Redigera i `js/scenes/MainGameScene.js`:
-```javascript
-this.attemptsLeft = 3;  // Ändra antal försök
-```
-
-### Ändra bokstäver
-Redigera i `js/scenes/MainGameScene.js`:
-```javascript
-this.swedishAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ'.split('');
-```
-
-## Licens
-
-Detta är ett privat projekt för utbildningsändamål.
+Utvecklingsregler och checklistor (nya minispel, nya Pokemon, ljud) finns i `.claude/CLAUDE.md`.
 
 ## Tack till
 
 - **PokeAPI** för Pokemon-data och bilder
-- **Phaser 3** för den fantastiska spelmotorn
-- **Din son** - den bästa Pokemon-tränaren! 🎮
+- **Phaser 3** för spelmotorn
+- **Bosse** – den bästa Pokemon-tränaren

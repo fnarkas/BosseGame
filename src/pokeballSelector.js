@@ -41,6 +41,13 @@ export function showPokeballSelector(scene, onSelect, onCancel) {
     selectorUI.overlay.setDepth(500);
     selectorUI.overlay.setInteractive();
 
+    // Tapping outside the balls closes the selector (the only way out if the
+    // child changes their mind or has no ball of any type).
+    selectorUI.overlay.on('pointerdown', () => {
+        selectorUI.cleanup();
+        if (onCancel) onCancel();
+    });
+
     const inventory = getInventory();
     const pokeballTypes = ['pokeball', 'greatball', 'ultraball', 'legendaryball'];
     const spriteMap = {

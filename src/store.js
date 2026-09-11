@@ -10,7 +10,6 @@ import { getInventory, addPokeball, POKEBALL_TYPES } from './inventory.js';
  * Initialize the store UI
  */
 export function initStore() {
-    const storeOverlay = document.getElementById('store-overlay');
     const backBtn = document.getElementById('store-back-btn');
     const storeGrid = document.getElementById('store-grid');
 
@@ -24,9 +23,16 @@ export function initStore() {
 /**
  * Open the store
  */
-export function openStore() {
+let closeCallback = null;
+
+/**
+ * Open the store
+ * @param {Function} onClose - Optional callback when the store closes
+ */
+export function openStore(onClose) {
     const storeOverlay = document.getElementById('store-overlay');
     storeOverlay.style.display = 'block';
+    closeCallback = onClose || null;
     updateStoreDisplay();
 }
 
@@ -36,6 +42,11 @@ export function openStore() {
 export function closeStore() {
     const storeOverlay = document.getElementById('store-overlay');
     storeOverlay.style.display = 'none';
+    if (closeCallback) {
+        const cb = closeCallback;
+        closeCallback = null;
+        cb();
+    }
 }
 
 /**
@@ -51,7 +62,7 @@ export function updateStoreDisplay() {
     Object.keys(POKEBALL_TYPES).forEach(type => {
         const countElement = document.getElementById(`pokeball-inventory-${type}`);
         if (countElement) {
-            countElement.textContent = `Äger: ${inventory[type]}`;
+            countElement.textContent = `${POKEBALL_TYPES[type].emoji} × ${inventory[type]}`;
         }
 
         // Update buy button state
@@ -120,14 +131,15 @@ function createPokeballCard(type, data) {
     const invCount = document.createElement('div');
     invCount.className = 'pokeball-card-inventory';
     invCount.id = `pokeball-inventory-${type}`;
-    invCount.textContent = `Äger: ${inventory[type]}`;
+    invCount.textContent = `${data.emoji} × ${inventory[type]}`;
     card.appendChild(invCount);
 
     // Buy button
     const buyBtn = document.createElement('button');
     buyBtn.className = 'pokeball-buy-btn';
     buyBtn.id = `pokeball-buy-${type}`;
-    buyBtn.textContent = 'KÖP';
+    buyBtn.textContent = '🛒';
+    buyBtn.setAttribute('aria-label', `Köp ${data.name}`);
 
     const coins = getCoinCount();
     buyBtn.disabled = coins < data.price;
@@ -147,8 +159,8 @@ function purchasePokeball(type, price) {
     const newCoinCount = deductCoins(price);
 
     if (newCoinCount === null) {
-        // Not enough coins
-        alert('Inte tillräckligt med mynt!');
+        // Not enough coins (the button is disabled in that case; never pop a
+        // system dialog in front of a child)
         return;
     }
 
@@ -166,8 +178,6 @@ function purchasePokeball(type, price) {
  * Show purchase success feedback
  */
 function showPurchaseFeedback(type) {
-    const pokeballName = POKEBALL_TYPES[type].name;
-
     // Create feedback overlay
     const feedback = document.createElement('div');
     feedback.style.position = 'fixed';
@@ -182,7 +192,7 @@ function showPurchaseFeedback(type) {
     feedback.style.fontWeight = 'bold';
     feedback.style.zIndex = '2000';
     feedback.style.border = '3px solid #4CAF50';
-    feedback.textContent = `✅ ${pokeballName} köpt!`;
+    feedback.textContent = `✅ ${POKEBALL_TYPES[type].emoji}`;
 
     document.body.appendChild(feedback);
 

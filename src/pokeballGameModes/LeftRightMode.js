@@ -1,8 +1,10 @@
-import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
 import { resetStreak } from '../streak.js';
 import { updateBoosterBar } from '../boosterBar.js';
+import { COLORS } from './uiKit.js';
+
+const ZONE_ALPHA = 0.2;
 
 export class LeftRightMode extends BasePokeballGameMode {
     constructor() {
@@ -11,18 +13,15 @@ export class LeftRightMode extends BasePokeballGameMode {
         this.totalAttempts = 0;
         this.maxAttempts = 25;
         this.requiredCorrect = 6;
-        this.ballIndicators = [];
-        this.currentAudio = null;
-        this.isRevealing = false; // Track if we're showing the answer
         this.leftZone = null;
         this.rightZone = null;
     }
 
     generateChallenge() {
-        // Randomly choose left or right using Math.random for better randomization
+        // A direction the child just got wrong is asked again; otherwise
+        // choose left or right at random.
         const directions = ['vanster', 'hoger'];
-        const randomIndex = Math.floor(Math.random() * directions.length);
-        const correctDirection = directions[randomIndex];
+        const correctDirection = this.takeRetry() ?? directions[Math.floor(Math.random() * directions.length)];
 
         this.challengeData = {
             correctDirection: correctDirection,
@@ -39,105 +38,50 @@ export class LeftRightMode extends BasePokeballGameMode {
         this.isRevealing = false;
 
         // Speaker button to replay audio (centered at top)
-        const speakerBtn = scene.add.text(width / 2, 200, '🔊', {
-            font: '80px Arial',
-            padding: { y: 20 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
-        speakerBtn.on('pointerdown', () => {
+        this.createSpeakerButton(scene, width / 2, 200, () => {
             this.playDirectionAudio(scene, this.challengeData.correctDirection);
         });
-        this.uiElements.push(speakerBtn);
 
         // Vertical dividing line in the middle
         const divider = scene.add.graphics();
-        divider.lineStyle(4, 0x000000, 1);
+        divider.lineStyle(4, COLORS.OUTLINE, 1);
         divider.lineBetween(width / 2, 300, width / 2, height - 100);
         this.uiElements.push(divider);
 
         // Create clickable zones for left and right (both same neutral color)
-        this.leftZone = scene.add.rectangle(width / 4, height / 2 + 50, width / 2 - 20, 300, 0xFFFFFF, 0.2)
+        this.leftZone = scene.add.rectangle(width / 4, height / 2 + 50, width / 2 - 20, 300, COLORS.NEUTRAL_FILL, ZONE_ALPHA)
             .setInteractive({ useHandCursor: true });
 
         this.leftZone.on('pointerdown', () => {
-            if (!this.isRevealing && !this.inputLocked) {
+            if (!this.isInputBlocked()) {
                 this.handleAnswer(scene, 'vanster');
             }
         });
         this.uiElements.push(this.leftZone);
 
-        this.rightZone = scene.add.rectangle(3 * width / 4, height / 2 + 50, width / 2 - 20, 300, 0xFFFFFF, 0.2)
+        this.rightZone = scene.add.rectangle(3 * width / 4, height / 2 + 50, width / 2 - 20, 300, COLORS.NEUTRAL_FILL, ZONE_ALPHA)
             .setInteractive({ useHandCursor: true });
 
         this.rightZone.on('pointerdown', () => {
-            if (!this.isRevealing && !this.inputLocked) {
+            if (!this.isInputBlocked()) {
                 this.handleAnswer(scene, 'hoger');
             }
         });
         this.uiElements.push(this.rightZone);
 
-        // Create 6 ball indicators showing progress
-        this.createBallIndicators(scene);
+        // Progress balls (one per required answer) ending in the gift
+        this.createProgressBalls(scene, { total: this.requiredCorrect, completed: this.correctInRow, y: 500 });
 
         // Play direction audio automatically when challenge loads
         this.playDirectionAudio(scene, this.challengeData.correctDirection);
     }
 
-    createBallIndicators(scene) {
-        const width = scene.cameras.main.width;
-        const startX = width / 2 - 180;
-        const y = 500;
-        const spacing = 60;
-
-        this.ballIndicators = [];
-
-        for (let i = 0; i < this.requiredCorrect; i++) {
-            const x = startX + i * spacing;
-
-            // Create circle indicator
-            const circle = scene.add.circle(x, y, 20,
-                i < this.correctInRow ? 0x27AE60 : 0xffffff, 1);
-            circle.setStrokeStyle(3, 0x000000);
-
-            this.ballIndicators.push(circle);
-            this.uiElements.push(circle);
-        }
-
-        // Add gift emoji at the end to show the goal
-        const giftX = startX + this.requiredCorrect * spacing;
-        const giftEmoji = scene.add.text(giftX, y, '🎁', {
-            fontSize: '48px',
-            padding: { y: 10 }
-        }).setOrigin(0.5);
-        this.uiElements.push(giftEmoji);
-    }
-
-    updateBallIndicators() {
-        // Update ball colors based on correctInRow
-        for (let i = 0; i < this.ballIndicators.length; i++) {
-            if (i < this.correctInRow) {
-                this.ballIndicators[i].setFillStyle(0x27AE60); // Green
-            } else {
-                this.ballIndicators[i].setFillStyle(0xffffff); // White
-            }
-        }
-    }
-
     playDirectionAudio(scene, direction) {
-        const audioKey = `direction_audio_${direction}`;
+        this.playAudio(scene, `direction_audio_${direction}`);
+    }
 
-        // Stop and destroy any currently playing audio
-        if (this.currentAudio) {
-            if (this.currentAudio.isPlaying) {
-                this.currentAudio.stop();
-            }
-            this.currentAudio.destroy();
-            this.currentAudio = null;
-        }
-
-        // Play the audio
-        this.currentAudio = scene.sound.add(audioKey);
-        this.currentAudio.play();
+    zoneFor(direction) {
+        return direction === 'vanster' ? this.leftZone : this.rightZone;
     }
 
     handleAnswer(scene, selectedDirection) {
@@ -149,10 +93,10 @@ export class LeftRightMode extends BasePokeballGameMode {
 
         if (isCorrect) {
             this.correctInRow++;
-            this.updateBallIndicators();
+            this.updateProgressBalls(this.correctInRow);
 
             // Show success particles
-            const correctZone = selectedDirection === 'vanster' ? this.leftZone : this.rightZone;
+            const correctZone = this.zoneFor(selectedDirection);
             this.showSuccessParticles(scene, correctZone.x, correctZone.y);
 
             // Check if we've reached 6 correct in a row
@@ -168,7 +112,7 @@ export class LeftRightMode extends BasePokeballGameMode {
                 this.loadNextQuestion(scene);
             }
         } else {
-            // Wrong answer - simple red flash, then reset streak and continue
+            // Wrong answer - red shake, say the right side, then game over
             this.showWrongAnswerFeedback(scene, selectedDirection);
         }
     }
@@ -186,136 +130,75 @@ export class LeftRightMode extends BasePokeballGameMode {
     }
 
     showWrongAnswerFeedback(scene, selectedDirection) {
+        const correctDirection = this.challengeData.correctDirection;
+
         // Track wrong answer
         trackWrongAnswer(
             'LeftRightMode',
-            this.challengeData.correctDirection,
+            correctDirection,
             selectedDirection
         );
 
         this.isRevealing = true;
 
-        // Determine which zone was clicked wrong
-        const wrongZone = selectedDirection === 'vanster' ? this.leftZone : this.rightZone;
-
-        // Flash red on wrong zone
-        wrongZone.setFillStyle(0xFF0000, 0.6);
-
-        // Shake animation on wrong zone
-        const originalX = wrongZone.x;
-        this.addTween(scene, {
-            targets: wrongZone,
-            x: originalX - 10,
-            duration: 50,
-            yoyo: true,
-            repeat: 3,
+        // Red shake on the side that was tapped
+        const wrongZone = this.zoneFor(selectedDirection);
+        this.shakeWrong(scene, wrongZone, {
+            restore: false,
             onComplete: () => {
-                // Reset wrong zone
-                wrongZone.setFillStyle(0xFFFFFF, 0.2);
-                wrongZone.x = originalX;
+                // Back to the neutral zone look
+                if (wrongZone.scene) {
+                    wrongZone.setFillStyle(COLORS.NEUTRAL_FILL, ZONE_ALPHA);
+                    wrongZone.setStrokeStyle();
+                }
 
-                // Show sad emoji - GAME OVER
+                // Sad emoji - GAME OVER
                 const sadEmoji = scene.add.text(scene.cameras.main.width / 2, 500, '😢', {
                     fontSize: '120px'
                 }).setOrigin(0.5).setDepth(1000);
-
-                // Fade out sad emoji and then return to dice scene
+                this.uiElements.push(sadEmoji);
                 this.addTween(scene, {
                     targets: sadEmoji,
                     alpha: 0,
                     scale: 1.5,
                     duration: 1500,
-                    ease: 'Cubic.easeOut',
-                    onComplete: () => {
-                        sadEmoji.destroy();
+                    ease: 'Cubic.easeOut'
+                });
 
-                        // GAME OVER - clean up and reload the scene to show dice again
-                        this.cleanup(scene);
+                // Light up the correct side and say it, so the child hears
+                // "höger" while looking at the right-hand half. Ask the same
+                // direction again next time.
+                const correctZone = this.zoneFor(correctDirection);
+                if (correctZone && correctZone.scene) correctZone.setFillStyle(COLORS.REVEAL, 0.5);
+                this.queueRetry(correctDirection);
 
-                        // Reset game state
-                        this.correctInRow = 0;
-
-                        // Reset streak since this minigame was failed
-                        resetStreak();
-
-                        // Update booster bar visual immediately
-                        if (scene.boosterBarElements) {
-                            updateBoosterBar(scene.boosterBarElements, 0, scene);
-                        }
-
-                        // Restart the scene (will show dice animation since no coins earned)
-                        scene.scene.restart();
-                    }
+                this.revealAnswer(scene, {
+                    targets: [],
+                    disable: [this.leftZone, this.rightZone],
+                    audioKey: `direction_audio_${correctDirection}`,
+                    delay: 1500,
+                    onDone: () => this.endRound(scene)
                 });
             }
         });
     }
 
-    showSuccessParticles(scene, x, y) {
-        // Create star-shaped particle texture if it doesn't exist
-        if (!scene.textures.exists('star')) {
-            const particleGraphics = scene.add.graphics();
-            particleGraphics.fillStyle(0xFFFF00, 1);
-            particleGraphics.lineStyle(2, 0xFFD700);
-
-            // Draw a star shape
-            const outerRadius = 12;
-            const innerRadius = 5;
-            const points = 5;
-
-            particleGraphics.beginPath();
-            for (let i = 0; i < points * 2; i++) {
-                const radius = i % 2 === 0 ? outerRadius : innerRadius;
-                const angle = (i * Math.PI) / points;
-                const px = 12 + radius * Math.sin(angle);
-                const py = 12 - radius * Math.cos(angle);
-                if (i === 0) {
-                    particleGraphics.moveTo(px, py);
-                } else {
-                    particleGraphics.lineTo(px, py);
-                }
-            }
-            particleGraphics.closePath();
-            particleGraphics.fillPath();
-            particleGraphics.strokePath();
-
-            particleGraphics.generateTexture('star', 24, 24);
-            particleGraphics.destroy();
+    endRound(scene) {
+        // GAME OVER - clean up and reload the scene to show dice again. This
+        // mode does not rebuild a challenge (no restartChallenge), so it
+        // resets the streak itself before the scene restarts.
+        this.cleanup(scene);
+        this.correctInRow = 0;
+        resetStreak();
+        if (scene.boosterBarElements) {
+            updateBoosterBar(scene.boosterBarElements, 0, scene);
         }
 
-        // Create particles
-        const particles = scene.add.particles(x, y, 'star', {
-            speed: { min: 100, max: 200 },
-            angle: { min: 0, max: 360 },
-            scale: { start: 2, end: 0 },
-            lifespan: 600,
-            gravityY: 150,
-            tint: [0xFFFF00, 0xFFD700, 0xFFA500],
-            quantity: 15
-        });
-        particles.setDepth(100);
-        particles.explode();
-        this.uiElements.push(particles); // so cleanup() can remove it early
-
-        // Clean up
-        this.delayedCall(scene, 700, () => {
-            particles.destroy();
-        });
+        // Restart the scene (will show dice animation since no coins earned)
+        scene.scene.restart();
     }
 
     cleanup(scene) {
-        // Stop and destroy any playing audio
-        if (this.currentAudio) {
-            if (this.currentAudio.isPlaying) {
-                this.currentAudio.stop();
-            }
-            this.currentAudio.destroy();
-            this.currentAudio = null;
-        }
-
-        // Clear ball indicators
-        this.ballIndicators = [];
-
         // Clear zone references
         this.leftZone = null;
         this.rightZone = null;

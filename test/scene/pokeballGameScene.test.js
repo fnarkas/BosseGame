@@ -184,4 +184,48 @@ describe('PokeballGameScene', () => {
             expect(fake._missingTextures, mode).toEqual([]);
         }
     });
+
+    it('has an always-visible home button that leaves the minigame and forgets the session', async () => {
+        const { scene, fake } = await makeScene({ forcedMode: 'addition-only' });
+        saveActiveMinigame('AdditionMode');
+        const home = fake.liveObjectsOfType('Image').find(i => i.name === 'home-button');
+        expect(home).toBeTruthy();
+        expect(home.depth).toBeGreaterThanOrEqual(1002);
+        fake.click(home);
+        expect(loadActiveMinigame()).toBeNull();
+        expect(fake.sceneCalls).toEqual([{ method: 'start', key: 'MainGameScene', data: undefined }]);
+        expect(scene.gameMode.uiElements).toEqual([]); // shutdown tore the mode down
+    });
+
+    it('ignores the home button while an answer is being rewarded', async () => {
+        const { scene, fake } = await makeScene({ forcedMode: 'addition-only' });
+        scene.gameMode.answerCallback(true, 'x', 640, 450);
+        const home = fake.liveObjectsOfType('Image').find(i => i.name === 'home-button');
+        fake.click(home);
+        expect(fake.sceneCalls).toEqual([]);
+    });
+
+    it('pays a milestone bonus with a celebration when the streak reaches 3', async () => {
+        incrementStreak();
+        incrementStreak(); // 2 -> next win makes 3
+        const { scene, fake } = await makeScene({ forcedMode: 'addition-only' });
+        const before = getCoinCount();
+        scene.gameMode.answerCallback(true, 'x', 640, 450);
+        let seenParty = false;
+        for (let t = 0; t < 20000 && !seenParty; t += 250) {
+            fake.advance(250);
+            await flush();
+            if (fake.findText('🎉')) seenParty = true;
+        }
+        expect(seenParty).toBe(true);
+        fake.advance(15000);
+        await flush();
+        const gained = getCoinCount() - before;
+        // base 1-3 coins x3 multiplier, plus the 5-coin milestone bonus
+        expect(gained).toBeGreaterThanOrEqual(3 + 5);
+        expect(gained).toBeLessThanOrEqual(9 + 5);
+        expect(fake.findText('🎉')).toBeFalsy();
+        expect(scene.coinCounterText.text).toBe(`${getCoinCount()}`);
+        expect(scene.isProcessingAnswer).toBe(false);
+    });
 });

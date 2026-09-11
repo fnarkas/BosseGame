@@ -58,152 +58,58 @@
 
 ## Adding New Minigames to Pokeball Game Scene
 
-**Complete Checklist for Adding a New Minigame Mode**
+All minigame wiring lives in **one place**: `src/minigameRegistry.js`. The debug
+route, the `/games` menu, the forced-mode value, the weighted random pick, the
+reload-restore map, the wheel slice/colour/icon, the default weight and the admin
+probability form are all derived from that list. Do NOT add if/else chains or
+hand-written maps anywhere else.
 
-### 1. Create Game Mode Class
-- **Location**: `src/pokeballGameModes/YourGameMode.js`
-- **Extends**: `BasePokeballGameMode`
-- **Required methods**:
-  - `generateChallenge()` - Create the challenge data
-  - `createChallengeUI(scene)` - Build the UI
-  - `cleanup(scene)` - Destroy all UI elements
-- **Important**: Store all UI elements in `this.uiElements` array
-- **Callback**: Use `this.answerCallback(isCorrect, answer, x, y)` when player answers
+### 1. Create the game mode class
+- **Location**: `src/pokeballGameModes/YourGameMode.js`, extends `BasePokeballGameMode`
+- **Required methods**: `generateChallenge()`, `createChallengeUI(scene)`, `cleanup(scene)` (must call `super.cleanup(scene)`)
+- Push every game object into `this.uiElements`; schedule with `this.delayedCall` / `this.addTween`
+- Report the win once with `this.finish(true, answer, x, y)`
+- Optional `async loadConfig()` that sets `this.configLoaded = true` (the scene awaits it before the first challenge)
+- Optional `paysOwnCoins = true` + `earnedCoins` for timed modes that compute their own payout
+- Keep word lists / data in a separate file (e.g. `src/speechVocabulary.js`)
 
-### 2. Create Supporting Data Files (if needed)
-- **Example**: `src/speechVocabulary.js`, `src/letterData.js`
-- **Purpose**: Store word lists, challenge data, etc.
-- Keep data separate from game logic
-
-### 3. Update PokeballGameScene.js
-**Imports** (top of file):
+### 2. Register it
+Add one line to `MINIGAMES` in `src/minigameRegistry.js`:
 ```javascript
-import { YourGameMode } from '../pokeballGameModes/YourGameMode.js';
+{ key: 'yourMode', Mode: YourGameMode, path: '/yourmode', forced: 'yourmode-only',
+  name: '🎮 Your Mode', icon: 'game-mode-yourmode', iconFile: 'minigame_icons/your_mode.png',
+  color: 0x123456, defaultWeight: 10 }
 ```
+- `key` is the weight key in `public/config/minigames.json` (add it there too if you want a non-default weight)
+- `slice: 'shared-name'` makes two modes share one wheel slice (listening/reading pairs)
+- `audio: ['words']` lists the audio packs (see `src/assetManifest.js`) the mode needs; they are
+  downloaded the first time the mode starts. Letters, numbers, directions and "gånger" are always loaded.
+- `legendary: true` for fixed-reward, no-streak, treasure-chest modes
 
-**Add to MODE_WEIGHTS** (line ~119):
-```javascript
-const MODE_WEIGHTS = {
-    letterListening: 20,
-    wordEmoji: 20,
-    leftRight: 20,
-    letterDragMatch: 20,
-    speechRecognition: 20,
-    yourNewMode: 20    // Add your mode
-};
-```
+### 3. Create the icon
+`public/minigame_icons/your_mode.png`, 256x256, transparent background, bold and
+recognisable by a 5-year-old (emoji or simple shapes, high contrast).
 
-**Update totalWeight calculation** (line ~128):
-```javascript
-const totalWeight = MODE_WEIGHTS.letterListening +
-                  MODE_WEIGHTS.wordEmoji +
-                  MODE_WEIGHTS.leftRight +
-                  MODE_WEIGHTS.letterDragMatch +
-                  MODE_WEIGHTS.speechRecognition +
-                  MODE_WEIGHTS.yourNewMode;  // Add here
-```
+### 4. Add tests
+`test/modes/yourMode.test.js` — see the Automated Tests section. `test/minigameRegistry.test.js`
+already checks that every `*Mode.js` file is registered, that icons exist and that config
+keys match, so it will fail loudly if step 2 or 3 is skipped.
 
-**Add selection case in selectRandomGameMode()** (line ~158):
-```javascript
-currentWeight += MODE_WEIGHTS.yourNewMode;
-if (random < currentWeight) {
-    console.log('Selected game mode: Your New Mode');
-    return new YourGameMode();
-}
-```
+### 5. Admin config section (optional)
+If the mode reads its own section of `minigames.json` (via `loadModeConfig('yourMode', defaults)`),
+add one entry to `MINIGAME_CONFIG_SCHEMA` in `src/admin/schema.js` listing its fields
+(`{ id, label, type, default, min, max, help }`). The panel, save and validation are generated
+from that; `test/admin/schema.test.js` checks it against the config file.
 
-**Add debug mode case in selectGameMode()** (line ~106):
-```javascript
-} else if (forcedMode === 'yourmode-only') {
-    this.gameMode = new YourGameMode();
-    console.log('Selected game mode: Your New Mode (forced)');
-```
-
-**Add to gameModeMap in showDiceRollAnimation()** (line ~178):
-```javascript
-const gameModeMap = {
-    'LetterListeningMode': { face: 1, icon: 'game-mode-letter' },
-    'WordEmojiMatchMode': { face: 2, icon: 'game-mode-word' },
-    'LeftRightMode': { face: 3, icon: 'game-mode-directions' },
-    'LetterDragMatchMode': { face: 4, icon: 'game-mode-lettermatch' },
-    'SpeechRecognitionMode': { face: 5, icon: 'game-mode-speech' },
-    'YourGameMode': { face: 6, icon: 'game-mode-youricon' }
-};
-```
-
-**Update icon count and spacing** (line ~205):
-```javascript
-// Create 6 game mode icons in a single row below the dice
-const iconSize = 100;
-const spacing = 60; // Adjust for number of icons
-const totalWidth = (iconSize * 6) + (spacing * 5);
-```
-
-**Add icon key to array** (line ~214):
-```javascript
-const iconKeys = ['game-mode-letter', 'game-mode-word',
-                 'game-mode-directions', 'game-mode-lettermatch',
-                 'game-mode-speech', 'game-mode-youricon'];
-```
-
-**Update dice face range** (line ~255):
-```javascript
-const randomFace = Phaser.Math.Between(1, 6); // Update max
-```
-
-### 4. Update BootScene.js
-**Generate dice face** (line ~172):
-```javascript
-for (let i = 0; i < 6; i++) {  // Update count
-```
-
-**Add color to colors array** (line ~163):
-```javascript
-const colors = [0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xA78BFA, 0xYOURCOLOR];
-```
-
-**Add dot pattern** (line ~169):
-```javascript
-[{ x: 0.2, y: 0.2 }, { x: 0.8, y: 0.2 }, { x: 0.2, y: 0.5 },
- { x: 0.8, y: 0.5 }, { x: 0.2, y: 0.8 }, { x: 0.8, y: 0.8 }] // 6 dots
-```
-
-**Load icon asset** (line ~72):
-```javascript
-this.load.image('game-mode-youricon', 'minigame_icons/your_mode.jpeg');
-```
-
-### 5. Create Icon Asset
-**Location**: `public/minigame_icons/your_mode.jpeg`
-**Size**: 256x256 pixels
-**Format**: JPEG
-**Design**:
-- Solid color background matching your dice color
-- Simple, bold icon recognizable by 5-year-olds
-- Use emojis or simple shapes
-- High contrast
-
-**Quick placeholder** (ImageMagick):
-```bash
-magick -size 256x256 xc:"#YOURCOLOR" -pointsize 80 -gravity center \
-  -annotate +0+0 "🎮" public/minigame_icons/your_mode.jpeg
-```
-
-### 6. Add Debug Route
-**Location**: `src/router.js` (if routing exists)
-**Pattern**: `/yourmode` → sets `pokeballGameMode: 'yourmode-only'`
-
-### Testing Checklist
-- ✅ Debug path works: `http://localhost:5175/yourmode`
-- ✅ Appears in random rotation (play through several rounds)
-- ✅ Dice animation shows correct face and icon
+### Testing checklist
+- ✅ Debug path works: `http://localhost:5173/yourmode`
+- ✅ Appears on the wheel and in random rotation
 - ✅ UI cleanup works (no leftover elements after mode switch)
-- ✅ Callback triggers correctly on correct/incorrect answers
-- ✅ Mode switches properly after completion
+- ✅ `npm test` passes, including the registry and lint tests
 - ✅ No console errors
 
-### Example Reference
-See `SpeechRecognitionMode.js` for a complete example implementation.
+### Example reference
+See `AdditionMode.js` for a compact mode and `SpeechRecognitionMode.js` for one with config and microphone handling.
 
 ## Pokemon Management System
 
@@ -269,9 +175,9 @@ These files already use `POKEMON_DATA.length` and will automatically adapt:
 **✅ Already Flexible:**
 - `src/main.js` - Admin panel shows `${POKEMON_DATA.length}`
 - `src/pokedex.js` - Shows `${POKEMON_DATA.length}`
-- `src/scenes/BootScene.js` - Loops over `POKEMON_DATA`
+- `src/assetManifest.js` - `pokemonImageAsset(id)` / `pokemonAudioAsset(id)` build paths from `POKEMON_DATA`;
+  artwork and name audio are loaded lazily per encounter (`MainGameScene`), not in BootScene
 - `src/scenes/MainGameScene.js` - Uses `POKEMON_DATA` directly
-- `src/scenes/PokedexScene.js` - Iterates `POKEMON_DATA`
 
 **⚠️ Check for Hardcoded Values:**
 If you find any hardcoded Pokemon counts (like "100" or "151"), replace with:
@@ -358,7 +264,8 @@ The rarity system uses total stats:
 | `src/pokemonRarity.js` | Catch rates, legendary IDs | ✅ Update legendaries |
 | `src/main.js` | Admin panel | ✅ Already flexible |
 | `src/pokedex.js` | Pokedex UI | ✅ Already flexible |
-| `src/scenes/BootScene.js` | Asset loading | ✅ Already flexible |
+| `src/assetManifest.js` | Asset paths, lazy audio packs | ✅ Already flexible |
+| `src/scenes/BootScene.js` | Boot-time asset loading (small set) | ✅ Already flexible |
 | `fetch_pokemon_data.py` | Data generator | ✅ Update for new gens |
 | `download_pokemon_images.py` | Image downloader | ✅ Update for new gens |
 | `generate_pokemon_audio.py` | Audio generator | ✅ Update for new gens |
@@ -434,3 +341,24 @@ exercised against `test/helpers/fakeScene.js` — see `test/README.md`.
 - Every new mode needs `test/modes/<name>.test.js`: generation invariants, happy path
   to exactly one reward, wrong-answer path, double-tap lockout, cleanup + 10 s
   advance leaves no orphaned objects, and no unknown audio keys.
+
+## Shared Modules (use these, never re-implement)
+
+| Need | Use | Never |
+|---|---|---|
+| Read/write saved state | `src/storage.js` (`getJSON/setJSON/getInt/...`) | raw `localStorage.*` (throws in private mode, corrupt JSON freezes the game) |
+| Caught Pokemon list | `src/caughtPokemon.js` | parsing `pokemonCaughtList` yourself |
+| Config from `minigames.json` | `loadModeConfig('section', defaults)` in `src/minigameConfig.js` (one cached fetch) | `fetch('/config/minigames.json')` |
+| Play a sound | in modes `this.playAudio(scene, key)` / `this.playSequence(scene, keys)`; elsewhere `playAudio(scene, key)` from `src/audio.js` | `scene.sound.play(key)` (throws on a missing key) |
+| Right/wrong chime | `playChime(scene, 'correct'|'wrong'|'fanfare')` from `src/sfx.js` | new audio files for UI feedback |
+| Wrong-answer flow | `this.shakeWrong()` → `this.revealAnswer({ targets, audioKey })` → `restartChallenge()` | hand-written red/gold tweens |
+| Progress / hearts / speaker / stars | `this.createProgressBalls`, `this.createHearts`, `this.createSpeakerButton`, `this.showSuccessParticles` | per-mode copies |
+| Which item to ask next | `pickAdaptive(modeName, pool, { seedList })`, `pickDistractors(...)`, `this.takeRetry()` / `queueRetry()` from `src/adaptive.js` + base | uniform `GetRandom` for letters/numbers |
+| Number list from admin ("12-20,30") | `parseNumberRange(str, fallback)` in `src/utils/parseNumberRange.js` | a local parser |
+| Colours / text styles / layout | `COLORS`, `TEXT`, `LAYOUT` in `src/pokeballGameModes/uiKit.js` | new hex literals |
+
+### Learning rules every mode follows
+- A wrong answer is always followed by the correct answer being **spoken** while it is highlighted (`revealAnswer` with `audioKey`/`audioKeys`).
+- The missed item is asked again right away and once more a little later (`queueRetry(item)` and `queueRetry(item, 2)`).
+- Keep calling `trackWrongAnswer(...)` — that data drives the adaptive picker.
+- The `/admin` route is dev-only for saving (Vite middleware); the game itself never writes the config.

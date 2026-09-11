@@ -1,13 +1,21 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
+import { LAYOUT } from './uiKit.js';
 import { getTopCommonWords } from '../commonSwedishWords.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
-import { registerRecognition, releaseRecognition, restoreAudioAfterMic } from '../utils/micSession.js';
+import { loadModeConfig } from '../minigameConfig.js';
+import { SpeechRecognitionHelper } from '../utils/speechRecognitionHelper.js';
+import { createMicButton } from '../components/MicButton.js';
 
 // ⚙️ DEFAULTS (overridable from public/config/minigames.json → speedReading)
-const DEFAULT_WORD_COUNT = 100;    // How many of the most common words are in play
-const DEFAULT_DURATION = 60;       // Seconds on the clock
-const DEFAULT_TARGET_WORDS = 20;   // Words needed for the full reward
-const DEFAULT_MAX_COINS = 100;     // Reward at (and capped to) the target
+const DEFAULTS = {
+    wordCount: 100,       // How many of the most common words are in play
+    durationSeconds: 60,  // Seconds on the clock
+    targetWords: 20,      // Words needed for the full reward
+    maxCoins: 100         // Reward at (and capped to) the target
+};
+
+const WORD_Y = 470;
+const MIC_Y = 680;
 
 // Swedish homophones: words that sound the same but are spelled differently, so
 // the speech recognizer may return a different spelling than the shown word.
@@ -54,16 +62,21 @@ function homophonesMatch(a, b) {
  * One word is shown at a time; the microphone listens continuously. Each word
  * read correctly is worth one coin, up to a maximum. A progress bar shows how
  * many coins have been earned and a timer bar shows the time remaining.
+ *
+ * The microphone is opened by SpeechRecognition itself on start(); nothing
+ * here touches getUserMedia (see micSession.js for why that matters on iOS).
+ * The listening state lives on the mic button (MicButton.js): there is no
+ * status text, because the child cannot read.
  */
 export class SpeedReadingMode extends BasePokeballGameMode {
     constructor() {
         super();
 
         // Config (loaded from server, falls back to defaults)
-        this.wordCount = DEFAULT_WORD_COUNT;
-        this.durationSeconds = DEFAULT_DURATION;
-        this.targetWords = DEFAULT_TARGET_WORDS;
-        this.maxCoins = DEFAULT_MAX_COINS;
+        this.wordCount = DEFAULTS.wordCount;
+        this.durationSeconds = DEFAULTS.durationSeconds;
+        this.targetWords = DEFAULTS.targetWords;
+        this.maxCoins = DEFAULTS.maxCoins;
         this.configLoaded = false;
 
         // Word pool + current word
@@ -71,10 +84,8 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         this.currentWord = null;
 
         // Speech recognition state
-        this.recognition = null;
-        this.isListening = false;
+        this.speechHelper = new SpeechRecognitionHelper('sv-SE');
         this.resultHandled = false;   // Guards against double-processing one utterance
-        this.permissionGranted = false;
         this.gameActive = false;
         this.finished = false;
 
@@ -82,16 +93,13 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         this.correctWords = 0;      // Drives both the ramp and the progress bar
         this.earnedCoins = 0;       // Read by PokeballGameScene for the reward
         this.paysOwnCoins = true;   // ... instead of the streak/multiplier payout
-        this.timeLeft = DEFAULT_DURATION;
+        this.timeLeft = DEFAULTS.durationSeconds;
         this.timerEvent = null;
 
         // UI references
         this.wordText = null;
+        this.mic = null;
         this.micButton = null;
-        this.micEmoji = null;
-        this.listenRing = null;   // Pulsing ring shown while actively listening
-        this.ringTween = null;
-        this.statusText = null;
         this.timerBarFill = null;
         this.timerBarWidth = 0;
         this.timerBarX = 0;
@@ -101,27 +109,22 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         this.coinCountText = null;
     }
 
+    get micState() {
+        return this.mic ? this.mic.state : 'idle';
+    }
+
     async loadConfig() {
-        try {
-            const response = await fetch('/config/minigames.json');
-            if (response.ok) {
-                const serverConfig = await response.json();
-                if (serverConfig.speedReading) {
-                    this.wordCount = serverConfig.speedReading.wordCount || this.wordCount;
-                    this.durationSeconds = serverConfig.speedReading.durationSeconds || this.durationSeconds;
-                    this.targetWords = serverConfig.speedReading.targetWords || this.targetWords;
-                    this.maxCoins = serverConfig.speedReading.maxCoins || this.maxCoins;
-                    console.log('SpeedReadingMode loaded config:', {
-                        wordCount: this.wordCount,
-                        durationSeconds: this.durationSeconds,
-                        targetWords: this.targetWords,
-                        maxCoins: this.maxCoins
-                    });
-                }
-            }
-        } catch (error) {
-            console.warn('Failed to load SpeedReading config, using defaults:', error);
-        }
+        const config = await loadModeConfig('speedReading', DEFAULTS);
+        this.wordCount = config.wordCount || DEFAULTS.wordCount;
+        this.durationSeconds = config.durationSeconds || DEFAULTS.durationSeconds;
+        this.targetWords = config.targetWords || DEFAULTS.targetWords;
+        this.maxCoins = config.maxCoins || DEFAULTS.maxCoins;
+        console.log('SpeedReadingMode loaded config:', {
+            wordCount: this.wordCount,
+            durationSeconds: this.durationSeconds,
+            targetWords: this.targetWords,
+            maxCoins: this.maxCoins
+        });
         this.timeLeft = this.durationSeconds;
         this.configLoaded = true;
     }
@@ -147,13 +150,13 @@ export class SpeedReadingMode extends BasePokeballGameMode {
 
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
-        this.scene = scene;
+        this.inputLocked = false;
 
         // ---- Timer bar (top) ----
-        const barMargin = 120;
+        const barMargin = LAYOUT.BAR_MARGIN;
         this.timerBarX = barMargin;
         this.timerBarWidth = width - barMargin * 2;
-        const timerY = 150;
+        const timerY = LAYOUT.TIMER_Y;
 
         const timerClock = scene.add.text(barMargin - 70, timerY, '⏱️', {
             fontSize: '48px'
@@ -170,7 +173,7 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         this.uiElements.push(this.timerBarFill);
 
         // ---- Coin progress bar ----
-        const coinY = 240;
+        const coinY = LAYOUT.COIN_Y;
         const coinIcon = scene.add.text(barMargin - 70, coinY, '🪙', {
             fontSize: '48px'
         }).setOrigin(0.5);
@@ -212,7 +215,7 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         this.uiElements.push(this.coinCountText);
 
         // ---- Word to read (large, centered) ----
-        this.wordText = scene.add.text(width / 2, 470, this.challengeData.word.toUpperCase(), {
+        this.wordText = scene.add.text(width / 2, WORD_Y, this.challengeData.word.toUpperCase(), {
             fontSize: '150px',
             fontFamily: 'Arial',
             color: '#2C3E50',
@@ -224,33 +227,16 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         this.uiElements.push(this.wordText);
 
         // ---- Microphone button ----
-        const micY = 680;
-        const micBtnSize = 150;
-
-        // Ring behind the button conveys the listening state:
-        //   pulsing green = listening, solid amber = evaluating, hidden = idle.
-        this.listenRing = scene.add.circle(width / 2, micY, micBtnSize / 2 + 14, 0x000000, 0);
-        this.listenRing.setStrokeStyle(8, 0x2ECC71, 1);
-        this.listenRing.setVisible(false);
-        this.uiElements.push(this.listenRing);
-
-        this.micButton = scene.add.circle(width / 2, micY, micBtnSize / 2, 0x95A5A6, 1);
-        this.micButton.setStrokeStyle(6, 0xFFFFFF);
-        this.uiElements.push(this.micButton);
-
-        this.micEmoji = scene.add.text(width / 2, micY, '🎤', {
-            fontSize: '80px',
-            padding: { y: 20 }
-        }).setOrigin(0.5);
-        this.uiElements.push(this.micEmoji);
-
-        // ---- Status text ----
-        this.statusText = scene.add.text(width / 2, 800, 'Väntar på mikrofon...', {
-            fontSize: '24px',
-            fontFamily: 'Arial',
-            color: '#95A5A6'
-        }).setOrigin(0.5);
-        this.uiElements.push(this.statusText);
+        this.mic = createMicButton(scene, this, {
+            x: width / 2,
+            y: MIC_Y,
+            onTap: () => {
+                // Once the round is over a tap must not restart the clock.
+                if (this.finished || this.speechHelper.isListening) return;
+                this.startListening(scene);
+            }
+        });
+        this.micButton = this.mic.button;
 
         this.updateProgressBar();
         this.initializeSpeechRecognition(scene);
@@ -259,226 +245,109 @@ export class SpeedReadingMode extends BasePokeballGameMode {
     // ---------------- Speech recognition ----------------
 
     initializeSpeechRecognition(scene) {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-        if (!SpeechRecognition) {
-            console.error('Web Speech API not supported in this browser');
-            if (this.statusText) this.statusText.setText('Mikrofon stöds ej i denna webbläsare');
-            return;
-        }
-
-        this.recognition = new SpeechRecognition();
-        this.recognition.lang = 'sv-SE';
-        this.recognition.continuous = false;
-        // Interim results are essential for short words like "ska" — the final
-        // result often drops them, but an interim hypothesis catches them.
-        this.recognition.interimResults = true;
-        this.recognition.maxAlternatives = 5;
+        const helper = this.speechHelper;
 
         // Confirmed listening (mic is capturing).
-        this.recognition.onstart = () => {
+        helper.onStart = () => {
             this.resultHandled = false;
-            if (this.gameActive) this.setMicState('listening');
+            if (this.gameActive && this.mic) this.mic.setState('listening');
         };
 
-        // The child stopped talking — we're now evaluating what was heard.
-        this.recognition.onspeechend = () => {
-            if (this.gameActive && !this.resultHandled) this.setMicState('evaluating');
-        };
+        helper.onResult = (transcript, results) => this.handleResult(scene, results);
 
-        this.recognition.onresult = (event) => {
-            if (!this.gameActive || this.resultHandled) return;
-
-            const target = this.challengeData.word.toLowerCase();
-            let matched = false;
-            let finalTranscript = null;
-
-            // Scan every result (interim + final) and every alternative so a
-            // short word is accepted the moment any hypothesis matches it.
-            for (let r = 0; r < event.results.length && !matched; r++) {
-                const res = event.results[r];
-                for (let a = 0; a < res.length; a++) {
-                    const alt = res[a].transcript.toLowerCase().trim();
-                    if (this.wordsMatch(alt, target)) { matched = true; break; }
-                }
-                if (res.isFinal) finalTranscript = res[0].transcript.toLowerCase().trim();
-            }
-
-            if (matched) {
-                console.log('Matched:', target);
-                this.resultHandled = true;
-                this.handleCorrectWord(scene);
-                // Reset the session so the next word gets a clean listen.
-                try { this.recognition.stop(); } catch (e) { /* ignore */ }
-            } else if (finalTranscript !== null) {
-                // Only flag a miss once the recognizer is sure (final result).
-                console.log('Heard:', finalTranscript, 'Expected:', target);
-                this.resultHandled = true;
-                this.setMicState('evaluating');
-                this.handleWrongWord(scene, finalTranscript);
+        helper.onError = (error) => {
+            if (this.mic && (error === 'not-allowed' || error === 'service-not-allowed' || error === 'audio-capture')) {
+                this.mic.setState('blocked');
             }
         };
 
-        this.recognition.onerror = (event) => {
-            console.warn('Speech recognition error:', event.error);
-            this.isListening = false;
-            if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-                this.permissionGranted = false;
-                this.setMicState('idle');
-                if (this.statusText) {
-                    this.statusText.setText('Mikrofon ej tillåten - tryck på knappen');
-                    this.statusText.setColor('#E74C3C');
-                }
-            }
-        };
-
-        this.recognition.onend = () => {
-            this.isListening = false;
-            // Once the game is over the mic is released for good - cycle the
-            // audio context so iOS leaves play-and-record mode (micSession.js).
-            if (!this.gameActive) {
-                restoreAudioAfterMic(scene);
-            }
+        helper.onEnd = () => {
             // Auto-restart the listening loop while the game is running so the
             // child can just keep reading without pressing the button again.
-            if (this.gameActive && this.permissionGranted) {
-                // Stay in the "evaluating" look during the brief gap before the
+            if (this.gameActive && helper.permissionGranted) {
+                // Stay in the current look during the brief gap before the
                 // next listen session starts.
                 this.delayedCall(scene, 150, () => {
-                    if (this.gameActive && !this.isListening) {
+                    if (this.gameActive && !helper.isListening) {
                         this.startListening(scene);
                     }
                 });
-            } else if (this.permissionGranted && !this.gameActive && !this.finished) {
-                this.setMicState('idle');
+            } else if (this.mic && !this.finished && this.micState !== 'blocked') {
+                this.mic.setState('idle');
             }
         };
 
-        registerRecognition(this.recognition);
-        this.enableMicrophoneButton(scene);
-    }
+        // The helper narrates its state as text; the child can't read it.
+        helper.onStatusChange = () => {};
 
-    enableMicrophoneButton(scene) {
-        // Do NOT open the microphone here (no getUserMedia). On iOS any capture
-        // flips the audio session into a heavily attenuated play-and-record
-        // mode that can stick for the life of the tab. SpeechRecognition asks
-        // for permission itself on the first start(), so treat permission as
-        // granted until the browser reports 'not-allowed'.
-        this.permissionGranted = true;
-
-        if (this.micButton) {
-            this.setMicState('idle');
-            this.micButton.setInteractive({ useHandCursor: true });
-            this.micButton.on('pointerdown', () => {
-                // Once the round is over a tap must not restart the clock.
-                if (!this.isListening && !this.finished) {
-                    // Allow a retry after a 'not-allowed' error.
-                    this.permissionGranted = true;
-                    this.startListening(scene);
-                }
-            });
+        // Creates the recognizer synchronously and probes the network in the
+        // background. No microphone is opened until start().
+        helper.initialize(scene);
+        const recognition = helper.recognition;
+        if (!recognition) {
+            this.mic.setState('blocked');
+            return;
         }
 
-        if (this.statusText) {
-            this.statusText.setText('Läs ordet!');
-            this.statusText.setColor('#27AE60');
-        }
+        // Interim results are essential for short words like "ska" — the final
+        // result often drops them, but an interim hypothesis catches them.
+        recognition.interimResults = true;
+
+        // The child stopped talking — we're now evaluating what was heard.
+        recognition.onspeechend = () => {
+            if (this.gameActive && !this.resultHandled && this.mic) this.mic.setState('evaluating');
+        };
+
+        this.mic.enable();
+        this.mic.setState('idle');
 
         // Kick off the game automatically.
         this.startListening(scene);
     }
 
     startListening(scene) {
-        if (!this.recognition || this.isListening || !this.permissionGranted || this.finished) return;
+        const helper = this.speechHelper;
+        if (!helper.recognition || helper.isListening || this.finished) return;
 
         // First listen starts the clock.
         if (!this.gameActive) {
             this.startTimer(scene);
         }
 
-        this.isListening = true;
         this.resultHandled = false;
         // Optimistically show "listening" so there's no dead moment before the
         // recognition service fires onstart to confirm it.
-        this.setMicState('listening');
-
-        try {
-            this.recognition.start();
-        } catch (e) {
-            console.warn('Failed to start recognition:', e.message);
-            this.isListening = false;
+        if (helper.startListening(scene)) {
+            this.mic.setState('listening');
+        } else {
+            this.mic.setState('idle');
         }
     }
 
-    // ---------------- Mic state / listening indicator ----------------
+    // `results` is one SpeechRecognitionResult: its alternatives, best first,
+    // plus `isFinal`. Interim hypotheses arrive with isFinal = false.
+    handleResult(scene, results) {
+        if (!this.gameActive || this.resultHandled) return;
 
-    // Drives the visible listening indicator. Three meaningful states:
-    //   listening  → green button + pulsing green ring ("read the word now")
-    //   evaluating → amber button + solid amber ring ("heard you, checking")
-    //   idle       → red button, no ring ("tap to talk")
-    //   disabled   → gray button, no ring (waiting for mic permission)
-    setMicState(state) {
-        if (!this.micButton) return;
-        this.micState = state;
-        switch (state) {
-            case 'disabled':
-                this.micButton.setFillStyle(0x95A5A6);
-                this.stopListenRing();
-                break;
-            case 'idle':
-                this.micButton.setFillStyle(0xFF6B6B);
-                this.stopListenRing();
-                break;
-            case 'listening':
-                this.micButton.setFillStyle(0x27AE60);
-                this.startListenRing();
-                break;
-            case 'evaluating':
-                this.micButton.setFillStyle(0xF39C12);
-                this.showEvalRing();
-                if (this.statusText) {
-                    this.statusText.setText('⏳ …');
-                    this.statusText.setColor('#F39C12');
-                }
-                break;
+        const target = this.challengeData.word.toLowerCase();
+        let matched = false;
+        for (let a = 0; a < results.length; a++) {
+            const alt = results[a].transcript.toLowerCase().trim();
+            if (this.wordsMatch(alt, target)) { matched = true; break; }
         }
-    }
 
-    startListenRing() {
-        if (!this.listenRing || !this.scene) return;
-        this.listenRing.setStrokeStyle(8, 0x2ECC71, 1);
-        this.listenRing.setVisible(true);
-        // Don't stack tweens — the listen loop restarts every word.
-        if (this.ringTween) return;
-        this.listenRing.setScale(1);
-        this.listenRing.setAlpha(1);
-        this.ringTween = this.addTween(this.scene, {
-            targets: this.listenRing,
-            scale: 1.35,
-            alpha: 0.15,
-            duration: 650,
-            yoyo: true,
-            repeat: -1,
-            ease: 'Sine.easeInOut'
-        });
-    }
-
-    showEvalRing() {
-        // Solid (non-pulsing) amber ring signals "evaluating".
-        if (this.ringTween) { this.ringTween.stop(); this.ringTween = null; }
-        if (!this.listenRing) return;
-        this.listenRing.setScale(1);
-        this.listenRing.setAlpha(1);
-        this.listenRing.setStrokeStyle(8, 0xF39C12, 1);
-        this.listenRing.setVisible(true);
-    }
-
-    stopListenRing() {
-        if (this.ringTween) { this.ringTween.stop(); this.ringTween = null; }
-        if (this.listenRing) {
-            this.listenRing.setVisible(false);
-            this.listenRing.setScale(1);
-            this.listenRing.setAlpha(1);
+        if (matched) {
+            console.log('Matched:', target);
+            this.resultHandled = true;
+            this.handleCorrectWord(scene);
+            // Reset the session so the next word gets a clean listen.
+            this.speechHelper.stopListening();
+        } else if (results.isFinal) {
+            // Only flag a miss once the recognizer is sure (final result).
+            const finalTranscript = results[0].transcript.toLowerCase().trim();
+            console.log('Heard:', finalTranscript, 'Expected:', target);
+            this.resultHandled = true;
+            this.handleWrongWord(scene, finalTranscript);
         }
     }
 
@@ -527,11 +396,8 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         this.earnedCoins = this.coinsForWords(this.correctWords);
         this.updateProgressBar();
 
-        if (this.statusText) {
-            this.statusText.setText('✅ Rätt!');
-            this.statusText.setColor('#27AE60');
-        }
-        this.showSuccessParticles(scene, scene.cameras.main.width / 2, 470);
+        this.mic.setState('correct');
+        this.showSuccessParticles(scene, scene.cameras.main.width / 2, WORD_Y, { scale: 1.5, lifespan: 500 });
 
         // Reached the target — end early on a high note.
         if (this.correctWords >= this.targetWords) {
@@ -547,12 +413,10 @@ export class SpeedReadingMode extends BasePokeballGameMode {
 
     handleWrongWord(scene, transcript) {
         trackWrongAnswer('SpeedReadingMode', this.challengeData.word, transcript);
-        if (this.statusText) {
-            this.statusText.setText(`❌ "${transcript}"`);
-            this.statusText.setColor('#E74C3C');
-        }
+        this.mic.setState('wrong');
         // Keep the same word — the listening loop restarts automatically so the
-        // child can simply try reading it again.
+        // child can simply try reading it again. (The word is not played back:
+        // the open microphone would hear it and count it.)
     }
 
     // ---------------- Timer ----------------
@@ -575,6 +439,13 @@ export class SpeedReadingMode extends BasePokeballGameMode {
                 }
             }
         });
+    }
+
+    stopTimer() {
+        if (this.timerEvent) {
+            this.timerEvent.remove();
+            this.timerEvent = null;
+        }
     }
 
     updateTimerBar() {
@@ -600,27 +471,13 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         if (!this.gameActive) return;
         this.gameActive = false;
         this.finished = true;
+        this.inputLocked = true;
 
-        // Stop the timer.
-        if (this.timerEvent) {
-            this.timerEvent.remove();
-            this.timerEvent = null;
-        }
+        this.stopTimer();
+        this.speechHelper.stopListening();
 
-        // Stop listening.
-        if (this.recognition && this.isListening) {
-            try { this.recognition.stop(); } catch (e) { /* ignore */ }
-        }
-        this.isListening = false;
-
-        // Clear the listening indicator — we're done.
-        this.stopListenRing();
-        if (this.micButton) this.micButton.setFillStyle(0x95A5A6);
-
-        if (this.statusText) {
-            this.statusText.setText(`🎉 ${this.earnedCoins} 🪙`);
-            this.statusText.setColor('#27AE60');
-        }
+        // The microphone is done for this round.
+        if (this.mic) this.mic.setState('idle');
 
         // Hand the earned coins to the scene for the reward animation.
         this.delayedCall(scene, 900, () => {
@@ -630,71 +487,21 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         });
     }
 
-    showSuccessParticles(scene, x, y) {
-        if (!scene.textures.exists('speedStar')) {
-            const graphics = scene.add.graphics();
-            graphics.fillStyle(0xFFD700, 1);
-            const outerRadius = 12;
-            const innerRadius = 5;
-            const points = 5;
-            graphics.beginPath();
-            for (let i = 0; i < points * 2; i++) {
-                const radius = i % 2 === 0 ? outerRadius : innerRadius;
-                const angle = (i * Math.PI) / points;
-                const px = 12 + radius * Math.sin(angle);
-                const py = 12 - radius * Math.cos(angle);
-                if (i === 0) graphics.moveTo(px, py);
-                else graphics.lineTo(px, py);
-            }
-            graphics.closePath();
-            graphics.fillPath();
-            graphics.generateTexture('speedStar', 24, 24);
-            graphics.destroy();
-        }
-
-        const particles = scene.add.particles(x, y, 'speedStar', {
-            speed: { min: 100, max: 200 },
-            angle: { min: 0, max: 360 },
-            scale: { start: 1.5, end: 0 },
-            lifespan: 500,
-            gravityY: 150,
-            tint: [0xFFFF00, 0xFFD700, 0xFFA500],
-            quantity: 15
-        });
-        particles.setDepth(100);
-        particles.explode();
-        // Tracked so cleanup() can't leave an emitter behind if it lands
-        // before the self-destruct timer.
-        this.uiElements.push(particles);
-        this.delayedCall(scene, 600, () => particles.destroy());
-    }
-
     cleanup(scene) {
         this.gameActive = false;
-
-        if (this.timerEvent) {
-            this.timerEvent.remove();
-            this.timerEvent = null;
-        }
+        this.stopTimer();
 
         // abort() tears the capture session down immediately; stop() waits
         // for final results and can leave the mic open on iOS.
-        releaseRecognition(this.recognition);
-        this.isListening = false;
-        this.recognition = null;
-
-        this.stopListenRing();
+        this.speechHelper.cleanup();
 
         // Destroys uiElements and cancels the restart/finish/particle timers
         // and the ring tween, so nothing from this round can fire later.
         super.cleanup(scene);
 
         this.wordText = null;
+        this.mic = null;
         this.micButton = null;
-        this.micEmoji = null;
-        this.listenRing = null;
-        this.ringTween = null;
-        this.statusText = null;
         this.timerBarFill = null;
         this.progressBarFill = null;
         this.coinCountText = null;

@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
-import { BasePokeballGameMode } from './BasePokeballGameMode.js';
+import { TwoDigitDropBase } from './TwoDigitDropBase.js';
+import { COLORS } from './uiKit.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
-import { resetStreak } from '../streak.js';
-import { updateBoosterBar } from '../boosterBar.js';
+import { loadModeConfig } from '../minigameConfig.js';
+import { parseNumberRange } from '../utils/parseNumberRange.js';
 
 /**
  * Multiplication game mode
@@ -11,8 +12,9 @@ import { updateBoosterBar } from '../boosterBar.js';
  * the rows light up one at a time while the voice skip-counts (10, 20, 30),
  * which is the bridge from counting to multiplication. On a correct answer the
  * array then transposes so `3 × 10` becomes `10 × 3` with the same balls,
- * showing commutativity instead of telling it.
- * Player answers by dragging digits into tens/ones slots, as in AdditionMode.
+ * showing commutativity instead of telling it. A missed problem comes back
+ * straight away and once more a couple of rounds later.
+ * Player answers by dragging digits into tens/ones slots (TwoDigitDropBase).
  */
 
 // Layout constants for the 1280x900 canvas. The booster bar occupies y 35-85,
@@ -23,137 +25,94 @@ const GRID_BOX_WIDTH = 900;
 const GRID_BOX_HEIGHT = 260;
 const MAX_CELL = 72;
 const DROP_ZONE_Y = 525;
-const BALL_INDICATOR_Y = 615;
+const BALLS_Y = 615;
 const DIGIT_START_Y = 690;
 
 // Two drop zones (tens + ones), so products must stay below 100.
 const MAX_TWO_DIGIT_PRODUCT = 99;
+const DEFAULT_TABLES = [2, 5, 10];
 
-export class MultiplicationMode extends BasePokeballGameMode {
+const DEFAULT_CONFIG = {
+    required: 3,
+    tables: '2,5,10',
+    maxFactor: 10,
+    maxProduct: MAX_TWO_DIGIT_PRODUCT,
+    showCommutativity: true
+};
+
+export class MultiplicationMode extends TwoDigitDropBase {
     constructor() {
         super();
         this.correctCount = 0;
-        this.requiredCorrect = 3;
-        this.ballIndicators = [];
-
-        // Drag-and-drop elements (same shape as AdditionMode)
-        this.tensZone = null;
-        this.onesZone = null;
-        this.digitBoxes = [];
-        this.isRevealing = false;
-        this.dragHandler = null;
-        this.dragEndHandler = null;
+        this.requiredCorrect = DEFAULT_CONFIG.required;
 
         // Array visualisation
         this.gridItems = [];        // Pokeball images, row-major (r * cols + c)
         this.rowHighlights = [];    // One faint band per row, greened during the reveal
         this.rowTotals = [];        // Running total per row, revealed one at a time
         this.problemDisplay = null;
-        this.revealToken = 0;       // Invalidates pending delayed calls after cleanup
 
-        // Audio
-        this.activeAudio = [];
-        this.audioToken = 0;        // Invalidates a stitched phrase that got superseded
-
-        // Default settings (will be loaded from config)
-        this.tables = [2, 5, 10];   // Group size = number of columns
-        this.maxFactor = 10;        // Number of groups = number of rows
-        this.maxProduct = 99;       // Two drop zones, so answers must stay below 100
-        this.commutativityEnabled = true;
+        // Default settings (loaded from config)
+        this.tables = [...DEFAULT_TABLES];   // Group size = number of columns
+        this.maxFactor = DEFAULT_CONFIG.maxFactor;     // Number of groups = number of rows
+        this.maxProduct = DEFAULT_CONFIG.maxProduct;   // Two drop zones, so answers must stay below 100
+        this.commutativityEnabled = DEFAULT_CONFIG.showCommutativity;
         this.configLoaded = false;
     }
 
     async loadConfig() {
-        try {
-            const response = await fetch('/config/minigames.json');
-            if (response.ok) {
-                const config = await response.json();
-                if (config.multiplication) {
-                    this.requiredCorrect = parseInt(config.multiplication.required, 10) || this.requiredCorrect;
-                    this.tables = this.parseNumberRange(config.multiplication.tables || '2,5,10');
-                    this.maxFactor = Math.max(1, parseInt(config.multiplication.maxFactor, 10) || this.maxFactor);
-                    const maxProduct = parseInt(config.multiplication.maxProduct, 10) || this.maxProduct;
-                    this.maxProduct = Math.max(1, Math.min(maxProduct, MAX_TWO_DIGIT_PRODUCT));
-                    this.commutativityEnabled = config.multiplication.showCommutativity !== false;
-                }
-            }
-        } catch (error) {
-            console.warn('Failed to load multiplication config, using defaults:', error);
-        }
+        const config = await loadModeConfig('multiplication', DEFAULT_CONFIG);
+        this.requiredCorrect = Math.floor(config.required) || DEFAULT_CONFIG.required;
+        // A table of 0 makes no sense; fall back to the defaults when nothing valid is left
+        const tables = parseNumberRange(config.tables, []).filter(n => n >= 1);
+        this.tables = tables.length > 0 ? tables : [...DEFAULT_TABLES];
+        this.maxFactor = Math.max(1, Math.floor(config.maxFactor) || DEFAULT_CONFIG.maxFactor);
+        const maxProduct = Math.floor(config.maxProduct) || DEFAULT_CONFIG.maxProduct;
+        this.maxProduct = Math.max(1, Math.min(maxProduct, MAX_TWO_DIGIT_PRODUCT));
+        this.commutativityEnabled = config.showCommutativity !== false;
         this.configLoaded = true;
-        console.log('MultiplicationMode loaded with settings:', {
-            required: this.requiredCorrect,
-            tables: this.tables,
-            maxFactor: this.maxFactor,
-            maxProduct: this.maxProduct,
-            showCommutativity: this.commutativityEnabled
-        });
-    }
-
-    parseNumberRange(input) {
-        try {
-            const parts = String(input).split(',');
-            const numbers = new Set();
-
-            for (const part of parts) {
-                const trimmed = part.trim();
-                if (trimmed.includes('-')) {
-                    const [start, end] = trimmed.split('-').map(n => parseInt(n.trim()));
-                    if (isNaN(start) || isNaN(end) || start > end || start < 1) {
-                        continue; // Skip invalid
-                    }
-                    for (let i = start; i <= end; i++) {
-                        numbers.add(i);
-                    }
-                } else {
-                    const num = parseInt(trimmed);
-                    if (isNaN(num) || num < 1) {
-                        continue; // Skip invalid
-                    }
-                    numbers.add(num);
-                }
-            }
-
-            const result = Array.from(numbers).sort((a, b) => a - b);
-            return result.length > 0 ? result : [2, 5, 10]; // Fallback
-        } catch (error) {
-            console.warn('Failed to parse tables, using 2,5,10:', error);
-            return [2, 5, 10];
-        }
     }
 
     generateChallenge() {
-        // Draw a table and a factor, retrying while the product needs three
-        // digits (the answer only has a tens and a ones slot) or repeats the
-        // problem that was just shown.
-        const previous = this.challengeData;
-        let cols, rows, product;
-        let attempts = 0;
-        do {
-            cols = this.tables[Phaser.Math.Between(0, this.tables.length - 1)];
-            rows = Phaser.Math.Between(1, this.maxFactor);
-            product = rows * cols;
-            attempts++;
-        } while ((product > this.maxProduct ||
-                  (previous && previous.rows === rows && previous.cols === cols && attempts < 10))
-                 && attempts < 50);
+        // A missed problem comes back first
+        const retry = this.takeRetry();
+        let rows, cols;
+        if (retry) {
+            ({ rows, cols } = retry);
+        } else {
+            // Draw a table and a factor, retrying while the product needs three
+            // digits (the answer only has a tens and a ones slot) or repeats the
+            // problem that was just shown.
+            const previous = this.challengeData;
+            let attempts = 0;
+            do {
+                cols = this.tables[Phaser.Math.Between(0, this.tables.length - 1)];
+                rows = Phaser.Math.Between(1, this.maxFactor);
+                attempts++;
+            } while ((rows * cols > this.maxProduct ||
+                      (previous && previous.rows === rows && previous.cols === cols && attempts < 10))
+                     && attempts < 50);
 
-        // Safety net if the config makes every product too large.
-        if (product > this.maxProduct) {
-            cols = Math.min(...this.tables);
-            rows = Math.max(1, Math.floor(this.maxProduct / cols));
-            product = rows * cols;
+            // Safety net if the config makes every product too large.
+            if (rows * cols > this.maxProduct) {
+                cols = Math.min(...this.tables);
+                rows = Math.max(1, Math.floor(this.maxProduct / cols));
+            }
         }
 
+        const product = rows * cols;
         this.challengeData = {
-            rows: rows,          // Number of groups
-            cols: cols,          // Group size — the table being practised
-            product: product,
+            rows,               // Number of groups
+            cols,               // Group size — the table being practised
+            product,
             tens: Math.floor(product / 10),
             ones: product % 10
         };
-
         return this.challengeData;
+    }
+
+    getCorrectAnswer() {
+        return this.challengeData.product;
     }
 
     createChallengeUI(scene) {
@@ -166,30 +125,19 @@ export class MultiplicationMode extends BasePokeballGameMode {
             width / 2,
             PROBLEM_Y,
             `${this.challengeData.rows} × ${this.challengeData.cols}`,
-            {
-                font: 'bold 64px Arial',
-                fill: '#2C3E50'
-            }
+            { font: 'bold 64px Arial', fill: COLORS.TEXT_DARK }
         ).setOrigin(0.5);
         this.uiElements.push(this.problemDisplay);
 
-        // Speaker button replays the spoken problem
-        const speakerBtn = scene.add.text(width / 2 + 180, PROBLEM_Y, '🔊', {
-            fontSize: '56px',
-            padding: { y: 10 }
-        }).setOrigin(0.5);
-        speakerBtn.setInteractive({ useHandCursor: true });
-        speakerBtn.on('pointerdown', () => {
-            // Don't interrupt the skip-count lesson
-            if (this.isRevealing) return;
-            this.playProblemAudio(scene);
-        });
-        this.uiElements.push(speakerBtn);
+        // Speaker replays the spoken problem, but never interrupts the skip-count lesson
+        this.createSpeakerButton(scene, width / 2 + 180, PROBLEM_Y, () => {
+            if (!this.isRevealing) this.playProblemAudio(scene);
+        }, { fontSize: '56px' });
 
         this.createGrid(scene);
-        this.createDropZones(scene);
-        this.createBallIndicators(scene);
-        this.createDigitBoxes(scene);
+        this.createDropZones(scene, DROP_ZONE_Y);
+        this.createProgressBalls(scene, { total: this.requiredCorrect, completed: this.correctCount, y: BALLS_Y });
+        this.createDigitBoxes(scene, DIGIT_START_Y);
 
         // Say the problem out loud as the round starts
         this.delayedCall(scene, 250, () => this.playProblemAudio(scene));
@@ -226,35 +174,25 @@ export class MultiplicationMode extends BasePokeballGameMode {
 
             // Faint band behind each row so the rows read as equal groups
             const band = scene.add.rectangle(
-                width / 2,
-                y,
-                geo.gridWidth + 20,
-                geo.cell,
-                0xFFFFFF,
-                r % 2 === 0 ? 0.28 : 0.14
+                width / 2, y, geo.gridWidth + 20, geo.cell,
+                COLORS.NEUTRAL_FILL, r % 2 === 0 ? 0.28 : 0.14
             );
             this.rowHighlights.push(band);
             this.uiElements.push(band);
 
             // Running total for this row, hidden until the reveal reaches it
-            const total = scene.add.text(
-                width / 2 + geo.gridWidth / 2 + 45,
-                y,
-                '',
-                {
-                    fontSize: '36px',
-                    fontFamily: 'Arial',
-                    color: '#7A5C00',
-                    fontStyle: 'bold'
-                }
-            ).setOrigin(0, 0.5);
+            const total = scene.add.text(width / 2 + geo.gridWidth / 2 + 45, y, '', {
+                fontSize: '36px',
+                fontFamily: 'Arial',
+                color: '#7A5C00',
+                fontStyle: 'bold'
+            }).setOrigin(0, 0.5);
             total.setAlpha(0);
             this.rowTotals.push(total);
             this.uiElements.push(total);
 
             for (let c = 0; c < cols; c++) {
-                const x = geo.startX + c * geo.cell;
-                const ball = scene.add.image(x, y, 'pokeball_poke-ball-tiny');
+                const ball = scene.add.image(geo.startX + c * geo.cell, y, 'pokeball_poke-ball-tiny');
                 ball.setDisplaySize(geo.cell * 0.78, geo.cell * 0.78);
                 this.gridItems.push(ball);
                 this.uiElements.push(ball);
@@ -262,258 +200,15 @@ export class MultiplicationMode extends BasePokeballGameMode {
         }
     }
 
-    createDropZones(scene) {
-        const width = scene.cameras.main.width;
-        const dropZoneSize = 120;
-        const dropZoneSpacing = 20;
-
-        // Tens place (left)
-        this.tensZone = scene.add.rectangle(
-            width / 2 - dropZoneSize / 2 - dropZoneSpacing / 2,
-            DROP_ZONE_Y,
-            dropZoneSize,
-            dropZoneSize,
-            0xFFFFFF,
-            0.2
-        );
-        this.tensZone.setStrokeStyle(4, 0x000000, 1);
-        this.tensZone.setInteractive();
-        this.tensZone.setData('value', null);
-        this.tensZone.setData('place', 'tens');
-        this.uiElements.push(this.tensZone);
-
-        const tensLabel = scene.add.text(this.tensZone.x, this.tensZone.y, '', {
-            fontSize: '72px',
-            fontFamily: 'Arial',
-            color: '#000000',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-        this.tensZone.setData('label', tensLabel);
-        this.uiElements.push(tensLabel);
-
-        // Ones place (right)
-        this.onesZone = scene.add.rectangle(
-            width / 2 + dropZoneSize / 2 + dropZoneSpacing / 2,
-            DROP_ZONE_Y,
-            dropZoneSize,
-            dropZoneSize,
-            0xFFFFFF,
-            0.2
-        );
-        this.onesZone.setStrokeStyle(4, 0x000000, 1);
-        this.onesZone.setInteractive();
-        this.onesZone.setData('value', null);
-        this.onesZone.setData('place', 'ones');
-        this.uiElements.push(this.onesZone);
-
-        const onesLabel = scene.add.text(this.onesZone.x, this.onesZone.y, '', {
-            fontSize: '72px',
-            fontFamily: 'Arial',
-            color: '#000000',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-        this.onesZone.setData('label', onesLabel);
-        this.uiElements.push(onesLabel);
-    }
-
-    createBallIndicators(scene) {
-        const width = scene.cameras.main.width;
-        const startX = width / 2 - ((this.requiredCorrect - 1) * 60) / 2;
-        const y = BALL_INDICATOR_Y;
-        const spacing = 60;
-
-        this.ballIndicators = [];
-
-        for (let i = 0; i < this.requiredCorrect; i++) {
-            const x = startX + i * spacing;
-
-            const circle = scene.add.circle(x, y, 20,
-                i < this.correctCount ? 0x27AE60 : 0xffffff, 1);
-            circle.setStrokeStyle(3, 0x000000);
-
-            this.ballIndicators.push(circle);
-            this.uiElements.push(circle);
-        }
-
-        // Add gift emoji at the end to show the goal
-        const giftX = startX + this.requiredCorrect * spacing;
-        const giftEmoji = scene.add.text(giftX, y, '🎁', {
-            fontSize: '48px',
-            padding: { y: 10 }
-        }).setOrigin(0.5);
-        this.uiElements.push(giftEmoji);
-    }
-
-    updateBallIndicators() {
-        for (let i = 0; i < this.ballIndicators.length; i++) {
-            this.ballIndicators[i].setFillStyle(i < this.correctCount ? 0x27AE60 : 0xffffff);
-        }
-    }
-
-    createDigitBoxes(scene) {
-        const width = scene.cameras.main.width;
-        const boxSize = 80;
-        const spacing = 20;
-        const cols = 5;
-        const startY = DIGIT_START_Y;
-        const rowSpacing = 20;
-
-        // Calculate starting X to center the grid
-        const gridWidth = cols * boxSize + (cols - 1) * spacing;
-        const startX = (width - gridWidth) / 2 + boxSize / 2;
-
-        this.digitBoxes = [];
-
-        for (let digit = 0; digit <= 9; digit++) {
-            const row = Math.floor(digit / cols);
-            const col = digit % cols;
-            const x = startX + col * (boxSize + spacing);
-            const y = startY + row * (boxSize + rowSpacing);
-
-            const box = scene.add.rectangle(x, y, boxSize, boxSize, 0xFFFFFF);
-            box.setStrokeStyle(4, 0x3498DB);
-            box.setInteractive({ useHandCursor: true });
-            scene.input.setDraggable(box);
-            box.setData('digit', digit);
-            box.setData('originalX', x);
-            box.setData('originalY', y);
-            this.uiElements.push(box);
-
-            const digitText = scene.add.text(x, y, digit.toString(), {
-                fontSize: '48px',
-                fontFamily: 'Arial',
-                color: '#2C3E50',
-                fontStyle: 'bold'
-            }).setOrigin(0.5);
-            box.setData('text', digitText);
-            this.uiElements.push(digitText);
-
-            this.digitBoxes.push({ box, digitText, digit });
-        }
-
-        // Set up drag and drop handlers. Kept as named handlers so cleanup()
-        // removes only ours and not other listeners on the scene input.
-        this.dragHandler = (pointer, gameObject, dragX, dragY) => {
-            if (this.isRevealing || this.inputLocked) return;
-            if (!this.isDigitBox(gameObject)) return;
-
-            gameObject.x = dragX;
-            gameObject.y = dragY;
-
-            const text = gameObject.getData('text');
-            if (text) {
-                text.x = dragX;
-                text.y = dragY;
-            }
-        };
-
-        this.dragEndHandler = (pointer, gameObject) => {
-            if (this.isRevealing || this.inputLocked) return;
-            if (!this.isDigitBox(gameObject)) return;
-
-            const digit = gameObject.getData('digit');
-
-            if (Phaser.Geom.Intersects.RectangleToRectangle(gameObject.getBounds(), this.tensZone.getBounds())) {
-                this.placeDigitInZone(gameObject, this.tensZone, digit);
-            } else if (Phaser.Geom.Intersects.RectangleToRectangle(gameObject.getBounds(), this.onesZone.getBounds())) {
-                this.placeDigitInZone(gameObject, this.onesZone, digit);
-            } else {
-                this.returnDigitToOriginal(gameObject);
-            }
-
-            this.checkAnswer();
-        };
-
-        scene.input.on('drag', this.dragHandler);
-        scene.input.on('dragend', this.dragEndHandler);
-    }
-
-    isDigitBox(gameObject) {
-        return this.digitBoxes.some(d => d.box === gameObject);
-    }
-
-    placeDigitInZone(digitBox, zone, digit) {
-        // If zone already has a digit, return it to original position
-        const currentDigit = zone.getData('occupyingBox');
-        if (currentDigit && currentDigit !== digitBox) {
-            this.returnDigitToOriginal(currentDigit);
-        }
-
-        digitBox.x = zone.x;
-        digitBox.y = zone.y;
-        const text = digitBox.getData('text');
-        if (text) {
-            text.x = zone.x;
-            text.y = zone.y;
-        }
-
-        zone.setData('value', digit);
-        zone.setData('occupyingBox', digitBox);
-
-        const label = zone.getData('label');
-        if (label) {
-            label.setText(digit.toString());
-        }
-    }
-
-    returnDigitToOriginal(digitBox) {
-        const originalX = digitBox.getData('originalX');
-        const originalY = digitBox.getData('originalY');
-
-        digitBox.x = originalX;
-        digitBox.y = originalY;
-
-        const text = digitBox.getData('text');
-        if (text) {
-            text.x = originalX;
-            text.y = originalY;
-        }
-
-        // Clear any zone that had this box
-        if (this.tensZone && this.tensZone.getData('occupyingBox') === digitBox) {
-            this.tensZone.setData('value', null);
-            this.tensZone.setData('occupyingBox', null);
-            this.tensZone.getData('label').setText('');
-        }
-        if (this.onesZone && this.onesZone.getData('occupyingBox') === digitBox) {
-            this.onesZone.setData('value', null);
-            this.onesZone.setData('occupyingBox', null);
-            this.onesZone.getData('label').setText('');
-        }
-    }
-
-    checkAnswer() {
-        if (this.inputLocked || this.isRevealing) return;
-
-        const tensValue = this.tensZone.getData('value');
-        const onesValue = this.onesZone.getData('value');
-
-        // Both zones must be filled
-        if (tensValue === null || onesValue === null) {
-            return;
-        }
-
-        const playerAnswer = tensValue * 10 + onesValue;
-
-        if (playerAnswer === this.challengeData.product) {
-            this.handleCorrectAnswer();
-        } else {
-            this.handleWrongAnswer(playerAnswer);
-        }
-    }
-
     // ---------------- Answer handling ----------------
 
     handleCorrectAnswer() {
-        const scene = this.tensZone.scene;
+        const scene = this.currentScene();
         this.isRevealing = true;
         this.inputLocked = true;
         this.correctCount++;
-        this.updateBallIndicators();
-
-        // Flash zones green
-        this.tensZone.setFillStyle(0x27AE60, 0.5);
-        this.onesZone.setFillStyle(0x27AE60, 0.5);
+        this.updateProgressBalls(this.correctCount);
+        this.flashZones(COLORS.CORRECT);
 
         this.revealSkipCount(scene, () => {
             this.showCommutativity(scene, () => {
@@ -522,98 +217,60 @@ export class MultiplicationMode extends BasePokeballGameMode {
                         this.finish(true, this.challengeData.product, scene.cameras.main.width / 2, GRID_CENTER_Y);
                     });
                 } else {
-                    this.delayedCall(scene, 600, () => this.loadNextChallenge(scene));
+                    this.delayedCall(scene, 600, () => this.restartChallenge(scene, { resetStreak: false }));
                 }
             });
         });
     }
 
     handleWrongAnswer(playerAnswer) {
-        const scene = this.tensZone.scene;
+        const scene = this.currentScene();
+        const { rows, cols, tens, ones } = this.challengeData;
         this.isRevealing = true;
         this.inputLocked = true;
 
-        trackWrongAnswer('MultiplicationMode', `${this.challengeData.rows}x${this.challengeData.cols}`, String(playerAnswer));
+        trackWrongAnswer('MultiplicationMode', `${rows}x${cols}`, String(playerAnswer));
 
         // Progress is kept — a miss on a brand new concept shouldn't wipe the
-        // board. The child gets the same skip-count lesson and a new problem.
-        // The coin multiplier streak is reset like in every other mode.
-        resetStreak();
-        if (scene.boosterBarElements) {
-            updateBoosterBar(scene.boosterBarElements, 0, scene);
-        }
+        // board. The child gets the same skip-count lesson, then the same
+        // problem again (and once more a couple of rounds later). The coin
+        // streak is reset when the board restarts, like in every other mode.
+        this.queueRetry({ rows, cols });
+        this.queueRetry({ rows, cols }, 2);
 
-        this.tensZone.setFillStyle(0xFF0000, 0.5);
-        this.onesZone.setFillStyle(0xFF0000, 0.5);
-
-        const tensOriginalX = this.tensZone.x;
-        const onesOriginalX = this.onesZone.x;
-
-        this.addTween(scene, {
-            targets: [this.tensZone, this.tensZone.getData('label')],
-            x: tensOriginalX - 10,
-            duration: 50,
-            yoyo: true,
-            repeat: 3,
-            onComplete: () => {
-                this.tensZone.x = tensOriginalX;
-                this.tensZone.getData('label').x = tensOriginalX;
-            }
-        });
-
-        this.addTween(scene, {
-            targets: [this.onesZone, this.onesZone.getData('label')],
-            x: onesOriginalX - 10,
-            duration: 50,
-            yoyo: true,
-            repeat: 3,
-            onComplete: () => {
-                this.onesZone.x = onesOriginalX;
-                this.onesZone.getData('label').x = onesOriginalX;
-
-                this.showCorrectAnswer(scene);
-            }
+        this.flashZones(COLORS.WRONG);
+        this.shakeZones(scene, () => {
+            this.showCorrectDigits(tens, ones);
+            // The skip-count is the lesson, so it runs on misses too; its last
+            // number is the product, i.e. the spoken correct answer.
+            this.revealAnswer(scene, {
+                targets: this.getZones(),
+                delay: this.skipCountDuration() + 1200
+            });
+            this.revealSkipCount(scene);
         });
     }
 
-    showCorrectAnswer(scene) {
-        // Return current digits, then place the correct ones
-        this.tensZone.setFillStyle(0xFFFFFF, 0.2);
-        this.onesZone.setFillStyle(0xFFFFFF, 0.2);
+    // ---------------- Skip-count lesson ----------------
 
-        const tensBox = this.tensZone.getData('occupyingBox');
-        const onesBox = this.onesZone.getData('occupyingBox');
-        if (tensBox) this.returnDigitToOriginal(tensBox);
-        if (onesBox) this.returnDigitToOriginal(onesBox);
+    skipCountStepMs() {
+        return Math.min(700, Math.max(320, Math.round(2600 / this.challengeData.rows)));
+    }
 
-        const tensDigitBox = this.digitBoxes.find(d => d.digit === this.challengeData.tens);
-        const onesDigitBox = this.digitBoxes.find(d => d.digit === this.challengeData.ones);
-        if (tensDigitBox) this.placeDigitInZone(tensDigitBox.box, this.tensZone, this.challengeData.tens);
-        if (onesDigitBox) this.placeDigitInZone(onesDigitBox.box, this.onesZone, this.challengeData.ones);
-
-        // Gold = "this is the answer"
-        this.tensZone.setFillStyle(0xFFD700, 0.5);
-        this.onesZone.setFillStyle(0xFFD700, 0.5);
-
-        // The skip-count is the lesson, so it runs on misses too
-        this.revealSkipCount(scene, () => {
-            this.delayedCall(scene, 1200, () => this.loadNextChallenge(scene));
-        });
+    skipCountDuration() {
+        return this.challengeData.rows * this.skipCountStepMs() + 250;
     }
 
     // Light up one row at a time while the voice counts 10, 20, 30 — the
     // repeated addition behind the symbol.
-    revealSkipCount(scene, onDone) {
-        const { rows, cols } = this.challengeData;
-        const token = this.revealToken;
-        const stepMs = Math.min(700, Math.max(320, Math.round(2600 / rows)));
+    revealSkipCount(scene, onDone = null) {
+        const { rows, cols, product } = this.challengeData;
+        const stepMs = this.skipCountStepMs();
 
         for (let r = 0; r < rows; r++) {
             this.delayedCall(scene, r * stepMs, () => {
-                if (token !== this.revealToken) return;
-
                 const band = this.rowHighlights[r];
-                if (band) band.setFillStyle(0x27AE60, 0.45);
+                if (band) band.setFillStyle(COLORS.CORRECT, 0.45);
 
                 const total = (r + 1) * cols;
                 const label = this.rowTotals[r];
@@ -635,15 +292,12 @@ export class MultiplicationMode extends BasePokeballGameMode {
                     });
                 }
 
-                this.playNumberAudio(scene, total);
+                this.playAudio(scene, `number_audio_${total}`);
             });
         }
 
-        this.delayedCall(scene, rows * stepMs + 250, () => {
-            if (token !== this.revealToken) return;
-            if (this.problemDisplay) {
-                this.problemDisplay.setText(`${rows} × ${cols} = ${this.challengeData.product}`);
-            }
+        this.delayedCall(scene, this.skipCountDuration(), () => {
+            if (this.problemDisplay) this.problemDisplay.setText(`${rows} × ${cols} = ${product}`);
             if (onDone) onDone();
         });
     }
@@ -652,7 +306,6 @@ export class MultiplicationMode extends BasePokeballGameMode {
     // 10 × 3 are visibly the same amount.
     showCommutativity(scene, onDone) {
         const { rows, cols, product } = this.challengeData;
-        const token = this.revealToken;
 
         if (!this.commutativityEnabled || rows === cols) {
             if (onDone) onDone();
@@ -685,103 +338,27 @@ export class MultiplicationMode extends BasePokeballGameMode {
         }
 
         this.delayedCall(scene, 450, () => {
-            if (token !== this.revealToken) return;
-            if (this.problemDisplay) {
-                this.problemDisplay.setText(`${cols} × ${rows} = ${product}`);
-            }
+            if (this.problemDisplay) this.problemDisplay.setText(`${cols} × ${rows} = ${product}`);
         });
 
         this.delayedCall(scene, 1300, () => {
-            if (token !== this.revealToken) return;
             if (onDone) onDone();
         });
     }
 
-    loadNextChallenge(scene) {
-        this.isRevealing = false;
-        this.cleanup(scene);
-        this.generateChallenge();
-        this.createChallengeUI(scene);
-    }
-
     // ---------------- Audio ----------------
 
-    addAudio(scene, key) {
-        if (!scene.cache.audio.exists(key)) {
-            console.warn(`Audio not found: ${key}`);
-            return null;
-        }
-        const sound = scene.sound.add(key);
-        this.activeAudio.push(sound);
-        return sound;
-    }
-
-    stopAudio() {
-        // Any queued step of a stitched phrase must not play() a destroyed sound
-        this.audioToken++;
-        this.activeAudio.forEach(sound => {
-            if (sound.isPlaying) sound.stop();
-            sound.destroy();
-        });
-        this.activeAudio = [];
-    }
-
-    playNumberAudio(scene, number) {
-        this.stopAudio();
-        const sound = this.addAudio(scene, `number_audio_${number}`);
-        if (sound) sound.play();
-    }
-
-    // "tre gånger tio" — stitched from the number audio plus the word "gånger",
-    // with the 50 ms gap that reads as natural speech.
+    // "tre gånger tio" — stitched from the number audio plus the word "gånger".
     playProblemAudio(scene) {
         const { rows, cols } = this.challengeData;
-        this.stopAudio();
-        const token = this.audioToken;
-
-        const first = this.addAudio(scene, `number_audio_${rows}`);
-        const times = this.addAudio(scene, 'math_audio_ganger');
-        const second = this.addAudio(scene, `number_audio_${cols}`);
-        if (!first || !second) return;
-
-        const gapMs = 50;
-        first.play();
-
-        this.delayedCall(scene, first.duration * 1000 + gapMs, () => {
-            if (token !== this.audioToken) return;
-            if (times) {
-                times.play();
-                this.delayedCall(scene, times.duration * 1000 + gapMs, () => {
-                    if (token !== this.audioToken) return;
-                    second.play();
-                });
-            } else {
-                // No "gånger" audio available — still say both numbers
-                second.play();
-            }
-        });
+        this.playSequence(scene, [`number_audio_${rows}`, 'math_audio_ganger', `number_audio_${cols}`]);
     }
 
     cleanup(scene) {
-        // Invalidate any reveal steps still queued
-        this.revealToken++;
-        this.stopAudio();
-
-        // Remove only our drag and drop listeners
-        if (this.dragHandler) scene.input.off('drag', this.dragHandler);
-        if (this.dragEndHandler) scene.input.off('dragend', this.dragEndHandler);
-        this.dragHandler = null;
-        this.dragEndHandler = null;
-
         super.cleanup(scene);
-        this.digitBoxes = [];
-        this.ballIndicators = [];
         this.gridItems = [];
         this.rowHighlights = [];
         this.rowTotals = [];
         this.problemDisplay = null;
-        this.tensZone = null;
-        this.onesZone = null;
-        this.isRevealing = false;
     }
 }

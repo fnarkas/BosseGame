@@ -116,6 +116,10 @@ export function updateBoosterBar(elements, streak, scene) {
         0x9B59B6  // Purple x5
       ];
       fill.setFillStyle(colors[streak]);
+    } else if (shouldBeFilled) {
+      // Already lit: keep every lit segment on the current level's colour so
+      // the whole bar reads as one ramp (blue → green → orange → red → purple)
+      fill.setFillStyle(colors[streak]);
     } else if (!shouldBeFilled && fill.alpha === 1) {
       // Animate fill disappearing
       scene.tweens.add({
@@ -128,10 +132,14 @@ export function updateBoosterBar(elements, streak, scene) {
     }
   }
 
-  // Stop existing glow if any
+  // Stop existing glow/pulse if any
   if (elements.glowTween) {
     elements.glowTween.stop();
     elements.glowTween = null;
+  }
+  if (elements.pulseTween) {
+    elements.pulseTween.stop();
+    elements.pulseTween = null;
   }
 
   // Add glow effect at max streak (5x)
@@ -147,7 +155,7 @@ export function updateBoosterBar(elements, streak, scene) {
     });
 
     // Pulse the multiplier text
-    scene.tweens.add({
+    elements.pulseTween = scene.tweens.add({
       targets: elements.multiplierText,
       scale: { from: 1, to: 1.2 },
       duration: 800,
@@ -196,9 +204,14 @@ export function showBoosterBar(elements) {
 export function destroyBoosterBar(elements) {
   if (!elements) return;
 
-  // Stop glow tween if active
+  // Stop tweens if active
   if (elements.glowTween) {
     elements.glowTween.stop();
+    elements.glowTween = null;
+  }
+  if (elements.pulseTween) {
+    elements.pulseTween.stop();
+    elements.pulseTween = null;
   }
 
   // Destroy all elements

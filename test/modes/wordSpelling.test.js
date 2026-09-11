@@ -117,7 +117,7 @@ describe('WordSpellingMode', () => {
         });
 
         it('draws the progress balls from requiredWords', () => {
-            expect(mode.wordBallIndicators).toHaveLength(2);
+            expect(mode.progressBalls.circles).toHaveLength(2);
             expect(scene.findText('🎁')).toBeTruthy();
         });
     });
@@ -134,8 +134,8 @@ describe('WordSpellingMode', () => {
             const first = spellCurrentWord(scene, mode);
             expect(calls).toHaveLength(0);
             expect(mode.wordsCompleted).toBe(1);
-            expect(mode.wordBallIndicators[0].fillColor).toBe(0x27AE60);
-            expect(mode.wordBallIndicators[1].fillColor).toBe(0xffffff);
+            expect(mode.progressBalls.circles[0].fillColor).toBe(0x27AE60);
+            expect(mode.progressBalls.circles[1].fillColor).toBe(0xffffff);
             // A new word with fresh hearts and a single hearts display
             expect(mode.challengeData.word).not.toBe(first);
             expect(mode.livesRemaining).toBe(2);
@@ -235,7 +235,7 @@ describe('WordSpellingMode', () => {
             const correct = expectedLetter(mode);
             scene.click(wrongKey);
             expect(mode.livesRemaining).toBe(1);
-            expect(mode.heartsDisplay.text).toBe('❤️🖤');
+            expect(mode.hearts.text.text).toBe('❤️🖤');
             expect(wrongKey.input.enabled).toBe(false);
             expect(mode.usedLetters).toEqual([wrong]);
             expect(scene.playedAudio().slice(-1)).toEqual([`letter_audio_${correct.toLowerCase()}`]);
@@ -252,6 +252,7 @@ describe('WordSpellingMode', () => {
 
         it('reveals the word, resets the streak and progress, then restarts after two wrong letters', () => {
             incrementStreak();
+            mode.requiredWords = 5; // room for the delayed retry before the reward
             spellCurrentWord(scene, mode);
             expect(mode.wordsCompleted).toBe(1);
             const word = mode.challengeData.word;
@@ -261,7 +262,7 @@ describe('WordSpellingMode', () => {
                 .find(l => l !== wrong && !word.toUpperCase().includes(l));
             scene.click(keyFor(scene, wrong2));
             expect(mode.livesRemaining).toBe(0);
-            expect(mode.heartsDisplay.text).toBe('🖤🖤');
+            expect(mode.hearts.text.text).toBe('🖤🖤');
             expect(mode.inputLocked).toBe(true);
 
             // A correct tap in the window before the reveal must not count
@@ -276,17 +277,47 @@ describe('WordSpellingMode', () => {
             scene.click(keyFor(scene, expectedLetter(mode)));
             expect(mode.collectedIndices.size).toBe(0);
 
+            // The word is read aloud while it is shown
+            expect(scene.lastAudio()).toBe(`word_audio_${word}`);
+
             scene.advance(2000);
             expect(mode.isRevealing).toBe(false);
             expect(mode.inputLocked).toBe(false);
             expect(mode.wordsCompleted).toBe(0);
             expect(mode.livesRemaining).toBe(2);
-            expect(mode.wordBallIndicators.every(c => c.fillColor === 0xffffff)).toBe(true);
+            expect(mode.progressBalls.circles.every(c => c.fillColor === 0xffffff)).toBe(true);
             expect(getStreak()).toBe(0);
             expect(calls).toHaveLength(0);
             expect(scene.interactives().filter(o => o.getData('letter'))).toHaveLength(29);
             expect(scene._useAfterDestroy).toEqual([]);
             expect(scene._missingAudio).toEqual([]);
+            // The missed word is asked again straight away ...
+            expect(mode.challengeData.word).toBe(word);
+            spellCurrentWord(scene, mode);
+            expect(mode.challengeData.word).not.toBe(word);
+            spellCurrentWord(scene, mode);
+            // ... and once more two words later
+            expect(mode.challengeData.word).toBe(word);
+        });
+
+        it('keeps the streak when moving on to the next word', () => {
+            incrementStreak();
+            spellCurrentWord(scene, mode);
+            expect(mode.wordsCompleted).toBe(1);
+            expect(getStreak()).toBe(1);
+        });
+
+        it('shows only learning content: no status or instruction text', () => {
+            const check = () => scene.liveTexts().forEach(t => {
+                expect(/[a-zåäö]{3,} [a-zåäö]/i.test(t.text), t.text).toBe(false);
+                expect(t.text.length <= 1 || ['🔊', '🎁'].includes(t.text) || t.text.includes('❤️') || t.text.includes('🖤'), t.text).toBe(true);
+            });
+            check();
+            const wrongs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ'.split('').filter(l => !mode.challengeData.word.toUpperCase().includes(l));
+            scene.click(keyFor(scene, wrongs[0]));
+            scene.click(keyFor(scene, wrongs[1]));
+            scene.advance(500);
+            check();
         });
     });
 
@@ -294,8 +325,10 @@ describe('WordSpellingMode', () => {
         it('leaves nothing behind when cleaned up mid-letter', () => {
             scene.click(keyFor(scene, expectedLetter(mode)));
             scene.advance(100);
+            expect(scene.liveObjectsOfType('ParticleEmitter')).toHaveLength(1);
             mode.cleanup(scene);
             const t = scene.time.now;
+            expect(scene.clock.pendingTimers()).toEqual([]);
             scene.advance(10000);
             expect(scene.objectsCreatedAfter(t)).toEqual([]);
             expect(scene.liveObjects()).toEqual([]);
@@ -307,9 +340,11 @@ describe('WordSpellingMode', () => {
             const word = mode.challengeData.word.toUpperCase();
             const wrongs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ'.split('').filter(l => !word.includes(l));
             scene.click(keyFor(scene, wrongs[0]));
+            scene.advance(100); // slot mid-shake
             scene.click(keyFor(scene, wrongs[1]));
             scene.advance(500); // revealing
             mode.cleanup(scene);
+            expect(scene.clock.pendingTweens()).toEqual([]);
             const t = scene.time.now;
             scene.advance(10000);
             expect(scene.objectsCreatedAfter(t)).toEqual([]);

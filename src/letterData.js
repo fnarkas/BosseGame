@@ -1,3 +1,5 @@
+import { loadMinigameConfig } from './minigameConfig.js';
+
 /**
  * Swedish alphabet letters for the letter listening game
  * 29 letters: A-Z + Å, Ä, Ö (default)
@@ -12,7 +14,7 @@ const DEFAULT_SWEDISH_LETTERS = [
 /**
  * Parse letter range string (e.g., "a-z,B,C" -> ['a','b',...,'z','B','C'])
  */
-function parseLetterRange(input) {
+export function parseLetterRange(input) {
     try {
         const parts = input.split(',');
         const letters = [];
@@ -50,46 +52,20 @@ function parseLetterRange(input) {
     }
 }
 
-// Cache for server config to avoid multiple fetches
-let configCache = null;
-let configCacheTime = 0;
-const CACHE_DURATION = 60000; // 1 minute
-
-/**
- * Get configured letters from server config or use default
- * Supports both uppercase and lowercase letters
- */
 export async function getConfiguredLetters() {
     try {
-        // Check cache first
-        const now = Date.now();
-        if (configCache && (now - configCacheTime) < CACHE_DURATION) {
-            console.log('Using cached letter config');
-            return configCache;
-        }
-
-        // Fetch server config
-        const response = await fetch('/config/minigames.json');
-        if (response.ok) {
-            const config = await response.json();
-            if (config.letters?.letters) {
-                const parsedLetters = parseLetterRange(config.letters.letters);
-                if (parsedLetters && parsedLetters.length > 0) {
-                    console.log('Loaded configured letters from server:', parsedLetters);
-                    configCache = parsedLetters;
-                    configCacheTime = now;
-                    return parsedLetters;
-                }
+        const config = await loadMinigameConfig();
+        if (config.letters?.letters) {
+            const parsedLetters = parseLetterRange(config.letters.letters);
+            if (parsedLetters && parsedLetters.length > 0) {
+                return parsedLetters;
             }
+            console.warn('Invalid letter config, using default letters');
         }
     } catch (error) {
-        console.warn('Failed to load configured letters from server, using defaults:', error);
+        console.warn('Failed to load letter config, using defaults:', error);
     }
-
-    console.log('Using default letters:', DEFAULT_SWEDISH_LETTERS);
-    configCache = DEFAULT_SWEDISH_LETTERS;
-    configCacheTime = Date.now();
-    return DEFAULT_SWEDISH_LETTERS;
+    return [...SWEDISH_LETTERS];
 }
 
 // For synchronous access, return default and update asynchronously

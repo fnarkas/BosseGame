@@ -3,6 +3,8 @@ import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
 import { resetStreak } from '../streak.js';
 import { updateBoosterBar } from '../boosterBar.js';
+import { loadModeConfig } from '../minigameConfig.js';
+import { COLORS, drawDashedRect, updateZoneHover } from './uiKit.js';
 
 // Swedish days of the week with their numbers
 const DAYS_OF_WEEK = [
@@ -15,6 +17,10 @@ const DAYS_OF_WEEK = [
     { number: 7, name: 'Söndag', audio: 'day_7_sondag' }
 ];
 
+const DEFAULT_CONFIG = { maxErrors: 3 };
+const BOX_STROKE = 0x4A90E2;
+const REVEAL_MS = 1000; // the correct zone glows while the day is spoken
+
 export class DayMatchMode extends BasePokeballGameMode {
     constructor() {
         super();
@@ -23,34 +29,20 @@ export class DayMatchMode extends BasePokeballGameMode {
         this.currentDays = [];
         this.dropZones = [];
         this.draggableBoxes = [];
-        this.currentHoverZone = null;
         this.hasError = false;
-        this.isRevealing = false;
-        this.heartsDisplay = null;
 
         // Default config (will be loaded from server)
-        this.config = {
-            maxErrors: 3
-        };
+        this.config = { ...DEFAULT_CONFIG };
         this.configLoaded = false;
-        this.errorsRemaining = 3; // Will be set from config
+        this.errorsRemaining = this.config.maxErrors; // Will be set from config
     }
 
     async loadConfig() {
-        try {
-            const response = await fetch('/config/minigames.json');
-            if (response.ok) {
-                const serverConfig = await response.json();
-                if (serverConfig.dayMatch) {
-                    this.config.maxErrors = serverConfig.dayMatch.maxErrors || this.config.maxErrors;
-                    this.errorsRemaining = this.config.maxErrors;
-                    console.log('DayMatchMode loaded config:', this.config);
-                }
-            }
-        } catch (error) {
-            console.warn('Failed to load dayMatch config, using defaults:', error);
-        }
+        this.config = await loadModeConfig('dayMatch', DEFAULT_CONFIG);
+        if (!(this.config.maxErrors > 0)) this.config.maxErrors = DEFAULT_CONFIG.maxErrors;
+        this.errorsRemaining = this.config.maxErrors;
         this.configLoaded = true;
+        console.log('DayMatchMode loaded config:', this.config);
     }
 
     generateChallenge() {
@@ -64,7 +56,6 @@ export class DayMatchMode extends BasePokeballGameMode {
 
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
-        const height = scene.cameras.main.height;
 
         // A fresh challenge always starts accepting input again.
         this.isRevealing = false;
@@ -72,12 +63,7 @@ export class DayMatchMode extends BasePokeballGameMode {
         this.hasError = false;
 
         // Show hearts at the top
-        const heartsText = '❤️'.repeat(this.errorsRemaining) + '🖤'.repeat(this.config.maxErrors - this.errorsRemaining);
-        this.heartsDisplay = scene.add.text(width / 2, 70, heartsText, {
-            fontSize: '36px',
-            fontFamily: 'Arial'
-        }).setOrigin(0.5);
-        this.uiElements.push(this.heartsDisplay);
+        this.createHearts(scene, { max: this.config.maxErrors, remaining: this.errorsRemaining, y: 70 });
 
         // Create number drop zones at top
         const upperY = 220;
@@ -88,7 +74,7 @@ export class DayMatchMode extends BasePokeballGameMode {
             const x = startX + index * spacing;
 
             // Drop zone background with dashed border
-            const dropZone = scene.add.rectangle(x, upperY, 120, 120, 0xFFFFFF, 0.2);
+            const dropZone = scene.add.rectangle(x, upperY, 120, 120, COLORS.NEUTRAL_FILL, 0.2);
             dropZone.setInteractive();
             dropZone.setData('dayNumber', day.number);
             dropZone.setData('matched', false);
@@ -98,12 +84,9 @@ export class DayMatchMode extends BasePokeballGameMode {
 
             // Create dashed border
             const graphics = scene.add.graphics();
-            graphics.lineStyle(3, 0x000000, 1);
+            graphics.lineStyle(3, COLORS.OUTLINE, 1);
             const boxSize = 120;
-            const dashLength = 8;
-            const gapLength = 6;
-
-            this.drawDashedRect(graphics, x - boxSize / 2, upperY - boxSize / 2, boxSize, boxSize, dashLength, gapLength);
+            drawDashedRect(graphics, x - boxSize / 2, upperY - boxSize / 2, boxSize, boxSize, 8, 6);
 
             dropZone.setData('dashedBorder', graphics);
             this.uiElements.push(graphics);
@@ -128,8 +111,8 @@ export class DayMatchMode extends BasePokeballGameMode {
             const x = startX + index * spacing;
 
             // Solid box for draggable day name
-            const box = scene.add.rectangle(x, lowerY, 120, 120, 0xFFFFFF, 0.3);
-            box.setStrokeStyle(3, 0x4A90E2); // Solid blue border
+            const box = scene.add.rectangle(x, lowerY, 120, 120, COLORS.NEUTRAL_FILL, 0.3);
+            box.setStrokeStyle(3, BOX_STROKE); // Solid blue border
             box.setInteractive({ useHandCursor: true, draggable: true });
             box.setData('dayNumber', day.number);
             box.setData('dayName', day.name);
@@ -155,14 +138,14 @@ export class DayMatchMode extends BasePokeballGameMode {
 
             // Set up drag events on the BOX
             box.on('drag', (pointer, dragX, dragY) => {
-                if (this.isRevealing) return; // Frozen while feedback is shown
+                if (this.isInputBlocked()) return; // Frozen while feedback is shown
                 box.x = dragX;
                 box.y = dragY;
                 dayText.x = dragX;
                 dayText.y = dragY;
 
-                // Check hover over drop zones
-                this.checkHoverOverZones(scene, pointer);
+                // Highlight the zone under the pointer
+                updateZoneHover(this.dropZones, pointer);
             });
 
             box.on('dragend', (pointer) => {
@@ -175,70 +158,20 @@ export class DayMatchMode extends BasePokeballGameMode {
     }
 
     playDayAudio(scene, audioKey) {
-        console.log('🔊 Playing audio:', audioKey);
-        // sound.get() only finds sounds that were already instantiated, so it
-        // never found anything on a fresh scene; check the loaded cache instead.
-        if (scene.cache.audio.exists(audioKey)) {
-            scene.sound.play(audioKey);
-        } else {
-            console.warn(`Audio not found: ${audioKey}`);
-        }
+        this.playAudio(scene, audioKey);
     }
 
-    drawDashedRect(graphics, x, y, width, height, dashLength, gapLength) {
-        const perimeter = [
-            { x1: x, y1: y, x2: x + width, y2: y }, // Top
-            { x1: x + width, y1: y, x2: x + width, y2: y + height }, // Right
-            { x1: x + width, y1: y + height, x2: x, y2: y + height }, // Bottom
-            { x1: x, y1: y + height, x2: x, y2: y } // Left
-        ];
-
-        perimeter.forEach(line => {
-            const dx = line.x2 - line.x1;
-            const dy = line.y2 - line.y1;
-            const length = Math.sqrt(dx * dx + dy * dy);
-            const steps = Math.floor(length / (dashLength + gapLength));
-
-            for (let i = 0; i < steps; i++) {
-                const t1 = i * (dashLength + gapLength) / length;
-                const t2 = (i * (dashLength + gapLength) + dashLength) / length;
-
-                const startX = line.x1 + dx * t1;
-                const startY = line.y1 + dy * t1;
-                const endX = line.x1 + dx * t2;
-                const endY = line.y1 + dy * t2;
-
-                graphics.lineBetween(startX, startY, endX, endY);
-            }
-        });
-    }
-
-    checkHoverOverZones(scene, pointer) {
-        let foundHover = false;
-
+    resetZoneHover() {
         this.dropZones.forEach(zone => {
-            const bounds = zone.getBounds();
-            const isOver = Phaser.Geom.Rectangle.Contains(bounds, pointer.x, pointer.y);
-
-            if (isOver && !zone.getData('matched')) {
-                // Highlight this zone
-                zone.setFillStyle(0xFFD700, 0.5); // Gold highlight
-                foundHover = true;
-                this.currentHoverZone = zone;
-            } else if (!zone.getData('matched')) {
-                // Reset to original
-                zone.setFillStyle(0xFFFFFF, zone.getData('originalAlpha'));
+            if (!zone.getData('matched')) {
+                zone.setFillStyle(COLORS.NEUTRAL_FILL, zone.getData('originalAlpha'));
             }
         });
-
-        if (!foundHover && this.currentHoverZone) {
-            this.currentHoverZone = null;
-        }
     }
 
     handleDrop(scene, draggedBox, pointer) {
         // Don't allow drops during reveal animation
-        if (this.isRevealing) return;
+        if (this.isInputBlocked()) return;
 
         const dayNumber = draggedBox.getData('dayNumber');
         const dayName = draggedBox.getData('dayName');
@@ -270,18 +203,18 @@ export class DayMatchMode extends BasePokeballGameMode {
                     dayText.x = zone.x;
                     dayText.y = zone.y;
 
-                    dayText.setTint(0x27AE60); // Green tint
-                    draggedBox.setStrokeStyle(3, 0x27AE60); // Green border
-                    draggedBox.setFillStyle(0x27AE60, 0.2); // Light green fill
+                    dayText.setTint(COLORS.CORRECT); // Green tint
+                    draggedBox.setStrokeStyle(3, COLORS.CORRECT); // Green border
+                    draggedBox.setFillStyle(COLORS.CORRECT, 0.2); // Light green fill
                     draggedBox.disableInteractive(); // Can't drag anymore
 
                     // Reset zone appearance and change to solid green border
-                    zone.setFillStyle(0x27AE60, 0.2); // Light green fill
+                    zone.setFillStyle(COLORS.CORRECT, 0.2); // Light green fill
                     const dashedBorder = zone.getData('dashedBorder');
                     if (dashedBorder) {
                         dashedBorder.destroy(); // Remove dashed border
                     }
-                    zone.setStrokeStyle(3, 0x27AE60); // Solid green border
+                    zone.setStrokeStyle(3, COLORS.CORRECT); // Solid green border
 
                     // Visual feedback animation
                     this.addTween(scene, {
@@ -296,7 +229,7 @@ export class DayMatchMode extends BasePokeballGameMode {
 
                             // Update the drop zone text to show the day name instead of number
                             const numberText = zone.getData('numberText');
-                            if (numberText) {
+                            if (numberText && numberText.scene) {
                                 numberText.setText(dayName);
                                 numberText.setColor('#27AE60'); // Green color for matched text
                                 numberText.setFontSize('28px'); // Smaller font for day name
@@ -352,70 +285,89 @@ export class DayMatchMode extends BasePokeballGameMode {
             }
 
             // Reset any hover effects
-            this.dropZones.forEach(zone => {
-                if (!zone.getData('matched')) {
-                    zone.setFillStyle(0xFFFFFF, zone.getData('originalAlpha'));
-                }
-            });
+            this.resetZoneHover();
         }
     }
 
     showWrongDropFeedback(scene, draggedBox, dayText) {
         // Lose a heart
         this.errorsRemaining = Math.max(0, this.errorsRemaining - 1);
+        this.updateHearts(this.errorsRemaining);
 
-        // Update hearts display
-        const heartsText = '❤️'.repeat(Math.max(0, this.errorsRemaining)) + '🖤'.repeat(this.config.maxErrors - this.errorsRemaining);
-        if (this.heartsDisplay) {
-            this.heartsDisplay.setText(heartsText);
-        }
-
-        // A wrong answer breaks the streak
+        // A wrong answer breaks the streak (the round itself carries on, so
+        // this mode resets it per error rather than in restartChallenge)
         resetStreak();
         if (scene.boosterBarElements) {
             updateBoosterBar(scene.boosterBarElements, 0, scene);
         }
 
-        // Red flash on the box and text
-        dayText.setTint(0xFF0000); // Red tint
-        draggedBox.setStrokeStyle(3, 0xFF0000); // Red border
-        draggedBox.setFillStyle(0xFF0000, 0.3); // Red fill
-
-        // Shake animation
-        const originalX = draggedBox.x;
+        // Red flash and shake on the box and its text
+        dayText.setTint(COLORS.WRONG);
         this.addTween(scene, {
-            targets: [draggedBox, dayText],
-            x: originalX - 10,
+            targets: dayText,
+            x: dayText.x - 10,
             duration: 50,
             yoyo: true,
-            repeat: 3,
+            repeat: 3
+        });
+
+        this.shakeWrong(scene, draggedBox, {
+            restore: false,
             onComplete: () => {
+                if (!draggedBox.scene) return;
                 // Clear red tint
                 dayText.clearTint();
-                draggedBox.setStrokeStyle(3, 0x4A90E2); // Back to blue border
-                draggedBox.setFillStyle(0xFFFFFF, 0.3); // Back to white fill
+                draggedBox.setStrokeStyle(3, BOX_STROKE); // Back to blue border
+                draggedBox.setFillStyle(COLORS.NEUTRAL_FILL, 0.3); // Back to white fill
 
-                // Return to start position
+                // Return to start position while the right zone is shown
                 this.addTween(scene, {
                     targets: [draggedBox, dayText],
                     x: draggedBox.getData('startX'),
                     y: draggedBox.getData('startY'),
                     duration: 300,
-                    ease: 'Back.easeOut',
-                    onComplete: () => {
-                        // Check if out of hearts
-                        if (this.errorsRemaining <= 0) {
-                            // Game over - restart with new challenge (input
-                            // stays frozen until the new round is built)
-                            this.delayedCall(scene, 1000, () => {
-                                this.handleGameOver(scene);
-                            });
-                        } else {
-                            this.isRevealing = false;
-                            this.inputLocked = false;
-                        }
-                    }
+                    ease: 'Back.easeOut'
                 });
+
+                this.revealCorrectZone(scene, draggedBox);
+            }
+        });
+    }
+
+    revealCorrectZone(scene, draggedBox) {
+        const dayNumber = draggedBox.getData('dayNumber');
+        const zone = this.dropZones.find(z => z.getData('dayNumber') === dayNumber);
+
+        // Gold glow on the number this day belongs to
+        if (zone && zone.scene) {
+            zone.setFillStyle(COLORS.REVEAL, 0.5);
+            this.addTween(scene, {
+                targets: zone,
+                scaleX: 1.15,
+                scaleY: 1.15,
+                duration: 250,
+                yoyo: true,
+                repeat: 1,
+                ease: 'Sine.easeInOut'
+            });
+        }
+
+        // Say the day while the child looks at its number, then either carry
+        // on (input unfrozen) or, with no hearts left, start a fresh round.
+        this.revealAnswer(scene, {
+            targets: [],
+            audioKey: draggedBox.getData('dayAudio'),
+            delay: REVEAL_MS,
+            onDone: () => {
+                if (zone && zone.scene && !zone.getData('matched')) {
+                    zone.setFillStyle(COLORS.NEUTRAL_FILL, zone.getData('originalAlpha'));
+                }
+                if (this.errorsRemaining <= 0) {
+                    this.handleGameOver(scene);
+                } else {
+                    this.isRevealing = false;
+                    this.inputLocked = false;
+                }
             }
         });
     }
@@ -423,32 +375,15 @@ export class DayMatchMode extends BasePokeballGameMode {
     handleGameOver(scene) {
         console.log('💔 Game Over - All hearts lost!');
 
-        // Clean up current UI
-        this.cleanup(scene);
-
-        // Reset state for next time
-        this.correctMatches = 0;
+        // Fresh hearts, streak reset and a new round
         this.errorsRemaining = this.config.maxErrors;
-
-        // Reset streak since player lost
-        resetStreak();
-
-        // Update booster bar visual immediately
-        if (scene.boosterBarElements) {
-            updateBoosterBar(scene.boosterBarElements, 0, scene);
-        }
-
-        // Generate new challenge
-        this.generateChallenge();
-        this.createChallengeUI(scene);
+        this.restartChallenge(scene);
     }
 
     cleanup(scene) {
         super.cleanup(scene);
         this.dropZones = [];
-        this.heartsDisplay = null;
         this.draggableBoxes = [];
         this.correctMatches = 0;
-        this.currentHoverZone = null;
     }
 }

@@ -144,9 +144,12 @@ describe('ShapeDirectionsMode', () => {
         it('every colour/shape/direction combination maps to a loaded audio key', () => {
             for (let i = 0; i < 200; i++) {
                 mode.cleanup(scene);
+                const before = scene.playedAudio().length;
                 mode.generateChallenge();
                 mode.createChallengeUI(scene);
                 scene.advance(600);
+                // Both parts actually played (a missing key is skipped silently)
+                expect(scene.playedAudio().slice(before)).toEqual(expectedKeys(mode));
             }
             expect(scene._missingAudio).toEqual([]);
         });
@@ -206,17 +209,37 @@ describe('ShapeDirectionsMode', () => {
 
             const wrong = wrongContainer(scene, mode);
             const target = targetContainer(scene, mode);
+            const wrongX = wrong.x;
             scene.click(wrong);
             expect(bgOf(wrong).fillColor).toBe(0xFF0000);
             expect(mode.correctInRow).toBe(0);
-            expect(getStreak()).toBe(0);
+            expect(mode.progressBalls.circles[0].fillColor).toBe(0xffffff);
             scene.advance(500);
+            expect(wrong.x).toBe(wrongX);
             expect(bgOf(target).fillColor).toBe(0xFFD700);
+            expect(getStreak()).toBe(1); // the streak is only lost when the challenge restarts
             scene.advance(2500);
+            expect(getStreak()).toBe(0);
             expect(calls).toHaveLength(0);
             expect(wrong.destroyed).toBe(true);
             expect(shapeContainers(scene)).toHaveLength(mode.challengeData.shapes.length);
             expect(mode.inputLocked).toBe(false);
+        });
+
+        it('repeats the question over the gold target and asks the same direction again', () => {
+            const [prefixKey, comboKey] = expectedKeys(mode);
+            const missedDirection = mode.challengeData.direction;
+            scene.advance(2000); // initial question finished
+            const before = scene.playedAudio().length;
+            scene.click(wrongContainer(scene, mode));
+            scene.advance(450); // shake over: reveal starts and the question replays
+            expect(scene.playedAudio().slice(before)).toEqual([prefixKey]);
+            scene.advance(600);
+            expect(scene.playedAudio().slice(before)).toEqual([prefixKey, comboKey]);
+            scene.advance(2000);
+            // fresh challenge, same direction
+            expect(mode.challengeData.direction).toBe(missedDirection);
+            expect(shapeContainers(scene)).toHaveLength(mode.challengeData.shapes.length);
         });
 
         it('does not accept a correct tap while the answer is being revealed', () => {
