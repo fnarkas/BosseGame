@@ -3,14 +3,21 @@
 #
 #   * data folder  ~/srv/pokemon-data  (database, certificate, backups, logs)
 #   * a self-signed certificate, made once, so the game is served over HTTPS
-#     (browsers only allow the microphone on HTTPS; accept the warning once
-#     per device)
+#     on the LAN (browsers only allow the microphone on HTTPS; accept the
+#     warning once per device)
+#   * Tailscale Serve, when Tailscale is installed: publishes the game on the
+#     tailnet at https://<machine>.<tailnet>.ts.net/ with a real Let's Encrypt
+#     certificate that Tailscale issues and renews by itself, so devices on
+#     the tailnet get no warning. Needs MagicDNS and "HTTPS Certificates"
+#     enabled under DNS in the Tailscale admin console. POKEMON_TAILSCALE=0
+#     skips this step.
 #   * launchd agent  se.landin.pokemon         keeps the server running,
 #                                              restarts it on crash and at login
 #   * launchd agent  se.landin.pokemon.backup  copies the database every night
 #
 # Every run rewrites the agents and restarts the server, which is how a deploy
-# picks up new code. Override with POKEMON_DATA_DIR and POKEMON_PORT.
+# picks up new code. Override with POKEMON_DATA_DIR, POKEMON_PORT and
+# POKEMON_TAILSCALE.
 
 set -euo pipefail
 
@@ -24,6 +31,7 @@ DB="$DATA_DIR/game.db"
 CERT="$DATA_DIR/cert.pem"
 KEY="$DATA_DIR/key.pem"
 UID_NUM="$(id -u)"
+USE_TAILSCALE="${POKEMON_TAILSCALE:-1}"
 
 mkdir -p "$DATA_DIR" "$LOG_DIR" "$DATA_DIR/backups" "$AGENTS"
 
@@ -145,15 +153,65 @@ echo "==> Restarting $LABEL ($DOMAIN)"
 restart_agent "$LABEL" "$AGENTS/$LABEL.plist"
 restart_agent "$LABEL.backup" "$AGENTS/$LABEL.backup.plist"
 
+# Tailscale Serve terminates TLS with the certificate Tailscale issues for this
+# machine and proxies to the self-signed server on the LAN port. The serve
+# config is stored by Tailscale and survives reboots; setting the same target
+# again is a no-op, so this is safe to run on every deploy.
+TS=""
+TS_HOST=""
+setup_tailscale() {
+    [ "$USE_TAILSCALE" = 1 ] || return 0
+    # The Mac App Store build has no `tailscale` on the PATH, only the app's CLI.
+    TS="$(command -v tailscale || true)"
+    if [ -z "$TS" ] && [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then
+        TS=/Applications/Tailscale.app/Contents/MacOS/Tailscale
+    fi
+    if [ -z "$TS" ]; then
+        echo "==> Tailscale is not installed; the game is reachable on the LAN only"
+        return 0
+    fi
+    local status
+    status="$("$TS" status --json 2>/dev/null || true)"
+    if ! echo "$status" | grep -q '"BackendState": "Running"'; then
+        echo "==> Tailscale is not running; skipping Tailscale Serve" >&2
+        return 0
+    fi
+    # "DNSName": "olofs-mac-mini.tailxxxx.ts.net." -> olofs-mac-mini.tailxxxx.ts.net
+    TS_HOST="$(echo "$status" | sed -n 's/.*"DNSName": "\([^"]*\)\.".*/\1/p' | head -n 1)"
+    if [ -z "$TS_HOST" ]; then
+        echo "==> This machine has no MagicDNS name; skipping Tailscale Serve" >&2
+        return 0
+    fi
+    # CertDomains lists the names Tailscale may issue certificates for; it is
+    # empty until HTTPS Certificates is enabled in the admin console.
+    if ! echo "$status" | sed -n '/"CertDomains"/,/\]/p' | grep -q "\"$TS_HOST\""; then
+        echo "==> Tailscale can not issue a certificate for $TS_HOST; skipping Tailscale Serve." >&2
+        echo "    Enable MagicDNS and HTTPS Certificates under DNS in the Tailscale admin console." >&2
+        TS_HOST=""
+        return 0
+    fi
+    echo "==> Tailscale Serve: https://$TS_HOST/ -> https://localhost:$PORT/"
+    if ! "$TS" serve --bg --https=443 "https+insecure://localhost:$PORT" >/dev/null; then
+        echo "    tailscale serve failed; the game is still reachable on the LAN" >&2
+        TS_HOST=""
+    fi
+}
+
+setup_tailscale
+
 # Give the server a moment, then prove it answers.
 for _ in 1 2 3 4 5 6 7 8 9 10; do
     sleep 1
     if curl -sk --max-time 2 "https://localhost:$PORT/api/accounts" >/dev/null 2>&1; then
         if [ "$PORT" = 443 ]; then
-            echo "==> Up: https://$GAME_HOST/  (database: $DB)"
+            echo "==> Up: https://$GAME_HOST/  (LAN, self-signed certificate)"
         else
-            echo "==> Up: https://$GAME_HOST:$PORT/  (database: $DB)"
+            echo "==> Up: https://$GAME_HOST:$PORT/  (LAN, self-signed certificate)"
         fi
+        # A machine can not reach its own Tailscale Serve (its tailnet IP is
+        # local, so the request lands on the Node server directly), so the
+        # tailnet address is checked by deploy.sh from the dev machine.
+        [ -z "$TS_HOST" ] || echo "==> Tailnet: https://$TS_HOST/  (trusted certificate)"
         exit 0
     fi
 done

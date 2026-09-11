@@ -8,7 +8,9 @@
 //   SSL_CERT/SSL_KEY  PEM files; when both exist the server speaks HTTPS, which
 //                     browsers require for the microphone (speech games). A
 //                     self-signed certificate is fine in-house: accept the
-//                     warning once per device. deploy/install.sh makes one.
+//                     warning once per device. deploy/install.sh makes one, and
+//                     puts Tailscale Serve (trusted certificate) in front of it
+//                     for devices on the tailnet.
 //
 // In development this is not needed: vite.config.js mounts the same API on the
 // dev server.
