@@ -55,6 +55,12 @@ igång på port 443 och en nattlig säkerhetskopia av databasen. Allt som ska ö
 driftsättning (databas, certifikat, kopior, loggar) ligger i `~/srv/pokemon-data`.
 Spelet nås sedan på `https://olofs-mac-mini.local/`. `DEPLOY_HOST` och `DEPLOY_DIR` ändrar målet.
 
+Om Tailscale körs på servern sätter skriptet också upp Tailscale Serve, så att spelet nås på
+`https://olofs-mac-mini.<tailnet>.ts.net/` från alla enheter i tailnetet, med ett riktigt
+certifikat som Tailscale utfärdar och förnyar själv (ingen varning). Det kräver att MagicDNS och
+"HTTPS Certificates" är påslagna under DNS i Tailscales adminkonsol. `POKEMON_TAILSCALE=0`
+hoppar över steget.
+
 ### Adresser
 
 | Adress | Vad |
