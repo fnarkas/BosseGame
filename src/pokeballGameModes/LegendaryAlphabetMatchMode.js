@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
-import { addCoins } from '../currency.js';
+import { saveActiveMinigame, clearActiveMinigame } from '../minigameSession.js';
 
 /**
  * Legendary Alphabet Match Mode
@@ -31,6 +31,7 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
         };
         this.configLoaded = false;
         this.errorsRemaining = 3; // Will be set from config
+        this.gameOverScheduled = false;
     }
 
     async loadConfig() {
@@ -39,8 +40,9 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
             if (response.ok) {
                 const serverConfig = await response.json();
                 if (serverConfig.legendary) {
-                    this.config.coinReward = serverConfig.legendary.coinReward || this.config.coinReward;
-                    this.config.maxErrors = serverConfig.legendary.maxErrors || this.config.maxErrors;
+                    const { coinReward, maxErrors } = serverConfig.legendary;
+                    if (typeof coinReward === 'number' && coinReward >= 0) this.config.coinReward = coinReward;
+                    if (typeof maxErrors === 'number' && maxErrors > 0) this.config.maxErrors = maxErrors;
                     this.errorsRemaining = this.config.maxErrors;
                     console.log('LegendaryAlphabetMatchMode loaded config:', this.config);
                 }
@@ -57,13 +59,19 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
         };
     }
 
+    heartsText() {
+        return '❤️'.repeat(this.errorsRemaining) + '🖤'.repeat(this.config.maxErrors - this.errorsRemaining);
+    }
+
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
-        const height = scene.cameras.main.height;
+
+        // A fresh board always starts accepting drops again
+        this.inputLocked = false;
+        this.gameOverScheduled = false;
 
         // Show hearts at the top
-        const heartsText = '❤️'.repeat(this.errorsRemaining) + '🖤'.repeat(this.config.maxErrors - this.errorsRemaining);
-        this.heartsDisplay = scene.add.text(width / 2, 70, heartsText, {
+        this.heartsDisplay = scene.add.text(width / 2, 70, this.heartsText(), {
             fontSize: '36px',
             fontFamily: 'Arial'
         }).setOrigin(0.5);
@@ -118,10 +126,11 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
     }
 
     updateProgressBar() {
+        if (!this.progressBarFill || !this.progressText) return;
         const barWidth = 600;
         const progress = this.matchedCount / this.requiredMatches;
         this.progressBarFill.width = barWidth * progress;
-        this.progressText.setText(`${this.matchedCount}/29`);
+        this.progressText.setText(`${this.matchedCount}/${this.requiredMatches}`);
     }
 
     createDropZones(scene) {
@@ -289,11 +298,37 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
         }
     }
 
+    snapBack(scene, draggedBox, letterText) {
+        this.addTween(scene, {
+            targets: [draggedBox, letterText],
+            x: draggedBox.getData('startX'),
+            y: draggedBox.getData('startY'),
+            duration: 300,
+            ease: 'Back.easeOut'
+        });
+    }
+
+    resetZoneHover() {
+        this.dropZones.forEach(zone => {
+            if (!zone.getData('matched')) {
+                zone.setFillStyle(0xFFFFFF, zone.getData('originalAlpha'));
+            }
+        });
+    }
+
     handleDrop(scene, draggedBox, pointer) {
         const letter = draggedBox.getData('letter');
         const letterText = draggedBox.getData('letterText');
         let matched = false;
         let droppedOnWrongZone = false;
+
+        // While a wrong drop is being shaken (or the game is over) nothing
+        // counts: the box just goes home again.
+        if (this.inputLocked) {
+            this.snapBack(scene, draggedBox, letterText);
+            this.resetZoneHover();
+            return;
+        }
 
         // Check if dropped on correct zone
         this.dropZones.forEach(zone => {
@@ -332,7 +367,7 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
                     zone.setStrokeStyle(4, 0x27AE60);
 
                     // Animation
-                    scene.tweens.add({
+                    this.addTween(scene, {
                         targets: [draggedBox, letterText],
                         scale: 1.3,
                         duration: 200,
@@ -356,7 +391,8 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
 
                     // Check if all matched
                     if (this.matchedCount >= this.requiredMatches) {
-                        scene.time.delayedCall(800, () => {
+                        this.inputLocked = true;
+                        this.delayedCall(scene, 800, () => {
                             this.handleCompletion(scene);
                         });
                     }
@@ -372,12 +408,16 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
             if (droppedOnWrongZone) {
                 // Wrong match - lose a heart
                 this.errorsRemaining = Math.max(0, this.errorsRemaining - 1);
+                const outOfHearts = this.errorsRemaining <= 0;
 
-                // Update hearts display (clamp to prevent negative values)
-                const heartsText = '❤️'.repeat(Math.max(0, this.errorsRemaining)) + '🖤'.repeat(this.config.maxErrors - this.errorsRemaining);
+                // Update hearts display
                 if (this.heartsDisplay) {
-                    this.heartsDisplay.setText(heartsText);
+                    this.heartsDisplay.setText(this.heartsText());
                 }
+
+                // No more drops count until the shake is over (for good if
+                // that was the last heart)
+                this.inputLocked = true;
 
                 // Red flash and shake
                 letterText.setColor('#FF0000');
@@ -385,7 +425,7 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
                 draggedBox.setFillStyle(0xFF0000, 0.3);
 
                 const originalX = draggedBox.x;
-                scene.tweens.add({
+                this.addTween(scene, {
                     targets: [draggedBox, letterText],
                     x: originalX - 10,
                     duration: 50,
@@ -398,44 +438,32 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
                         draggedBox.setFillStyle(0x4A90E2, 0.3);
 
                         // Return to start
-                        scene.tweens.add({
-                            targets: [draggedBox, letterText],
-                            x: draggedBox.getData('startX'),
-                            y: draggedBox.getData('startY'),
-                            duration: 300,
-                            ease: 'Back.easeOut'
-                        });
+                        this.snapBack(scene, draggedBox, letterText);
 
-                        // Check if out of hearts
-                        if (this.errorsRemaining <= 0) {
-                            // Game over - restart
-                            scene.time.delayedCall(1000, () => {
-                                this.handleGameOver(scene);
-                            });
+                        if (outOfHearts) {
+                            // Game over - hand over to the next mode
+                            if (!this.gameOverScheduled) {
+                                this.gameOverScheduled = true;
+                                this.delayedCall(scene, 1000, () => {
+                                    this.handleGameOver(scene);
+                                });
+                            }
+                        } else {
+                            this.inputLocked = false;
                         }
                     }
                 });
             } else {
                 // Just dropped outside zones - return to start
-                scene.tweens.add({
-                    targets: [draggedBox, letterText],
-                    x: draggedBox.getData('startX'),
-                    y: draggedBox.getData('startY'),
-                    duration: 300,
-                    ease: 'Back.easeOut'
-                });
+                this.snapBack(scene, draggedBox, letterText);
             }
 
             // Reset hover effects
-            this.dropZones.forEach(zone => {
-                if (!zone.getData('matched')) {
-                    zone.setFillStyle(0xFFFFFF, zone.getData('originalAlpha'));
-                }
-            });
+            this.resetZoneHover();
         }
     }
 
-    handleGameOver(scene) {
+    async handleGameOver(scene) {
         console.log('💔 Game Over - All hearts lost!');
 
         // Clean up current UI
@@ -445,11 +473,13 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
         this.matchedCount = 0;
         this.errorsRemaining = this.config.maxErrors;
 
-        // Force scene to switch to next mode by calling the same logic as completion
-        // but without awarding coins
-        scene.gameMode.cleanup(scene);
+        // Force scene to switch to next mode by calling the same logic as
+        // completion but without awarding coins. selectGameMode() is async
+        // (it fetches the wheel weights), so wait for it: the callback and the
+        // wheel must go to the NEW mode, not to this one.
+        clearActiveMinigame();
         scene.challengeCount++;
-        scene.selectGameMode();
+        await scene.selectGameMode();
 
         // Set up callback for new mode
         scene.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
@@ -459,6 +489,8 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
         // Show dice animation for next mode
         const forcedMode = scene.registry.get('pokeballGameMode');
         if (!forcedMode) {
+            // Remember the newly rolled mode so a reload doesn't resume this one
+            saveActiveMinigame(scene.gameMode.constructor.name);
             scene.showDiceRollAnimation();
         } else {
             // If in debug mode for legendary only, go back to main scene
@@ -473,21 +505,21 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
         // Return to main game - let the standard coin reward animation handle it
         const x = scene.cameras.main.width / 2;
         const y = scene.cameras.main.height / 2;
-        this.answerCallback(true, 'legendary-complete', x, y);
+        this.finish(true, 'legendary-complete', x, y);
     }
 
     cleanup(scene) {
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
-        this.uiElements = [];
+        super.cleanup(scene);
         this.dropZones = [];
         this.draggableLetters = [];
         this.draggableBoxes = [];
         this.matchedCount = 0;
         this.currentHoverZone = null;
+        this.heartsDisplay = null;
+        this.progressBar = null;
+        this.progressBarFill = null;
+        this.progressText = null;
+        this.legendaryBallIcon = null;
     }
 
     // Debug method to complete the game instantly
@@ -495,7 +527,8 @@ export class LegendaryAlphabetMatchMode extends BasePokeballGameMode {
         console.log('🐛 Debug: Completing legendary challenge instantly');
         this.matchedCount = this.requiredMatches;
         this.updateProgressBar();
-        scene.time.delayedCall(500, () => {
+        this.inputLocked = true;
+        this.delayedCall(scene, 500, () => {
             this.handleCompletion(scene);
         });
     }

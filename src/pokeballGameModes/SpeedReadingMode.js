@@ -81,6 +81,7 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         // Scoring / timing
         this.correctWords = 0;      // Drives both the ramp and the progress bar
         this.earnedCoins = 0;       // Read by PokeballGameScene for the reward
+        this.paysOwnCoins = true;   // ... instead of the streak/multiplier payout
         this.timeLeft = DEFAULT_DURATION;
         this.timerEvent = null;
 
@@ -343,7 +344,7 @@ export class SpeedReadingMode extends BasePokeballGameMode {
             if (this.gameActive && this.permissionGranted) {
                 // Stay in the "evaluating" look during the brief gap before the
                 // next listen session starts.
-                scene.time.delayedCall(150, () => {
+                this.delayedCall(scene, 150, () => {
                     if (this.gameActive && !this.isListening) {
                         this.startListening(scene);
                     }
@@ -369,7 +370,8 @@ export class SpeedReadingMode extends BasePokeballGameMode {
             this.setMicState('idle');
             this.micButton.setInteractive({ useHandCursor: true });
             this.micButton.on('pointerdown', () => {
-                if (!this.isListening) {
+                // Once the round is over a tap must not restart the clock.
+                if (!this.isListening && !this.finished) {
                     // Allow a retry after a 'not-allowed' error.
                     this.permissionGranted = true;
                     this.startListening(scene);
@@ -387,7 +389,7 @@ export class SpeedReadingMode extends BasePokeballGameMode {
     }
 
     startListening(scene) {
-        if (!this.recognition || this.isListening || !this.permissionGranted) return;
+        if (!this.recognition || this.isListening || !this.permissionGranted || this.finished) return;
 
         // First listen starts the clock.
         if (!this.gameActive) {
@@ -450,7 +452,7 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         if (this.ringTween) return;
         this.listenRing.setScale(1);
         this.listenRing.setAlpha(1);
-        this.ringTween = this.scene.tweens.add({
+        this.ringTween = this.addTween(this.scene, {
             targets: this.listenRing,
             scale: 1.35,
             alpha: 0.15,
@@ -503,7 +505,9 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         // letters, and only a 1–2 character difference, to avoid false matches.
         if (cleanExpected.length >= 3) {
             for (const t of tokens) {
-                if (t.length < 3) continue;
+                // A clipped 3-letter word is 2 letters ("här" → "hä"), so only
+                // single letters are too short to judge.
+                if (t.length < 2) continue;
                 if (t.startsWith(cleanExpected) && t.length - cleanExpected.length <= 2) return true;
                 if (cleanExpected.startsWith(t) && cleanExpected.length - t.length <= 1) return true;
             }
@@ -619,10 +623,10 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         }
 
         // Hand the earned coins to the scene for the reward animation.
-        scene.time.delayedCall(900, () => {
+        this.delayedCall(scene, 900, () => {
             const x = scene.cameras.main.width / 2;
             const y = scene.cameras.main.height / 2;
-            this.answerCallback(true, this.challengeData.word, x, y);
+            this.finish(true, this.challengeData.word, x, y);
         });
     }
 
@@ -659,7 +663,10 @@ export class SpeedReadingMode extends BasePokeballGameMode {
         });
         particles.setDepth(100);
         particles.explode();
-        scene.time.delayedCall(600, () => particles.destroy());
+        // Tracked so cleanup() can't leave an emitter behind if it lands
+        // before the self-destruct timer.
+        this.uiElements.push(particles);
+        this.delayedCall(scene, 600, () => particles.destroy());
     }
 
     cleanup(scene) {
@@ -678,10 +685,9 @@ export class SpeedReadingMode extends BasePokeballGameMode {
 
         this.stopListenRing();
 
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) element.destroy();
-        });
-        this.uiElements = [];
+        // Destroys uiElements and cancels the restart/finish/particle timers
+        // and the ring tween, so nothing from this round can fire later.
+        super.cleanup(scene);
 
         this.wordText = null;
         this.micButton = null;

@@ -34,6 +34,10 @@ export class LeftRightMode extends BasePokeballGameMode {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
 
+        // A fresh challenge always starts accepting input again.
+        this.inputLocked = false;
+        this.isRevealing = false;
+
         // Speaker button to replay audio (centered at top)
         const speakerBtn = scene.add.text(width / 2, 200, '🔊', {
             font: '80px Arial',
@@ -56,7 +60,7 @@ export class LeftRightMode extends BasePokeballGameMode {
             .setInteractive({ useHandCursor: true });
 
         this.leftZone.on('pointerdown', () => {
-            if (!this.isRevealing) {
+            if (!this.isRevealing && !this.inputLocked) {
                 this.handleAnswer(scene, 'vanster');
             }
         });
@@ -66,7 +70,7 @@ export class LeftRightMode extends BasePokeballGameMode {
             .setInteractive({ useHandCursor: true });
 
         this.rightZone.on('pointerdown', () => {
-            if (!this.isRevealing) {
+            if (!this.isRevealing && !this.inputLocked) {
                 this.handleAnswer(scene, 'hoger');
             }
         });
@@ -139,6 +143,8 @@ export class LeftRightMode extends BasePokeballGameMode {
     handleAnswer(scene, selectedDirection) {
         const isCorrect = selectedDirection === this.challengeData.correctDirection;
 
+        // One answer per challenge - a second tap during the feedback is ignored
+        this.inputLocked = true;
         this.totalAttempts++;
 
         if (isCorrect) {
@@ -152,10 +158,10 @@ export class LeftRightMode extends BasePokeballGameMode {
             // Check if we've reached 6 correct in a row
             if (this.correctInRow >= this.requiredCorrect) {
                 // Success! Award coins
-                scene.time.delayedCall(500, () => {
+                this.delayedCall(scene, 500, () => {
                     const x = scene.cameras.main.width / 2;
                     const y = scene.cameras.main.height / 2;
-                    this.answerCallback(true, selectedDirection, x, y);
+                    this.finish(true, selectedDirection, x, y);
                 });
             } else {
                 // Correct but need more - just update UI and load next
@@ -169,7 +175,7 @@ export class LeftRightMode extends BasePokeballGameMode {
 
     loadNextQuestion(scene) {
         // Small delay before loading next question
-        scene.time.delayedCall(500, () => {
+        this.delayedCall(scene, 500, () => {
             // Clean up current UI
             this.cleanup(scene);
 
@@ -197,7 +203,7 @@ export class LeftRightMode extends BasePokeballGameMode {
 
         // Shake animation on wrong zone
         const originalX = wrongZone.x;
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: wrongZone,
             x: originalX - 10,
             duration: 50,
@@ -214,7 +220,7 @@ export class LeftRightMode extends BasePokeballGameMode {
                 }).setOrigin(0.5).setDepth(1000);
 
                 // Fade out sad emoji and then return to dice scene
-                scene.tweens.add({
+                this.addTween(scene, {
                     targets: sadEmoji,
                     alpha: 0,
                     scale: 1.5,
@@ -289,9 +295,10 @@ export class LeftRightMode extends BasePokeballGameMode {
         });
         particles.setDepth(100);
         particles.explode();
+        this.uiElements.push(particles); // so cleanup() can remove it early
 
         // Clean up
-        scene.time.delayedCall(700, () => {
+        this.delayedCall(scene, 700, () => {
             particles.destroy();
         });
     }
@@ -313,12 +320,6 @@ export class LeftRightMode extends BasePokeballGameMode {
         this.leftZone = null;
         this.rightZone = null;
 
-        // Destroy all UI elements
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
-        this.uiElements = [];
+        super.cleanup(scene);
     }
 }

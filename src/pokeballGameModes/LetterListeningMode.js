@@ -67,6 +67,10 @@ export class LetterListeningMode extends BasePokeballGameMode {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
 
+        // A fresh challenge always starts accepting input again.
+        this.inputLocked = false;
+        this.isRevealing = false;
+
         // Play the letter audio automatically
         this.playLetterAudio(scene, this.challengeData.correctLetter);
 
@@ -90,7 +94,7 @@ export class LetterListeningMode extends BasePokeballGameMode {
         // Replay audio on click
         speakerBtn.on('pointerdown', () => {
             speakerBtn.setScale(0.9);
-            scene.time.delayedCall(100, () => {
+            this.delayedCall(scene, 100, () => {
                 speakerBtn.setScale(1.0);
             });
             this.playLetterAudio(scene, this.challengeData.correctLetter);
@@ -152,7 +156,9 @@ export class LetterListeningMode extends BasePokeballGameMode {
 
             // Click handler
             button.on('pointerdown', () => {
-                if (this.isRevealing) return; // Don't allow clicks during reveal
+                // Ignore taps during the reveal and while an answer is being resolved
+                if (this.isRevealing || this.inputLocked) return;
+                this.inputLocked = true;
 
                 const isCorrect = this.checkAnswer(letter);
 
@@ -171,14 +177,12 @@ export class LetterListeningMode extends BasePokeballGameMode {
                     // Check if won
                     if (this.correctInRow >= this.requiredCorrect) {
                         // Player got 3 in a row! Give Pokemon
-                        scene.time.delayedCall(500, () => {
-                            if (this.answerCallback) {
-                                this.answerCallback(true, letter, x, y);
-                            }
+                        this.delayedCall(scene, 500, () => {
+                            this.finish(true, letter, x, y);
                         });
                     } else {
                         // Continue to next challenge
-                        scene.time.delayedCall(800, () => {
+                        this.delayedCall(scene, 800, () => {
                             this.cleanup(scene);
                             this.generateChallenge();
                             this.createChallengeUI(scene);
@@ -258,7 +262,7 @@ export class LetterListeningMode extends BasePokeballGameMode {
 
         // Shake animation
         const originalX = wrongButton.x;
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: wrongButton,
             x: originalX - 10,
             duration: 50,
@@ -298,7 +302,7 @@ export class LetterListeningMode extends BasePokeballGameMode {
         correctButton.button.setStrokeStyle(6, 0xFFD700); // Thick gold border
 
         // Pulsing scale animation
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: [correctButton.button, correctButton.letterText],
             scaleX: 1.2,
             scaleY: 1.2,
@@ -309,7 +313,7 @@ export class LetterListeningMode extends BasePokeballGameMode {
         });
 
         // Pulsing alpha on button
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: correctButton.button,
             alpha: 0.7,
             duration: 500,
@@ -319,7 +323,7 @@ export class LetterListeningMode extends BasePokeballGameMode {
         });
 
         // After 2 seconds of pulsing, restart with new challenge
-        scene.time.delayedCall(2000, () => {
+        this.delayedCall(scene, 2000, () => {
             // Clean up current UI
             this.cleanup(scene);
 
@@ -342,13 +346,7 @@ export class LetterListeningMode extends BasePokeballGameMode {
     }
 
     cleanup(scene) {
-        // Destroy all UI elements
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
-        this.uiElements = [];
+        super.cleanup(scene);
         this.letterButtons = [];
         this.ballIndicators = [];
     }

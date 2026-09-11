@@ -26,33 +26,54 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         this.networkTested = false;
         this.hasNetworkConnection = false;
         this.recognitionTimeout = null; // Timeout for Safari/iOS
+        this.isSentence = false; // Track if current challenge is a sentence
+        this.wordText = null; // Reference to displayed text
     }
 
     generateChallenge() {
-        // Get random Swedish word
-        this.currentWord = getRandomWord('easy'); // Start with easy words
+        // 50% chance for word, 50% for sentence
+        this.isSentence = Math.random() < 0.5;
 
-        this.challengeData = {
-            word: this.currentWord.word,
-            translation: this.currentWord.translation
-        };
+        if (this.isSentence) {
+            // Get random sentence
+            const sentenceData = getRandomSentence('easy');
+            this.challengeData = {
+                word: sentenceData.sentence,
+                translation: sentenceData.translation
+            };
+        } else {
+            // Get random Swedish word
+            this.currentWord = getRandomWord('easy');
+            this.challengeData = {
+                word: this.currentWord.word,
+                translation: this.currentWord.translation
+            };
+        }
     }
 
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
 
-        // Display the word to read (LARGE and clear)
-        const wordText = scene.add.text(width / 2, 250, this.challengeData.word.toUpperCase(), {
-            fontSize: '120px',
+        // A fresh challenge always starts accepting input again.
+        this.inputLocked = false;
+
+        // Adjust font size based on content type
+        const fontSize = this.isSentence ? '60px' : '120px';
+
+        // Display the word/sentence to read (LARGE and clear)
+        this.wordText = scene.add.text(width / 2, 250, this.challengeData.word.toUpperCase(), {
+            fontSize: fontSize,
             fontFamily: 'Arial',
             color: '#2C3E50',
             fontStyle: 'bold',
             stroke: '#FFFFFF',
-            strokeThickness: 8
+            strokeThickness: this.isSentence ? 4 : 8,
+            wordWrap: { width: width - 100 },
+            align: 'center'
         });
-        wordText.setOrigin(0.5);
-        this.uiElements.push(wordText);
+        this.wordText.setOrigin(0.5);
+        this.uiElements.push(this.wordText);
 
         // Microphone button (large, centered) - start disabled
         const micBtnSize = 150;
@@ -164,6 +185,10 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
                 this.recognitionTimeout = null;
             }
 
+            // An answer is already accepted and its feedback is running; a
+            // second utterance must not count again.
+            if (this.inputLocked) return;
+
             const results = event.results[0];
             const transcript = results[0].transcript.toLowerCase().trim();
 
@@ -189,7 +214,9 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
             });
             this.isListening = false;
 
-            if (this.micButton && this.permissionGranted) {
+            // Back to red (tap to retry) whatever the error - the button
+            // stays tappable so a 'not-allowed' can be retried.
+            if (this.micButton) {
                 this.micButton.setFillStyle(0xFF6B6B);
             }
 
@@ -215,7 +242,7 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
                     this.hasNetworkConnection = false;
 
                     // Wait longer before retrying (5 seconds)
-                    scene.time.delayedCall(5000, () => {
+                    this.delayedCall(scene, 5000, () => {
                         if (this.statusText && this.permissionGranted) {
                             this.statusText.setText('Tryck för att försöka igen');
                             this.statusText.setColor('#95A5A6');
@@ -249,7 +276,7 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
             // Mic released - cycle the audio context so iOS leaves the
             // attenuated play-and-record mode (see micSession.js).
             restoreAudioAfterMic(scene);
-            if (this.micButton && this.permissionGranted) {
+            if (this.micButton) {
                 this.micButton.setFillStyle(0xFF6B6B);
             }
         };
@@ -271,7 +298,8 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
             this.micButton.setInteractive({ useHandCursor: true });
 
             this.micButton.on('pointerdown', () => {
-                if (!this.isListening) {
+                // Ignore taps while a correct answer's feedback is running.
+                if (!this.isListening && !this.inputLocked) {
                     // Allow a retry after a 'not-allowed' error.
                     this.permissionGranted = true;
                     this.startListening(scene);
@@ -285,10 +313,9 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
 
     async testNetworkConnection(scene) {
         // Test actual connectivity by making a simple request
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-
             await fetch('https://www.google.com/favicon.ico', {
                 mode: 'no-cors',
                 signal: controller.signal
@@ -308,6 +335,8 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
             console.log('Network connection test: SUCCESS');
 
         } catch (error) {
+            clearTimeout(timeoutId);
+
             // No connection
             this.hasNetworkConnection = false;
             this.networkTested = true;
@@ -319,8 +348,10 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
 
             console.log('Network connection test: FAILED', error.message);
 
-            // Retry after 5 seconds
-            scene.time.delayedCall(5000, () => {
+            // Retry after 5 seconds - unless the mode was cleaned up while
+            // the probe was in flight (statusText is nulled by cleanup).
+            if (!this.statusText) return;
+            this.delayedCall(scene, 5000, () => {
                 if (this.statusText && !this.hasNetworkConnection) {
                     this.testNetworkConnection(scene);
                 }
@@ -355,7 +386,7 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
 
             // Safari/iOS workaround: Set timeout to stop recognition after 5 seconds
             // This prevents infinite listening state
-            this.recognitionTimeout = scene.time.delayedCall(5000, () => {
+            this.recognitionTimeout = this.delayedCall(scene, 5000, () => {
                 console.log('⏱️ Recognition timeout - stopping');
                 if (this.recognition && this.isListening) {
                     try {
@@ -424,6 +455,10 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
     }
 
     handleCorrectAnswer(scene) {
+        // Lock out further taps/results until the next word is up (or the
+        // reward is handed over) so one word can never count twice.
+        this.inputLocked = true;
+
         if (this.statusText) {
             this.statusText.setText('✅ Rätt!');
             this.statusText.setColor('#27AE60');
@@ -437,14 +472,14 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
 
         // Check if won
         if (this.correctCount >= this.requiredCorrect) {
-            scene.time.delayedCall(1000, () => {
+            this.delayedCall(scene, 1000, () => {
                 const x = scene.cameras.main.width / 2;
                 const y = scene.cameras.main.height / 2;
-                this.answerCallback(true, this.challengeData.word, x, y);
+                this.finish(true, this.challengeData.word, x, y);
             });
         } else {
             // Load next word
-            scene.time.delayedCall(1500, () => {
+            this.delayedCall(scene, 1500, () => {
                 this.loadNextWord(scene);
             });
         }
@@ -462,9 +497,10 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
             this.statusText.setText(`❌ Du sa: "${transcript}"`);
             this.statusText.setColor('#E74C3C');
 
-            // Allow retry
-            scene.time.delayedCall(2000, () => {
-                if (this.statusText) {
+            // Allow retry (don't overwrite "Lyssnar..." if the child already
+            // tapped again before the two seconds were up)
+            this.delayedCall(scene, 2000, () => {
+                if (this.statusText && !this.isListening) {
                     this.statusText.setText('Tryck för att försöka igen');
                     this.statusText.setColor('#95A5A6');
                 }
@@ -473,19 +509,23 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
     }
 
     loadNextWord(scene) {
+        // The next word is answerable again.
+        this.inputLocked = false;
+
         // Clean up current UI
         if (this.statusText) {
             this.statusText.setText('');
             this.statusText.setColor('#95A5A6');
         }
 
-        // Generate new word
+        // Generate new word or sentence
         this.generateChallenge();
 
-        // Update word text (find it in uiElements)
-        const wordText = this.uiElements.find(el => el.type === 'Text' && el.text.length < 15);
-        if (wordText) {
-            wordText.setText(this.challengeData.word.toUpperCase());
+        // Update text with proper styling for word vs sentence
+        if (this.wordText) {
+            this.wordText.setText(this.challengeData.word.toUpperCase());
+            this.wordText.setFontSize(this.isSentence ? '60px' : '120px');
+            this.wordText.setStroke('#FFFFFF', this.isSentence ? 4 : 8);
         }
 
         if (this.statusText) {
@@ -536,7 +576,10 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         particles.setDepth(100);
         particles.explode();
 
-        scene.time.delayedCall(700, () => particles.destroy());
+        // Tracked so cleanup() can't leave an emitter behind if it lands
+        // before the self-destruct timer.
+        this.uiElements.push(particles);
+        this.delayedCall(scene, 700, () => particles.destroy());
     }
 
     cleanup(scene) {
@@ -554,12 +597,15 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
         this.isListening = false;
         this.ballIndicators = [];
 
-        // Destroy all UI elements
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
-        this.uiElements = [];
+        // Destroys uiElements and cancels every pending timer (next word,
+        // reward hand-over, network retry, particle self-destruct).
+        super.cleanup(scene);
+
+        // Drop the references so a late recognition onend/onerror (abort()
+        // fires them asynchronously) or an in-flight network probe can't
+        // touch destroyed objects.
+        this.wordText = null;
+        this.micButton = null;
+        this.statusText = null;
     }
 }

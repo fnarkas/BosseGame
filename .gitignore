@@ -39,7 +39,7 @@ ENV/
 .DS_Store
 
 # Downloaded Pokemon images
-pokemon_images/
+public/pokemon_images/
 
 # Generated PDFs
 pokemon_cards.pdf

@@ -1,5 +1,8 @@
+import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { resetStreak } from '../streak.js';
+import { updateBoosterBar } from '../boosterBar.js';
 
 /**
  * Multiplication game mode
@@ -23,6 +26,9 @@ const DROP_ZONE_Y = 525;
 const BALL_INDICATOR_Y = 615;
 const DIGIT_START_Y = 690;
 
+// Two drop zones (tens + ones), so products must stay below 100.
+const MAX_TWO_DIGIT_PRODUCT = 99;
+
 export class MultiplicationMode extends BasePokeballGameMode {
     constructor() {
         super();
@@ -35,6 +41,8 @@ export class MultiplicationMode extends BasePokeballGameMode {
         this.onesZone = null;
         this.digitBoxes = [];
         this.isRevealing = false;
+        this.dragHandler = null;
+        this.dragEndHandler = null;
 
         // Array visualisation
         this.gridItems = [];        // Pokeball images, row-major (r * cols + c)
@@ -61,10 +69,11 @@ export class MultiplicationMode extends BasePokeballGameMode {
             if (response.ok) {
                 const config = await response.json();
                 if (config.multiplication) {
-                    this.requiredCorrect = config.multiplication.required || this.requiredCorrect;
+                    this.requiredCorrect = parseInt(config.multiplication.required, 10) || this.requiredCorrect;
                     this.tables = this.parseNumberRange(config.multiplication.tables || '2,5,10');
-                    this.maxFactor = config.multiplication.maxFactor || this.maxFactor;
-                    this.maxProduct = config.multiplication.maxProduct || this.maxProduct;
+                    this.maxFactor = Math.max(1, parseInt(config.multiplication.maxFactor, 10) || this.maxFactor);
+                    const maxProduct = parseInt(config.multiplication.maxProduct, 10) || this.maxProduct;
+                    this.maxProduct = Math.max(1, Math.min(maxProduct, MAX_TWO_DIGIT_PRODUCT));
                     this.commutativityEnabled = config.multiplication.showCommutativity !== false;
                 }
             }
@@ -115,7 +124,9 @@ export class MultiplicationMode extends BasePokeballGameMode {
 
     generateChallenge() {
         // Draw a table and a factor, retrying while the product needs three
-        // digits (the answer only has a tens and a ones slot).
+        // digits (the answer only has a tens and a ones slot) or repeats the
+        // problem that was just shown.
+        const previous = this.challengeData;
         let cols, rows, product;
         let attempts = 0;
         do {
@@ -123,7 +134,9 @@ export class MultiplicationMode extends BasePokeballGameMode {
             rows = Phaser.Math.Between(1, this.maxFactor);
             product = rows * cols;
             attempts++;
-        } while (product > this.maxProduct && attempts < 50);
+        } while ((product > this.maxProduct ||
+                  (previous && previous.rows === rows && previous.cols === cols && attempts < 10))
+                 && attempts < 50);
 
         // Safety net if the config makes every product too large.
         if (product > this.maxProduct) {
@@ -145,6 +158,8 @@ export class MultiplicationMode extends BasePokeballGameMode {
 
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
+        this.inputLocked = false;
+        this.isRevealing = false;
 
         // The problem itself is the only prompt — no instructions.
         this.problemDisplay = scene.add.text(
@@ -164,7 +179,11 @@ export class MultiplicationMode extends BasePokeballGameMode {
             padding: { y: 10 }
         }).setOrigin(0.5);
         speakerBtn.setInteractive({ useHandCursor: true });
-        speakerBtn.on('pointerdown', () => this.playProblemAudio(scene));
+        speakerBtn.on('pointerdown', () => {
+            // Don't interrupt the skip-count lesson
+            if (this.isRevealing) return;
+            this.playProblemAudio(scene);
+        });
         this.uiElements.push(speakerBtn);
 
         this.createGrid(scene);
@@ -173,11 +192,7 @@ export class MultiplicationMode extends BasePokeballGameMode {
         this.createDigitBoxes(scene);
 
         // Say the problem out loud as the round starts
-        const token = this.revealToken;
-        scene.time.delayedCall(250, () => {
-            if (token !== this.revealToken) return;
-            this.playProblemAudio(scene);
-        });
+        this.delayedCall(scene, 250, () => this.playProblemAudio(scene));
     }
 
     // ---------------- Array visualisation ----------------
@@ -347,6 +362,8 @@ export class MultiplicationMode extends BasePokeballGameMode {
         const gridWidth = cols * boxSize + (cols - 1) * spacing;
         const startX = (width - gridWidth) / 2 + boxSize / 2;
 
+        this.digitBoxes = [];
+
         for (let digit = 0; digit <= 9; digit++) {
             const row = Math.floor(digit / cols);
             const col = digit % cols;
@@ -374,9 +391,11 @@ export class MultiplicationMode extends BasePokeballGameMode {
             this.digitBoxes.push({ box, digitText, digit });
         }
 
-        // Set up drag and drop handlers
-        scene.input.on('drag', (pointer, gameObject, dragX, dragY) => {
-            if (this.isRevealing) return;
+        // Set up drag and drop handlers. Kept as named handlers so cleanup()
+        // removes only ours and not other listeners on the scene input.
+        this.dragHandler = (pointer, gameObject, dragX, dragY) => {
+            if (this.isRevealing || this.inputLocked) return;
+            if (!this.isDigitBox(gameObject)) return;
 
             gameObject.x = dragX;
             gameObject.y = dragY;
@@ -386,10 +405,11 @@ export class MultiplicationMode extends BasePokeballGameMode {
                 text.x = dragX;
                 text.y = dragY;
             }
-        });
+        };
 
-        scene.input.on('dragend', (pointer, gameObject) => {
-            if (this.isRevealing) return;
+        this.dragEndHandler = (pointer, gameObject) => {
+            if (this.isRevealing || this.inputLocked) return;
+            if (!this.isDigitBox(gameObject)) return;
 
             const digit = gameObject.getData('digit');
 
@@ -402,13 +422,20 @@ export class MultiplicationMode extends BasePokeballGameMode {
             }
 
             this.checkAnswer();
-        });
+        };
+
+        scene.input.on('drag', this.dragHandler);
+        scene.input.on('dragend', this.dragEndHandler);
+    }
+
+    isDigitBox(gameObject) {
+        return this.digitBoxes.some(d => d.box === gameObject);
     }
 
     placeDigitInZone(digitBox, zone, digit) {
         // If zone already has a digit, return it to original position
         const currentDigit = zone.getData('occupyingBox');
-        if (currentDigit) {
+        if (currentDigit && currentDigit !== digitBox) {
             this.returnDigitToOriginal(currentDigit);
         }
 
@@ -456,6 +483,8 @@ export class MultiplicationMode extends BasePokeballGameMode {
     }
 
     checkAnswer() {
+        if (this.inputLocked || this.isRevealing) return;
+
         const tensValue = this.tensZone.getData('value');
         const onesValue = this.onesZone.getData('value');
 
@@ -478,6 +507,7 @@ export class MultiplicationMode extends BasePokeballGameMode {
     handleCorrectAnswer() {
         const scene = this.tensZone.scene;
         this.isRevealing = true;
+        this.inputLocked = true;
         this.correctCount++;
         this.updateBallIndicators();
 
@@ -488,13 +518,11 @@ export class MultiplicationMode extends BasePokeballGameMode {
         this.revealSkipCount(scene, () => {
             this.showCommutativity(scene, () => {
                 if (this.correctCount >= this.requiredCorrect) {
-                    scene.time.delayedCall(500, () => {
-                        if (this.answerCallback) {
-                            this.answerCallback(true, this.challengeData.product, scene.cameras.main.width / 2, GRID_CENTER_Y);
-                        }
+                    this.delayedCall(scene, 500, () => {
+                        this.finish(true, this.challengeData.product, scene.cameras.main.width / 2, GRID_CENTER_Y);
                     });
                 } else {
-                    scene.time.delayedCall(600, () => this.loadNextChallenge(scene));
+                    this.delayedCall(scene, 600, () => this.loadNextChallenge(scene));
                 }
             });
         });
@@ -503,18 +531,25 @@ export class MultiplicationMode extends BasePokeballGameMode {
     handleWrongAnswer(playerAnswer) {
         const scene = this.tensZone.scene;
         this.isRevealing = true;
+        this.inputLocked = true;
 
         trackWrongAnswer('MultiplicationMode', `${this.challengeData.rows}x${this.challengeData.cols}`, String(playerAnswer));
 
         // Progress is kept — a miss on a brand new concept shouldn't wipe the
         // board. The child gets the same skip-count lesson and a new problem.
+        // The coin multiplier streak is reset like in every other mode.
+        resetStreak();
+        if (scene.boosterBarElements) {
+            updateBoosterBar(scene.boosterBarElements, 0, scene);
+        }
+
         this.tensZone.setFillStyle(0xFF0000, 0.5);
         this.onesZone.setFillStyle(0xFF0000, 0.5);
 
         const tensOriginalX = this.tensZone.x;
         const onesOriginalX = this.onesZone.x;
 
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: [this.tensZone, this.tensZone.getData('label')],
             x: tensOriginalX - 10,
             duration: 50,
@@ -526,7 +561,7 @@ export class MultiplicationMode extends BasePokeballGameMode {
             }
         });
 
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: [this.onesZone, this.onesZone.getData('label')],
             x: onesOriginalX - 10,
             duration: 50,
@@ -562,7 +597,7 @@ export class MultiplicationMode extends BasePokeballGameMode {
 
         // The skip-count is the lesson, so it runs on misses too
         this.revealSkipCount(scene, () => {
-            scene.time.delayedCall(1200, () => this.loadNextChallenge(scene));
+            this.delayedCall(scene, 1200, () => this.loadNextChallenge(scene));
         });
     }
 
@@ -574,7 +609,7 @@ export class MultiplicationMode extends BasePokeballGameMode {
         const stepMs = Math.min(700, Math.max(320, Math.round(2600 / rows)));
 
         for (let r = 0; r < rows; r++) {
-            scene.time.delayedCall(r * stepMs, () => {
+            this.delayedCall(scene, r * stepMs, () => {
                 if (token !== this.revealToken) return;
 
                 const band = this.rowHighlights[r];
@@ -590,7 +625,7 @@ export class MultiplicationMode extends BasePokeballGameMode {
                 const balls = this.gridItems.slice(r * cols, (r + 1) * cols);
                 if (balls.length > 0) {
                     const baseScale = balls[0].scaleX;
-                    scene.tweens.add({
+                    this.addTween(scene, {
                         targets: balls,
                         scaleX: baseScale * 1.25,
                         scaleY: baseScale * 1.25,
@@ -604,7 +639,7 @@ export class MultiplicationMode extends BasePokeballGameMode {
             });
         }
 
-        scene.time.delayedCall(rows * stepMs + 250, () => {
+        this.delayedCall(scene, rows * stepMs + 250, () => {
             if (token !== this.revealToken) return;
             if (this.problemDisplay) {
                 this.problemDisplay.setText(`${rows} × ${cols} = ${this.challengeData.product}`);
@@ -629,14 +664,14 @@ export class MultiplicationMode extends BasePokeballGameMode {
 
         // The row bands and running totals belong to the old orientation
         [...this.rowHighlights, ...this.rowTotals].forEach(element => {
-            scene.tweens.add({ targets: element, alpha: 0, duration: 250 });
+            this.addTween(scene, { targets: element, alpha: 0, duration: 250 });
         });
 
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 const ball = this.gridItems[r * cols + c];
                 if (!ball) continue;
-                scene.tweens.add({
+                this.addTween(scene, {
                     targets: ball,
                     x: geo.startX + r * geo.cell,       // Old row becomes new column
                     y: geo.startY + c * geo.cell,       // Old column becomes new row
@@ -649,14 +684,14 @@ export class MultiplicationMode extends BasePokeballGameMode {
             }
         }
 
-        scene.time.delayedCall(450, () => {
+        this.delayedCall(scene, 450, () => {
             if (token !== this.revealToken) return;
             if (this.problemDisplay) {
                 this.problemDisplay.setText(`${cols} × ${rows} = ${product}`);
             }
         });
 
-        scene.time.delayedCall(1300, () => {
+        this.delayedCall(scene, 1300, () => {
             if (token !== this.revealToken) return;
             if (onDone) onDone();
         });
@@ -712,11 +747,11 @@ export class MultiplicationMode extends BasePokeballGameMode {
         const gapMs = 50;
         first.play();
 
-        scene.time.delayedCall(first.duration * 1000 + gapMs, () => {
+        this.delayedCall(scene, first.duration * 1000 + gapMs, () => {
             if (token !== this.audioToken) return;
             if (times) {
                 times.play();
-                scene.time.delayedCall(times.duration * 1000 + gapMs, () => {
+                this.delayedCall(scene, times.duration * 1000 + gapMs, () => {
                     if (token !== this.audioToken) return;
                     second.play();
                 });
@@ -732,16 +767,13 @@ export class MultiplicationMode extends BasePokeballGameMode {
         this.revealToken++;
         this.stopAudio();
 
-        // Remove drag and drop listeners
-        scene.input.off('drag');
-        scene.input.off('dragend');
+        // Remove only our drag and drop listeners
+        if (this.dragHandler) scene.input.off('drag', this.dragHandler);
+        if (this.dragEndHandler) scene.input.off('dragend', this.dragEndHandler);
+        this.dragHandler = null;
+        this.dragEndHandler = null;
 
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
-        this.uiElements = [];
+        super.cleanup(scene);
         this.digitBoxes = [];
         this.ballIndicators = [];
         this.gridItems = [];

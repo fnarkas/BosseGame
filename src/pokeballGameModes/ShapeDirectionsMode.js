@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
+import { resetStreak } from '../streak.js';
+import { updateBoosterBar } from '../boosterBar.js';
 
 /**
  * Shape Directions game mode
@@ -17,7 +19,8 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
         this.ballIndicators = [];
         this.shapes = [];
         this.currentAudio = null;
-        this.isRevealing = false;
+        this.prefixAudio = null;
+        this.comboAudio = null;
 
         // Shape and color definitions
         this.shapeTypes = [
@@ -95,6 +98,9 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
 
+        // A new question is answerable again
+        this.inputLocked = false;
+
         // Pre-create audio instances for instant playback
         const { direction, referenceShape } = this.challengeData;
         const prefixKey = `shapedir_prefix_${direction}`;
@@ -153,18 +159,19 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
 
             // Click handler
             container.on('pointerdown', () => {
-                if (!this.isRevealing) {
-                    this.handleShapeClick(scene, index);
-                }
+                // Ignore taps while an answer is being resolved / revealed
+                if (this.inputLocked) return;
+                this.inputLocked = true;
+                this.handleShapeClick(scene, index);
             });
 
-            // Hover effect
+            // Hover effect (must not overwrite the answer feedback colour)
             container.on('pointerover', () => {
-                bg.setFillStyle(0xECF0F1, 0.5);
+                if (!this.inputLocked) bg.setFillStyle(0xECF0F1, 0.5);
             });
 
             container.on('pointerout', () => {
-                bg.setFillStyle(0xFFFFFF, 0.3);
+                if (!this.inputLocked) bg.setFillStyle(0xFFFFFF, 0.3);
             });
 
             this.uiElements.push(container);
@@ -261,11 +268,14 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
         }
     }
 
-    async playQuestionAudio(scene) {
-        // Stop any currently playing audio
-        if (this.currentAudio) {
-            this.currentAudio.stop();
-        }
+    playQuestionAudio(scene) {
+        if (!this.prefixAudio || !this.comboAudio) return;
+
+        // Stop any currently playing audio (both parts) and drop the chained
+        // listener from a previous replay so the combo isn't queued twice.
+        this.prefixAudio.removeAllListeners('complete');
+        this.prefixAudio.stop();
+        this.comboAudio.stop();
 
         // Use pre-created audio instances for instant playback with zero delay
         this.currentAudio = this.prefixAudio;
@@ -301,16 +311,14 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
 
         // Check if won
         if (this.correctInRow >= this.requiredCorrect) {
-            scene.time.delayedCall(500, () => {
-                if (this.answerCallback) {
-                    const x = scene.cameras.main.width / 2;
-                    const y = scene.cameras.main.height / 2;
-                    this.answerCallback(true, 'shape-directions', x, y);
-                }
+            this.delayedCall(scene, 500, () => {
+                const x = scene.cameras.main.width / 2;
+                const y = scene.cameras.main.height / 2;
+                this.finish(true, 'shape-directions', x, y);
             });
         } else {
             // Continue to next challenge
-            scene.time.delayedCall(800, () => {
+            this.delayedCall(scene, 800, () => {
                 this.cleanup(scene);
                 this.generateChallenge();
                 this.createChallengeUI(scene);
@@ -319,9 +327,14 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
     }
 
     handleWrongAnswer(scene, clickedIndex) {
-        this.isRevealing = true;
         this.correctInRow = 0;
         this.updateBallIndicators();
+
+        // Reset streak since player made an error
+        resetStreak();
+        if (scene.boosterBarElements) {
+            updateBoosterBar(scene.boosterBarElements, 0, scene);
+        }
 
         // Highlight wrong shape in red
         const wrongContainer = this.uiElements.find(el => el.getData && el.getData('index') === clickedIndex);
@@ -330,7 +343,7 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
             bg.setFillStyle(0xFF0000, 0.7);
 
             // Shake animation
-            scene.tweens.add({
+            this.addTween(scene, {
                 targets: wrongContainer,
                 x: wrongContainer.x - 10,
                 duration: 50,
@@ -342,12 +355,12 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
         // Highlight correct shape in gold
         const correctContainer = this.uiElements.find(el => el.getData && el.getData('index') === this.challengeData.targetIndex);
         if (correctContainer) {
-            scene.time.delayedCall(400, () => {
+            this.delayedCall(scene, 400, () => {
                 const bg = correctContainer.list[0];
                 bg.setFillStyle(0xFFD700, 0.7);
 
                 // Pulse animation
-                scene.tweens.add({
+                this.addTween(scene, {
                     targets: correctContainer,
                     scaleX: 1.2,
                     scaleY: 1.2,
@@ -359,9 +372,8 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
             });
         }
 
-        // Restart with new challenge after 2 seconds
-        scene.time.delayedCall(2500, () => {
-            this.isRevealing = false;
+        // Restart with new challenge after 2.5 seconds
+        this.delayedCall(scene, 2500, () => {
             this.cleanup(scene);
             this.generateChallenge();
             this.createChallengeUI(scene);
@@ -369,24 +381,19 @@ export class ShapeDirectionsMode extends BasePokeballGameMode {
     }
 
     cleanup(scene) {
-        // Stop any playing audio
-        if (this.currentAudio) {
-            if (this.currentAudio.isPlaying) {
-                this.currentAudio.stop();
-            }
-            this.currentAudio.destroy();
-            this.currentAudio = null;
-        }
-
-        // Destroy all UI elements
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
+        // Stop and destroy both audio parts (not just the one playing)
+        [this.prefixAudio, this.comboAudio].forEach(audio => {
+            if (!audio) return;
+            audio.removeAllListeners('complete');
+            if (audio.isPlaying) audio.stop();
+            audio.destroy();
         });
-        this.uiElements = [];
+        this.prefixAudio = null;
+        this.comboAudio = null;
+        this.currentAudio = null;
+
+        super.cleanup(scene);
         this.ballIndicators = [];
         this.shapes = [];
-        this.isRevealing = false;
     }
 }

@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 def create_pokemon_cards_pdf(
-    image_dir="pokemon_images",
+    image_dir="public/pokemon_images",
     output_pdf="pokemon_cards.pdf",
     cards_per_row=3,
     cards_per_col=3
@@ -113,7 +113,7 @@ def create_pokemon_cards_pdf(
 
 if __name__ == "__main__":
     create_pokemon_cards_pdf(
-        image_dir="pokemon_images",
+        image_dir="public/pokemon_images",
         output_pdf="pokemon_cards.pdf",
         cards_per_row=3,  # 3 columns
         cards_per_col=3   # 3 rows = 9 cards per page

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { showNumberProgressPopup } from './numberProgressPopup.js';
+import { saveActiveMinigame, clearActiveMinigame } from '../minigameSession.js';
 
 /**
  * Legendary Numbers Mode
@@ -69,33 +70,38 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
             if (response.ok) {
                 const serverConfig = await response.json();
                 if (serverConfig.legendaryNumbers) {
-                    this.config.coinReward = serverConfig.legendaryNumbers.coinReward || this.config.coinReward;
-                    this.config.maxErrors = serverConfig.legendaryNumbers.maxErrors || this.config.maxErrors;
-                    this.config.numbers = serverConfig.legendaryNumbers.numbers || this.config.numbers;
-                    this.errorsRemaining = this.config.maxErrors;
-
-                    // Parse active numbers
-                    const parsedNumbers = this.parseNumberRange(this.config.numbers);
-                    if (parsedNumbers && parsedNumbers.length > 0) {
-                        this.activeNumbers = new Set(parsedNumbers.filter(n => n >= 0 && n <= 99));
-                    } else {
-                        // Fallback to all numbers 0-99
-                        for (let i = 0; i <= 99; i++) {
-                            this.activeNumbers.add(i);
-                        }
+                    const section = serverConfig.legendaryNumbers;
+                    if (Number.isFinite(section.coinReward) && section.coinReward >= 0) {
+                        this.config.coinReward = section.coinReward;
                     }
-
+                    if (Number.isFinite(section.maxErrors) && section.maxErrors >= 1) {
+                        this.config.maxErrors = section.maxErrors;
+                    }
+                    if (typeof section.numbers === 'string' && section.numbers.trim()) {
+                        this.config.numbers = section.numbers;
+                    }
                     console.log('LegendaryNumbersMode loaded config:', this.config);
-                    console.log('Active numbers count:', this.activeNumbers.size);
                 }
             }
         } catch (error) {
             console.warn('Failed to load legendary numbers config, using defaults:', error);
+        }
+
+        // Always derive the playable set from the (possibly default) config, so a
+        // missing section or a failed fetch still yields a solvable challenge.
+        this.errorsRemaining = this.config.maxErrors;
+        const parsedNumbers = this.parseNumberRange(this.config.numbers);
+        const inRange = parsedNumbers ? parsedNumbers.filter(n => n >= 0 && n <= 99) : [];
+        if (inRange.length > 0) {
+            this.activeNumbers = new Set(inRange);
+        } else {
             // Fallback to all numbers 0-99
+            this.activeNumbers = new Set();
             for (let i = 0; i <= 99; i++) {
                 this.activeNumbers.add(i);
             }
         }
+        console.log('Active numbers count:', this.activeNumbers.size);
         this.configLoaded = true;
     }
 
@@ -132,6 +138,10 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
+
+        // A fresh challenge always starts accepting input again.
+        this.isRevealing = false;
+        this.inputLocked = false;
 
         // Show hearts at the top
         const heartsText = '❤️'.repeat(this.errorsRemaining) + '🖤'.repeat(this.config.maxErrors - this.errorsRemaining);
@@ -363,6 +373,7 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
 
             // Drag events
             box.on('drag', (pointer, dragX, dragY) => {
+                if (this.isRevealing) return; // Frozen while feedback is shown
                 box.x = dragX;
                 box.y = dragY;
                 digitText.x = dragX;
@@ -420,7 +431,7 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
         }
 
         // Always return digit box to start position (numbers are reusable)
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: [box, text],
             x: box.getData('startX'),
             y: box.getData('startY'),
@@ -478,6 +489,7 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
 
     handleCorrectAnswer(scene) {
         this.isRevealing = true;
+        this.inputLocked = true;
 
         // Add to cleared numbers
         this.clearedNumbers.add(this.currentNumber);
@@ -489,7 +501,7 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
         this.tensZone.setFillStyle(0x27AE60, 0.6);
         this.onesZone.setFillStyle(0x27AE60, 0.6);
 
-        scene.time.delayedCall(500, () => {
+        this.delayedCall(scene, 500, () => {
             // Check if all numbers cleared
             if (this.clearedNumbers.size >= this.getTotalNumbers()) {
                 this.handleCompletion(scene);
@@ -500,12 +512,14 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
                 this.updateDropZoneVisibility();
                 this.playNumberAudio(scene);
                 this.isRevealing = false;
+                this.inputLocked = false;
             }
         });
     }
 
     handleWrongAnswer(scene, guessedNumber) {
         this.isRevealing = true;
+        this.inputLocked = true;
 
         // Lose a heart
         this.errorsRemaining = Math.max(0, this.errorsRemaining - 1);
@@ -520,7 +534,7 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
         this.tensZone.setFillStyle(0xFF0000, 0.6);
         this.onesZone.setFillStyle(0xFF0000, 0.6);
 
-        scene.time.delayedCall(1000, () => {
+        this.delayedCall(scene, 1000, () => {
             // Check if out of hearts
             if (this.errorsRemaining <= 0) {
                 this.handleGameOver(scene);
@@ -530,6 +544,7 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
                 this.updateDropZoneVisibility();
                 this.playNumberAudio(scene);
                 this.isRevealing = false;
+                this.inputLocked = false;
             }
         });
     }
@@ -563,7 +578,7 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
         }
     }
 
-    handleGameOver(scene) {
+    async handleGameOver(scene) {
         console.log('💔 Game Over - All hearts lost!');
 
         // Clean up current UI
@@ -573,10 +588,14 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
         this.clearedNumbers.clear();
         this.errorsRemaining = this.config.maxErrors;
 
-        // Force scene to switch to next mode
-        scene.gameMode.cleanup(scene);
+        // This game is finished — forget it so a reload doesn't resume it.
+        clearActiveMinigame();
+
+        // Force scene to switch to next mode. selectGameMode() is async (it
+        // loads the wheel weights), so wait for it before wiring up the new
+        // mode — otherwise the callback lands on this finished mode instead.
         scene.challengeCount++;
-        scene.selectGameMode();
+        await scene.selectGameMode();
 
         // Set up callback for new mode
         scene.gameMode.setAnswerCallback((isCorrect, answer, x, y) => {
@@ -586,6 +605,7 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
         // Show dice animation for next mode
         const forcedMode = scene.registry.get('pokeballGameMode');
         if (!forcedMode) {
+            saveActiveMinigame(scene.gameMode.constructor.name);
             scene.showDiceRollAnimation();
         } else {
             // If in debug mode for legendary only, go back to main scene
@@ -599,7 +619,7 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
         // Return to main game - let the standard coin reward animation handle it
         const x = scene.cameras.main.width / 2;
         const y = scene.cameras.main.height / 2;
-        this.answerCallback(true, 'legendary-numbers-complete', x, y);
+        this.finish(true, 'legendary-numbers-complete', x, y);
     }
 
     cleanup(scene) {
@@ -611,18 +631,14 @@ export class LegendaryNumbersMode extends BasePokeballGameMode {
             this.currentAudio = null;
         }
 
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
+        super.cleanup(scene);
 
-        this.uiElements = [];
         this.digitBoxes = [];
         this.tensZone = null;
         this.onesZone = null;
         this.numberMatrix = null;
         this.speakerButton = null;
+        this.heartsDisplay = null;
         this.isRevealing = false;
     }
 }

@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { resetStreak } from '../streak.js';
+import { updateBoosterBar } from '../boosterBar.js';
 import { SpeechRecognitionHelper } from '../utils/speechRecognitionHelper.js';
 
 /**
@@ -11,7 +13,7 @@ import { SpeechRecognitionHelper } from '../utils/speechRecognitionHelper.js';
 export class ClockReadingMode extends BasePokeballGameMode {
     constructor() {
         super();
-        this.correctInRow = 0;
+        this.correctCount = 0;
 
         // Default values (will be overridden by loadConfig)
         this.requiredCorrect = 3;
@@ -57,13 +59,21 @@ export class ClockReadingMode extends BasePokeballGameMode {
     }
 
     generateChallenge() {
-        // Generate random time (whole hours or half hours)
-        this.currentHour = Math.floor(Math.random() * 12) + 1; // 1-12
+        const previousHour = this.currentHour;
+        const previousMinute = this.currentMinute;
 
-        if (this.includeHalfHours && Math.random() < 0.5) {
-            this.currentMinute = 30; // Half hour
-        } else {
-            this.currentMinute = 0; // Whole hour
+        // Generate random time (whole hours or half hours), avoiding the same
+        // time twice in a row.
+        for (let attempt = 0; attempt < 20; attempt++) {
+            this.currentHour = Math.floor(Math.random() * 12) + 1; // 1-12
+
+            if (this.includeHalfHours && Math.random() < 0.5) {
+                this.currentMinute = 30; // Half hour
+            } else {
+                this.currentMinute = 0; // Whole hour
+            }
+
+            if (this.currentHour !== previousHour || this.currentMinute !== previousMinute) break;
         }
 
         this.challengeData = {
@@ -77,6 +87,10 @@ export class ClockReadingMode extends BasePokeballGameMode {
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
+
+        // A new question is answerable again
+        this.inputLocked = false;
+        this.isRevealing = false;
 
         // Create clock at top center
         this.clockCenter = { x: width / 2, y: 240 };
@@ -219,7 +233,12 @@ export class ClockReadingMode extends BasePokeballGameMode {
         };
 
         // Initialize the helper
+        const micButton = this.micButton;
         const success = await this.speechHelper.initialize(scene);
+
+        // The UI may have been torn down (or rebuilt for the next challenge)
+        // while we were waiting; don't touch a stale button.
+        if (!this.micButton || this.micButton !== micButton) return;
 
         if (success && this.speechHelper.permissionGranted) {
             // Enable the microphone button
@@ -228,7 +247,8 @@ export class ClockReadingMode extends BasePokeballGameMode {
 
             // Set up click handler
             this.micButton.on('pointerdown', () => {
-                if (!this.isRevealing && !this.speechHelper.isListening) {
+                if (this.isRevealing || this.inputLocked) return;
+                if (!this.speechHelper.isListening) {
                     this.speechHelper.startListening(scene);
                 }
             });
@@ -248,7 +268,7 @@ export class ClockReadingMode extends BasePokeballGameMode {
 
             // Create circle indicator
             const circle = scene.add.circle(x, y, 20,
-                i < this.correctInRow ? 0x27AE60 : 0xffffff, 1);
+                i < this.correctCount ? 0x27AE60 : 0xffffff, 1);
             circle.setStrokeStyle(3, 0x000000);
 
             this.ballIndicators.push(circle);
@@ -265,9 +285,9 @@ export class ClockReadingMode extends BasePokeballGameMode {
     }
 
     updateBallIndicators() {
-        // Update ball colors based on correctInRow
+        // Update ball colors based on correctCount
         for (let i = 0; i < this.ballIndicators.length; i++) {
-            if (i < this.correctInRow) {
+            if (i < this.correctCount) {
                 this.ballIndicators[i].setFillStyle(0x27AE60); // Green
             } else {
                 this.ballIndicators[i].setFillStyle(0xffffff); // White
@@ -276,7 +296,9 @@ export class ClockReadingMode extends BasePokeballGameMode {
     }
 
     handleSpeechResult(scene, transcript, results) {
-        if (this.isRevealing) return;
+        // Ignore results while an answer is being resolved / revealed
+        if (this.isRevealing || this.inputLocked) return;
+        this.inputLocked = true;
 
         // Try all alternatives to see if any match
         let spokenTime = null;
@@ -301,19 +323,19 @@ export class ClockReadingMode extends BasePokeballGameMode {
         if (isCorrect) {
             // Correct!
             this.showCorrectFeedback(scene);
-            this.correctInRow++;
+            this.correctCount++;
             this.updateBallIndicators();
 
             // Check if won
-            if (this.correctInRow >= this.requiredCorrect) {
-                scene.time.delayedCall(1000, () => {
+            if (this.correctCount >= this.requiredCorrect) {
+                this.delayedCall(scene, 1000, () => {
                     const x = scene.cameras.main.width / 2;
                     const y = scene.cameras.main.height / 2;
-                    this.answerCallback(true, 'clock-reading', x, y);
+                    this.finish(true, 'clock-reading', x, y);
                 });
             } else {
                 // Load next challenge
-                scene.time.delayedCall(1000, () => {
+                this.delayedCall(scene, 1000, () => {
                     this.loadNextChallenge(scene);
                 });
             }
@@ -327,12 +349,17 @@ export class ClockReadingMode extends BasePokeballGameMode {
             );
 
             this.showWrongFeedback(scene);
-            this.correctInRow = 0;
-            this.updateBallIndicators();
 
-            // Reset and try again
-            scene.time.delayedCall(2000, () => {
-                this.isRevealing = false;
+            // Reset streak since player made an error
+            resetStreak();
+            if (scene.boosterBarElements) {
+                updateBoosterBar(scene.boosterBarElements, 0, scene);
+            }
+
+            // Keep the accumulated progress (the X correct don't have to be in a
+            // row) and move on to a new clock so a miss doesn't block progress.
+            this.delayedCall(scene, 2000, () => {
+                this.loadNextChallenge(scene);
             });
         }
     }
@@ -346,8 +373,26 @@ export class ClockReadingMode extends BasePokeballGameMode {
 
         text = text.toLowerCase().trim();
 
-        // Remove "klockan" prefix if present
-        text = text.replace(/^klockan\s+/, '');
+        // Remove "klockan" / "klockan är" prefix if present
+        text = text.replace(/^klockan\s+(är\s+)?/, '');
+
+        // Digits: "3", "3:00", "03.00", "3:30", "halv 3" (the recogniser often
+        // returns numerals instead of number words)
+        const digitMatch = text.match(/^(?:halv\s+)?(\d{1,2})(?:[:.]\s?(\d{2}))?$/);
+        if (digitMatch) {
+            const isHalv = text.startsWith('halv');
+            const num = parseInt(digitMatch[1], 10);
+            const mins = digitMatch[2] !== undefined ? parseInt(digitMatch[2], 10) : 0;
+            if (num >= 1 && num <= 12) {
+                if (isHalv && mins === 0) {
+                    return { hour: num === 1 ? 12 : num - 1, minute: 30 };
+                }
+                if (!isHalv && (mins === 0 || mins === 30)) {
+                    return { hour: num, minute: mins };
+                }
+            }
+            return null;
+        }
 
         // Hour names mapping
         const hourNames = {
@@ -367,7 +412,8 @@ export class ClockReadingMode extends BasePokeballGameMode {
 
         // Check for half hours: "halv X" means 30 minutes before hour X
         // e.g., "halv två" = 1:30, "halv tre" = 2:30
-        const halfMatch = text.match(/^halv\s+(\w+)$/);
+        // (\w does not match å/ä/ö, so "halv två" needs an explicit class)
+        const halfMatch = text.match(/^halv\s+([a-zåäö]+)$/);
         if (halfMatch) {
             const nextHourName = halfMatch[1];
             const nextHour = hourNames[nextHourName];
@@ -420,7 +466,7 @@ export class ClockReadingMode extends BasePokeballGameMode {
             el.x === originalX && el.y === this.clockCenter.y
         );
 
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: clockElements,
             x: originalX - 10,
             duration: 50,
@@ -488,9 +534,10 @@ export class ClockReadingMode extends BasePokeballGameMode {
         });
         particles.setDepth(100);
         particles.explode();
+        this.uiElements.push(particles);
 
         // Clean up
-        scene.time.delayedCall(700, () => {
+        this.delayedCall(scene, 700, () => {
             particles.destroy();
         });
     }
@@ -508,13 +555,9 @@ export class ClockReadingMode extends BasePokeballGameMode {
         this.minuteHand = null;
         this.clockGraphics = null;
         this.ballIndicators = [];
+        this.isRevealing = false;
 
-        // Destroy all UI elements
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
-        this.uiElements = [];
+        // Destroy all UI elements, cancel pending timers/tweens, unlock input
+        super.cleanup(scene);
     }
 }

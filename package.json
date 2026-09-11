@@ -1,19 +1,22 @@
 {
   "name": "pokemoncounting",
   "version": "1.0.0",
-  "description": "Ett pedagogiskt spel för barn som lär ut svenska alfabetet genom att fånga Pokemon!",
+  "description": "Ett pedagogiskt spel f\u00f6r barn som l\u00e4r ut svenska alfabetet genom att f\u00e5nga Pokemon!",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.1.3",
-    "vite": "^7.3.0"
+    "vite": "^7.3.0",
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "phaser": "^3.90.0"

@@ -81,12 +81,12 @@ export function createInventoryHUD(scene, x, y) {
 export function updateInventoryHUD(hudElements) {
     // Update coin count
     const coinCount = getCoinCount();
-    hudElements.coinText.setText(`x${coinCount}`);
+    hudElements.coinText.setText(`${coinCount}`);
 
     // Update pokeball counts
     const inventory = getInventory();
     Object.keys(hudElements.pokeballTexts).forEach(type => {
         const count = inventory[type] || 0;
-        hudElements.pokeballTexts[type].setText(`x${count}`);
+        hudElements.pokeballTexts[type].setText(`${count}`);
     });
 }

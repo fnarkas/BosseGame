@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { resetStreak } from '../streak.js';
+import { updateBoosterBar } from '../boosterBar.js';
 import { showNumberProgressPopup } from './numberProgressPopup.js';
 import { SpeechRecognitionHelper } from '../utils/speechRecognitionHelper.js';
 
@@ -20,11 +22,14 @@ export class NumberReadingMode extends BasePokeballGameMode {
         this.clearedNumbers = new Set(); // Track which numbers have been cleared
 
         this.currentNumber = null;
+        this.lastNumber = null; // Avoid asking the same number twice in a row
         this.displayedNumber = null;
         this.micButton = null;
         this.statusText = null;
+        this.wrongBg = null;
         this.ballIndicators = [];
         this.speechHelper = new SpeechRecognitionHelper('sv-SE');
+        this.initToken = 0; // Detects a stale async initialisation after cleanup
         this.isRevealing = false;
         this.configLoaded = false;
     }
@@ -58,7 +63,7 @@ export class NumberReadingMode extends BasePokeballGameMode {
 
     parseNumberRange(input) {
         try {
-            const parts = input.split(',');
+            const parts = String(input).split(',');
             const numbers = new Set();
 
             for (const part of parts) {
@@ -88,9 +93,20 @@ export class NumberReadingMode extends BasePokeballGameMode {
     }
 
     generateChallenge() {
-        // Generate random number from configured available numbers
-        const randomIndex = Math.floor(Math.random() * this.availableNumbers.length);
-        this.currentNumber = this.availableNumbers[randomIndex];
+        // Guard against generateChallenge() before loadConfig()
+        if (!this.availableNumbers || this.availableNumbers.length === 0) {
+            this.availableNumbers = this.parseNumberRange('10-99');
+        }
+
+        // Generate random number from configured available numbers, never the
+        // same one twice in a row when there is a choice
+        let pool = this.availableNumbers;
+        if (pool.length > 1 && this.lastNumber !== null) {
+            pool = pool.filter(n => n !== this.lastNumber);
+        }
+        const randomIndex = Math.floor(Math.random() * pool.length);
+        this.currentNumber = pool[randomIndex];
+        this.lastNumber = this.currentNumber;
 
         this.challengeData = {
             number: this.currentNumber
@@ -102,6 +118,10 @@ export class NumberReadingMode extends BasePokeballGameMode {
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
+
+        // A fresh challenge always starts accepting input again.
+        this.inputLocked = false;
+        this.isRevealing = false;
 
         // Display the number at top
         this.displayedNumber = scene.add.text(width / 2, 180, this.currentNumber.toString(), {
@@ -198,9 +218,12 @@ export class NumberReadingMode extends BasePokeballGameMode {
     }
 
     async initSpeechRecognition(scene) {
+        const token = ++this.initToken;
+
         // Set up callbacks for the speech helper
         this.speechHelper.onStatusChange = (message, color) => {
-            if (this.statusText) {
+            // Phaser clears `scene` on destroy - a late status update must not setText() on a dead object
+            if (this.statusText && this.statusText.scene) {
                 this.statusText.setText(message);
                 this.statusText.setColor(color);
             }
@@ -231,6 +254,10 @@ export class NumberReadingMode extends BasePokeballGameMode {
         // Initialize the helper
         const success = await this.speechHelper.initialize(scene);
 
+        // The mode may have been cleaned up (or moved to the next challenge)
+        // while we were waiting; that challenge's own init takes over.
+        if (token !== this.initToken || !this.micButton) return;
+
         if (success && this.speechHelper.permissionGranted) {
             // Enable the microphone button
             this.micButton.setFillStyle(0xFF6B6B); // Red = ready
@@ -238,7 +265,7 @@ export class NumberReadingMode extends BasePokeballGameMode {
 
             // Set up click handler
             this.micButton.on('pointerdown', () => {
-                if (!this.isRevealing && !this.speechHelper.isListening) {
+                if (!this.isRevealing && !this.inputLocked && !this.speechHelper.isListening) {
                     this.speechHelper.startListening(scene);
                 }
             });
@@ -286,7 +313,8 @@ export class NumberReadingMode extends BasePokeballGameMode {
     }
 
     handleSpeechResult(scene, transcript, results) {
-        if (this.isRevealing) return;
+        // Ignore results while an answer is being resolved or revealed
+        if (this.isRevealing || this.inputLocked || !this.displayedNumber) return;
 
         // Try all alternatives to see if any match
         let spokenNumber = null;
@@ -306,6 +334,8 @@ export class NumberReadingMode extends BasePokeballGameMode {
 
         console.log(`Expected: ${this.currentNumber}, Spoken: ${spokenNumber} (transcript: "${transcript}")`);
 
+        this.inputLocked = true;
+
         if (spokenNumber === this.currentNumber) {
             // Correct!
             this.showCorrectFeedback(scene);
@@ -318,14 +348,14 @@ export class NumberReadingMode extends BasePokeballGameMode {
 
             // Check if won
             if (this.correctInRow >= this.requiredCorrect) {
-                scene.time.delayedCall(1000, () => {
+                this.delayedCall(scene, 1000, () => {
                     const x = scene.cameras.main.width / 2;
                     const y = scene.cameras.main.height / 2;
-                    this.answerCallback(true, 'number-reading', x, y);
+                    this.finish(true, 'number-reading', x, y);
                 });
             } else {
                 // Load next number
-                scene.time.delayedCall(1000, () => {
+                this.delayedCall(scene, 1000, () => {
                     this.loadNextChallenge(scene);
                 });
             }
@@ -341,9 +371,22 @@ export class NumberReadingMode extends BasePokeballGameMode {
             this.correctInRow = 0;
             this.updateBallIndicators();
 
+            // Reset streak since player made an error
+            resetStreak();
+            if (scene.boosterBarElements) {
+                updateBoosterBar(scene.boosterBarElements, 0, scene);
+            }
+
             // Reset and try again
-            scene.time.delayedCall(2000, () => {
+            this.delayedCall(scene, 2000, () => {
+                if (this.wrongBg) {
+                    const i = this.uiElements.indexOf(this.wrongBg);
+                    if (i >= 0) this.uiElements.splice(i, 1);
+                    this.wrongBg.destroy();
+                    this.wrongBg = null;
+                }
                 this.isRevealing = false;
+                this.inputLocked = false;
             });
         }
     }
@@ -358,9 +401,10 @@ export class NumberReadingMode extends BasePokeballGameMode {
             'tjugo': 20, 'trettio': 30, 'fyrtio': 40, 'femtio': 50,
             'sextio': 60, 'sjuttio': 70, 'åttio': 80, 'nittio': 90
         };
+        const tensWords = ['tjugo', 'trettio', 'fyrtio', 'femtio', 'sextio', 'sjuttio', 'åttio', 'nittio'];
 
         // Clean up the text
-        text = text.toLowerCase().trim();
+        text = String(text || '').toLowerCase().trim();
 
         // Direct match
         if (numberMap.hasOwnProperty(text)) {
@@ -368,9 +412,11 @@ export class NumberReadingMode extends BasePokeballGameMode {
         }
 
         // Check if it's already a digit
-        const directNumber = parseInt(text);
-        if (!isNaN(directNumber) && directNumber >= 0 && directNumber <= 99) {
-            return directNumber;
+        if (/^\d/.test(text)) {
+            const directNumber = parseInt(text);
+            if (!isNaN(directNumber) && directNumber >= 0) {
+                return directNumber;
+            }
         }
 
         // Try to parse compound numbers (e.g., "tjugo tre" = 23, "trettio fem" = 35)
@@ -380,6 +426,18 @@ export class NumberReadingMode extends BasePokeballGameMode {
             const ones = numberMap[words[1]];
             if (tens && tens >= 20 && tens <= 90 && ones && ones >= 1 && ones <= 9) {
                 return tens + ones;
+            }
+        }
+
+        // Spoken Swedish compounds are written as one word ("tjugotre", "trettiofem")
+        if (words.length === 1) {
+            for (const tensWord of tensWords) {
+                if (text.startsWith(tensWord) && text.length > tensWord.length) {
+                    const ones = numberMap[text.slice(tensWord.length)];
+                    if (ones && ones >= 1 && ones <= 9) {
+                        return numberMap[tensWord] + ones;
+                    }
+                }
             }
         }
 
@@ -403,35 +461,36 @@ export class NumberReadingMode extends BasePokeballGameMode {
     showWrongFeedback(scene) {
         this.isRevealing = true;
 
-        // Red flash on microphone button
-        const wrongBg = scene.add.circle(this.micButton.x, this.micButton.y, 80, 0xFF0000, 0.5);
-        wrongBg.setDepth(this.micButton.depth - 1);
-        this.uiElements.push(wrongBg);
+        // Red flash on microphone button (removed again when the retry starts)
+        this.wrongBg = scene.add.circle(this.micButton.x, this.micButton.y, 80, 0xFF0000, 0.5);
+        this.wrongBg.setDepth(this.micButton.depth - 1);
+        this.uiElements.push(this.wrongBg);
 
         // Red flash on number
         this.displayedNumber.setColor('#FF0000');
 
         // Shake animation on number
-        const originalX = this.displayedNumber.x;
-        scene.tweens.add({
-            targets: this.displayedNumber,
+        const displayedNumber = this.displayedNumber;
+        const originalX = displayedNumber.x;
+        this.addTween(scene, {
+            targets: displayedNumber,
             x: originalX - 10,
             duration: 50,
             yoyo: true,
             repeat: 3,
             onComplete: () => {
-                this.displayedNumber.x = originalX;
+                displayedNumber.x = originalX;
                 // Reset color
-                scene.time.delayedCall(1000, () => {
-                    this.displayedNumber.setColor('#000000');
+                this.delayedCall(scene, 1000, () => {
+                    if (displayedNumber.scene) {
+                        displayedNumber.setColor('#000000');
+                    }
                 });
             }
         });
     }
 
     loadNextChallenge(scene) {
-        this.isRevealing = false;
-
         // Clean up current UI
         this.cleanup(scene);
 
@@ -485,31 +544,32 @@ export class NumberReadingMode extends BasePokeballGameMode {
         });
         particles.setDepth(100);
         particles.explode();
+        // Tracked so cleanup() can remove it if the mode is torn down mid-burst
+        this.uiElements.push(particles);
 
         // Clean up
-        scene.time.delayedCall(700, () => {
+        this.delayedCall(scene, 700, () => {
             particles.destroy();
         });
     }
 
     cleanup(scene) {
-        // Clean up speech recognition helper
+        // Cancels pending timers/tweens, destroys uiElements, unlocks input
+        super.cleanup(scene);
+
+        // Clean up speech recognition helper (aborts a live session, drops callbacks)
         if (this.speechHelper) {
             this.speechHelper.cleanup();
         }
+        // Any initialisation still in flight belongs to a torn-down challenge
+        this.initToken++;
 
         // Clear references
+        this.isRevealing = false;
         this.micButton = null;
         this.statusText = null;
+        this.wrongBg = null;
         this.ballIndicators = [];
         this.displayedNumber = null;
-
-        // Destroy all UI elements
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
-        this.uiElements = [];
     }
 }

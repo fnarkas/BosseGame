@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { resetStreak } from '../streak.js';
+import { updateBoosterBar } from '../boosterBar.js';
 import { showNumberProgressPopup } from './numberProgressPopup.js';
 
 export class NumberListeningMode extends BasePokeballGameMode {
@@ -14,6 +16,7 @@ export class NumberListeningMode extends BasePokeballGameMode {
         this.clearedNumbers = new Set(); // Track which numbers have been cleared
 
         this.currentNumber = null;
+        this.lastNumber = null; // Avoid asking the same number twice in a row
         this.thousandsZone = null;
         this.hundredsZone = null;
         this.tensZone = null;
@@ -21,8 +24,11 @@ export class NumberListeningMode extends BasePokeballGameMode {
         this.digitBoxes = []; // 0-9 draggable boxes
         this.ballIndicators = [];
         this.currentAudio = null;
+        this.numberAudio = null; // Pre-created audio for numbers 0-99
         this.hundredsAudio = null; // Pre-created audio for hundreds (100, 200, 300)
         this.remainderAudio = null; // Pre-created audio for remainder (0-99)
+        this.remainderTimer = null; // Timer that starts the remainder after the hundreds
+        this.revealTween = null; // Gold pulse shown while revealing the answer
         this.isRevealing = false;
         this.configLoaded = false;
     }
@@ -56,7 +62,7 @@ export class NumberListeningMode extends BasePokeballGameMode {
 
     parseNumberRange(input) {
         try {
-            const parts = input.split(',');
+            const parts = String(input).split(',');
             const numbers = new Set();
 
             for (const part of parts) {
@@ -86,9 +92,20 @@ export class NumberListeningMode extends BasePokeballGameMode {
     }
 
     generateChallenge() {
-        // Generate random number from configured available numbers
-        const randomIndex = Math.floor(Math.random() * this.availableNumbers.length);
-        this.currentNumber = this.availableNumbers[randomIndex];
+        // Guard against generateChallenge() before loadConfig()
+        if (!this.availableNumbers || this.availableNumbers.length === 0) {
+            this.availableNumbers = this.parseNumberRange('10-99');
+        }
+
+        // Generate random number from configured available numbers, never the
+        // same one twice in a row when there is a choice
+        let pool = this.availableNumbers;
+        if (pool.length > 1 && this.lastNumber !== null) {
+            pool = pool.filter(n => n !== this.lastNumber);
+        }
+        const randomIndex = Math.floor(Math.random() * pool.length);
+        this.currentNumber = pool[randomIndex];
+        this.lastNumber = this.currentNumber;
 
         this.challengeData = {
             number: this.currentNumber,
@@ -109,6 +126,10 @@ export class NumberListeningMode extends BasePokeballGameMode {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
 
+        // A fresh challenge always starts accepting input again.
+        this.inputLocked = false;
+        this.isRevealing = false;
+
         // Speaker button to replay audio (centered at top)
         const speakerBtn = scene.add.text(width / 2, 180, '🔊', {
             font: '80px Arial',
@@ -121,15 +142,7 @@ export class NumberListeningMode extends BasePokeballGameMode {
         this.uiElements.push(speakerBtn);
 
         // Pre-create audio instances for instant playback (eliminates pause in stitching)
-        if (this.currentNumber >= 100 && this.currentNumber <= 1000) {
-            const hundreds = Math.floor(this.currentNumber / 100) * 100;
-            const remainder = this.currentNumber % 100;
-
-            this.hundredsAudio = scene.sound.add(`number_audio_${hundreds}`);
-            if (remainder > 0) {
-                this.remainderAudio = scene.sound.add(`number_audio_${remainder}`);
-            }
-        }
+        this.createAudio(scene);
 
         // Play number audio automatically when challenge loads
         this.playNumberAudio(scene);
@@ -292,6 +305,33 @@ export class NumberListeningMode extends BasePokeballGameMode {
         this.createDigitBoxes(scene);
     }
 
+    /**
+     * Pre-create the sound instances for the current number so replays are
+     * instant and nothing leaks (they are destroyed in cleanup()).
+     * 0-99 have their own files; 100-1000 are stitched from hundreds + remainder.
+     */
+    createAudio(scene) {
+        this.destroyAudio();
+
+        try {
+            if (this.currentNumber >= 100 && this.currentNumber <= 1000) {
+                const hundreds = Math.floor(this.currentNumber / 100) * 100;
+                const remainder = this.currentNumber % 100;
+
+                this.hundredsAudio = scene.sound.add(`number_audio_${hundreds}`);
+                if (remainder > 0) {
+                    this.remainderAudio = scene.sound.add(`number_audio_${remainder}`);
+                }
+            } else if (this.currentNumber >= 0 && this.currentNumber <= 99) {
+                this.numberAudio = scene.sound.add(`number_audio_${this.currentNumber}`);
+            } else {
+                console.warn(`No audio available for number: ${this.currentNumber}`);
+            }
+        } catch (error) {
+            console.warn(`Audio not found for number: ${this.currentNumber}`, error);
+        }
+    }
+
     createMatrixIcon(scene, dropZoneY) {
         const width = scene.cameras.main.width;
 
@@ -435,14 +475,20 @@ export class NumberListeningMode extends BasePokeballGameMode {
         scene.input.setDraggable(this.digitBoxes);
     }
 
-    checkHoverOverZones(scene, pointer) {
-        // Build zones array based on what's visible
+    getZones() {
         const zones = [];
         if (this.thousandsZone) zones.push(this.thousandsZone);
         if (this.hundredsZone) zones.push(this.hundredsZone);
-        zones.push(this.tensZone, this.onesZone);
+        if (this.tensZone) zones.push(this.tensZone);
+        if (this.onesZone) zones.push(this.onesZone);
+        return zones;
+    }
 
-        zones.forEach(zone => {
+    checkHoverOverZones(scene, pointer) {
+        // No highlight while the answer is being resolved/revealed
+        if (this.isRevealing || this.inputLocked) return;
+
+        this.getZones().forEach(zone => {
             const bounds = zone.getBounds();
             const isOver = Phaser.Geom.Rectangle.Contains(bounds, pointer.x, pointer.y);
 
@@ -455,34 +501,11 @@ export class NumberListeningMode extends BasePokeballGameMode {
     }
 
     handleDrop(scene, draggedBox, pointer) {
-        if (this.isRevealing) return;
-
         const digit = draggedBox.getData('digit');
         const digitText = draggedBox.getData('text');
-        let dropped = false;
-
-        // Check if dropped on any zone
-        const zones = [];
-        if (this.thousandsZone) zones.push(this.thousandsZone);
-        if (this.hundredsZone) zones.push(this.hundredsZone);
-        zones.push(this.tensZone, this.onesZone);
-
-        zones.forEach(zone => {
-            const bounds = zone.getBounds();
-            if (Phaser.Geom.Rectangle.Contains(bounds, pointer.x, pointer.y)) {
-                // Update zone value and label
-                zone.setData('value', digit);
-                const label = zone.getData('label');
-                label.setText(digit.toString());
-                dropped = true;
-
-                // Reset zone color
-                zone.setFillStyle(0xFFFFFF, 0.2);
-            }
-        });
 
         // Return box to start position (numbers are reusable)
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: [draggedBox, digitText],
             x: draggedBox.getData('startX'),
             y: draggedBox.getData('startY'),
@@ -490,22 +513,28 @@ export class NumberListeningMode extends BasePokeballGameMode {
             ease: 'Back.easeOut'
         });
 
-        // Check if all required zones are filled
-        const thousandsValue = this.thousandsZone ? this.thousandsZone.getData('value') : null;
-        const hundredsValue = this.hundredsZone ? this.hundredsZone.getData('value') : null;
-        const tensValue = this.tensZone.getData('value');
-        const onesValue = this.onesZone.getData('value');
+        // Drops are ignored while an answer is being resolved or revealed
+        if (this.isRevealing || this.inputLocked) return;
 
-        let allFilled = false;
-        if (this.thousandsZone) {
-            allFilled = (thousandsValue !== null && hundredsValue !== null && tensValue !== null && onesValue !== null);
-        } else if (this.hundredsZone) {
-            allFilled = (hundredsValue !== null && tensValue !== null && onesValue !== null);
-        } else {
-            allFilled = (tensValue !== null && onesValue !== null);
-        }
+        // Check if dropped on any zone
+        this.getZones().forEach(zone => {
+            const bounds = zone.getBounds();
+            if (Phaser.Geom.Rectangle.Contains(bounds, pointer.x, pointer.y)) {
+                // Update zone value and label
+                zone.setData('value', digit);
+                const label = zone.getData('label');
+                label.setText(digit.toString());
+
+                // Reset zone color
+                zone.setFillStyle(0xFFFFFF, 0.2);
+            }
+        });
+
+        // Check if all required zones are filled
+        const allFilled = this.getZones().every(zone => zone.getData('value') !== null);
 
         if (allFilled) {
+            this.inputLocked = true;
             this.checkAnswer(scene);
         }
     }
@@ -529,14 +558,14 @@ export class NumberListeningMode extends BasePokeballGameMode {
 
             // Check if won
             if (this.correctInRow >= this.requiredCorrect) {
-                scene.time.delayedCall(1000, () => {
+                this.delayedCall(scene, 1000, () => {
                     const x = scene.cameras.main.width / 2;
                     const y = scene.cameras.main.height / 2;
-                    this.answerCallback(true, 'number-match', x, y);
+                    this.finish(true, 'number-match', x, y);
                 });
             } else {
                 // Load next number
-                scene.time.delayedCall(1000, () => {
+                this.delayedCall(scene, 1000, () => {
                     this.loadNextChallenge(scene);
                 });
             }
@@ -552,20 +581,25 @@ export class NumberListeningMode extends BasePokeballGameMode {
             this.correctInRow = 0;
             this.updateBallIndicators();
 
+            // Reset streak since player made an error
+            resetStreak();
+            if (scene.boosterBarElements) {
+                updateBoosterBar(scene.boosterBarElements, 0, scene);
+            }
+
             // Reset and try again
-            scene.time.delayedCall(2000, () => {
+            this.delayedCall(scene, 2000, () => {
+                this.stopRevealTween();
                 this.clearZones();
                 this.isRevealing = false;
+                this.inputLocked = false;
             });
         }
     }
 
     showCorrectFeedback(scene) {
         // Green flash on zones
-        if (this.thousandsZone) this.thousandsZone.setFillStyle(0x27AE60, 0.5);
-        if (this.hundredsZone) this.hundredsZone.setFillStyle(0x27AE60, 0.5);
-        this.tensZone.setFillStyle(0x27AE60, 0.5);
-        this.onesZone.setFillStyle(0x27AE60, 0.5);
+        this.getZones().forEach(zone => zone.setFillStyle(0x27AE60, 0.5));
 
         // Success particles
         this.showSuccessParticles(scene, scene.cameras.main.width / 2, 320);
@@ -575,55 +609,24 @@ export class NumberListeningMode extends BasePokeballGameMode {
         this.isRevealing = true;
 
         // Red flash on zones
-        if (this.thousandsZone) this.thousandsZone.setFillStyle(0xFF0000, 0.5);
-        if (this.hundredsZone) this.hundredsZone.setFillStyle(0xFF0000, 0.5);
-        this.tensZone.setFillStyle(0xFF0000, 0.5);
-        this.onesZone.setFillStyle(0xFF0000, 0.5);
+        this.getZones().forEach(zone => zone.setFillStyle(0xFF0000, 0.5));
 
         // Shake animation
-        if (this.thousandsZone) {
-            const originalThousandsX = this.thousandsZone.x;
-            scene.tweens.add({
-                targets: [this.thousandsZone, this.thousandsZone.getData('label')],
-                x: originalThousandsX - 10,
+        const zones = this.getZones();
+        zones.forEach((zone, index) => {
+            const originalX = zone.x;
+            const isLast = index === zones.length - 1;
+            this.addTween(scene, {
+                targets: [zone, zone.getData('label')],
+                x: originalX - 10,
                 duration: 50,
                 yoyo: true,
-                repeat: 3
+                repeat: 3,
+                onComplete: isLast ? () => {
+                    // Show correct answer
+                    this.showCorrectAnswer(scene);
+                } : undefined
             });
-        }
-
-        if (this.hundredsZone) {
-            const originalHundredsX = this.hundredsZone.x;
-            scene.tweens.add({
-                targets: [this.hundredsZone, this.hundredsZone.getData('label')],
-                x: originalHundredsX - 10,
-                duration: 50,
-                yoyo: true,
-                repeat: 3
-            });
-        }
-
-        const originalTensX = this.tensZone.x;
-        const originalOnesX = this.onesZone.x;
-
-        scene.tweens.add({
-            targets: [this.tensZone, this.tensZone.getData('label')],
-            x: originalTensX - 10,
-            duration: 50,
-            yoyo: true,
-            repeat: 3
-        });
-
-        scene.tweens.add({
-            targets: [this.onesZone, this.onesZone.getData('label')],
-            x: originalOnesX - 10,
-            duration: 50,
-            yoyo: true,
-            repeat: 3,
-            onComplete: () => {
-                // Show correct answer
-                this.showCorrectAnswer(scene);
-            }
         });
     }
 
@@ -631,83 +634,60 @@ export class NumberListeningMode extends BasePokeballGameMode {
         // Clear current values
         this.clearZones();
 
+        const targets = [];
+        const reveal = (zone, value) => {
+            zone.setData('value', value);
+            zone.getData('label').setText(value.toString());
+            zone.getData('label').setColor('#FFD700');
+            zone.setFillStyle(0xFFD700, 0.5);
+            targets.push(zone, zone.getData('label'));
+        };
+
         // Show correct answer in gold
-        if (this.thousandsZone && this.challengeData.thousands > 0) {
-            this.thousandsZone.setData('value', this.challengeData.thousands);
-            this.thousandsZone.getData('label').setText(this.challengeData.thousands.toString());
-            this.thousandsZone.getData('label').setColor('#FFD700');
-            this.thousandsZone.setFillStyle(0xFFD700, 0.5);
-        }
-
-        if (this.hundredsZone && this.challengeData.hundreds > 0) {
-            this.hundredsZone.setData('value', this.challengeData.hundreds);
-            this.hundredsZone.getData('label').setText(this.challengeData.hundreds.toString());
-            this.hundredsZone.getData('label').setColor('#FFD700');
-            this.hundredsZone.setFillStyle(0xFFD700, 0.5);
-        }
-
-        this.tensZone.setData('value', this.challengeData.tens);
-        this.tensZone.getData('label').setText(this.challengeData.tens.toString());
-        this.tensZone.getData('label').setColor('#FFD700');
-
-        this.onesZone.setData('value', this.challengeData.ones);
-        this.onesZone.getData('label').setText(this.challengeData.ones.toString());
-        this.onesZone.getData('label').setColor('#FFD700');
-
-        this.tensZone.setFillStyle(0xFFD700, 0.5);
-        this.onesZone.setFillStyle(0xFFD700, 0.5);
+        if (this.thousandsZone) reveal(this.thousandsZone, this.challengeData.thousands);
+        if (this.hundredsZone) reveal(this.hundredsZone, this.challengeData.hundreds);
+        reveal(this.tensZone, this.challengeData.tens);
+        reveal(this.onesZone, this.challengeData.ones);
 
         // Pulse animation
-        const targets = [this.tensZone, this.onesZone, this.tensZone.getData('label'), this.onesZone.getData('label')];
-        if (this.thousandsZone && this.challengeData.thousands > 0) {
-            targets.push(this.thousandsZone, this.thousandsZone.getData('label'));
-        }
-        if (this.hundredsZone && this.challengeData.hundreds > 0) {
-            targets.push(this.hundredsZone, this.hundredsZone.getData('label'));
-        }
-
-        scene.tweens.add({
+        this.revealTween = this.addTween(scene, {
             targets: targets,
             scaleX: 1.2,
             scaleY: 1.2,
             duration: 500,
             yoyo: true,
             repeat: 2,
-            ease: 'Sine.easeInOut'
+            ease: 'Sine.easeInOut',
+            onComplete: () => {
+                this.revealTween = null;
+            }
         });
+    }
+
+    stopRevealTween() {
+        if (this.revealTween) {
+            const targets = this.revealTween.targets || [];
+            this.revealTween.stop();
+            this.revealTween = null;
+            targets.forEach(target => {
+                if (target && target.setScale) target.setScale(1);
+            });
+        }
     }
 
     clearZones() {
         // Reset zones
-        if (this.thousandsZone) {
-            this.thousandsZone.setData('value', null);
-            this.thousandsZone.getData('label').setText('');
-            this.thousandsZone.getData('label').setColor('#000000');
-            this.thousandsZone.setFillStyle(0xFFFFFF, 0.2);
-        }
-
-        if (this.hundredsZone) {
-            this.hundredsZone.setData('value', null);
-            this.hundredsZone.getData('label').setText('');
-            this.hundredsZone.getData('label').setColor('#000000');
-            this.hundredsZone.setFillStyle(0xFFFFFF, 0.2);
-        }
-
-        this.tensZone.setData('value', null);
-        this.tensZone.getData('label').setText('');
-        this.tensZone.getData('label').setColor('#000000');
-        this.tensZone.setFillStyle(0xFFFFFF, 0.2);
-
-        this.onesZone.setData('value', null);
-        this.onesZone.getData('label').setText('');
-        this.onesZone.getData('label').setColor('#000000');
-        this.onesZone.setFillStyle(0xFFFFFF, 0.2);
+        this.getZones().forEach(zone => {
+            zone.setData('value', null);
+            zone.getData('label').setText('');
+            zone.getData('label').setColor('#000000');
+            zone.setFillStyle(0xFFFFFF, 0.2);
+        });
     }
 
     loadNextChallenge(scene) {
         // Clean up current UI
         this.cleanup(scene);
-        this.isRevealing = false;
 
         // Generate new challenge
         this.generateChallenge();
@@ -759,92 +739,82 @@ export class NumberListeningMode extends BasePokeballGameMode {
         });
         particles.setDepth(100);
         particles.explode();
+        // Tracked so cleanup() can remove it if the mode is torn down mid-burst
+        this.uiElements.push(particles);
 
         // Clean up
-        scene.time.delayedCall(700, () => {
+        this.delayedCall(scene, 700, () => {
             particles.destroy();
         });
     }
 
     playNumberAudio(scene) {
-        // Stop any currently playing audio
-        if (this.currentAudio && this.currentAudio.isPlaying) {
-            this.currentAudio.stop();
+        // Stop any currently playing audio (and a pending remainder)
+        if (this.remainderTimer) {
+            this.remainderTimer.remove(false);
+            this.pendingTimers.delete(this.remainderTimer);
+            this.remainderTimer = null;
         }
+        [this.numberAudio, this.hundredsAudio, this.remainderAudio].forEach(audio => {
+            if (audio && audio.isPlaying) audio.stop();
+        });
 
-        // For numbers >= 100, use pre-created audio instances with overlapping playback
+        // For numbers >= 100, use pre-created audio instances
         // e.g., 245 = play "200" + "45", 645 = play "600" + "45"
-        if (this.currentNumber >= 100 && this.currentNumber <= 1000) {
-            const remainder = this.currentNumber % 100;
-
-            // Use pre-created hundreds audio
+        if (this.hundredsAudio) {
             this.currentAudio = this.hundredsAudio;
             this.hundredsAudio.play();
 
             // If there's a remainder, start it when hundreds finishes (no overlap)
-            if (remainder > 0 && this.remainderAudio) {
+            if (this.remainderAudio) {
                 const gapMs = 50; // 50ms gap between audio parts for natural pause
                 const hundredsDuration = this.hundredsAudio.duration * 1000; // Convert to ms
                 const delayMs = hundredsDuration + gapMs;
 
-                scene.time.delayedCall(delayMs, () => {
+                this.remainderTimer = this.delayedCall(scene, delayMs, () => {
+                    this.remainderTimer = null;
+                    if (!this.remainderAudio) return;
                     this.currentAudio = this.remainderAudio;
                     this.remainderAudio.play();
                 });
             }
-        } else {
+        } else if (this.numberAudio) {
             // For numbers < 100, play directly
-            const audioKey = `number_audio_${this.currentNumber}`;
-            try {
-                this.currentAudio = scene.sound.add(audioKey);
-                this.currentAudio.play();
-            } catch (error) {
-                console.warn(`Audio not found for number: ${this.currentNumber} (key: ${audioKey})`);
-            }
+            this.currentAudio = this.numberAudio;
+            this.numberAudio.play();
+        } else {
+            console.warn(`Audio not found for number: ${this.currentNumber}`);
         }
     }
 
+    destroyAudio() {
+        [this.numberAudio, this.hundredsAudio, this.remainderAudio].forEach(audio => {
+            if (!audio) return;
+            if (audio.isPlaying) audio.stop();
+            audio.destroy();
+        });
+        this.numberAudio = null;
+        this.hundredsAudio = null;
+        this.remainderAudio = null;
+        this.currentAudio = null;
+        this.remainderTimer = null;
+    }
+
     cleanup(scene) {
-        // Stop and destroy any playing audio
-        if (this.currentAudio) {
-            if (this.currentAudio.isPlaying) {
-                this.currentAudio.stop();
-            }
-            this.currentAudio.destroy();
-            this.currentAudio = null;
-        }
+        // Cancels pending timers/tweens, destroys uiElements, unlocks input
+        super.cleanup(scene);
 
-        // Destroy pre-created audio instances
-        if (this.hundredsAudio) {
-            if (this.hundredsAudio.isPlaying) {
-                this.hundredsAudio.stop();
-            }
-            this.hundredsAudio.destroy();
-            this.hundredsAudio = null;
-        }
-
-        if (this.remainderAudio) {
-            if (this.remainderAudio.isPlaying) {
-                this.remainderAudio.stop();
-            }
-            this.remainderAudio.destroy();
-            this.remainderAudio = null;
-        }
+        // Stop and destroy audio instances
+        this.destroyAudio();
 
         // Clear references
+        this.revealTween = null;
+        this.isRevealing = false;
         this.thousandsZone = null;
         this.hundredsZone = null;
         this.tensZone = null;
         this.onesZone = null;
         this.digitBoxes = [];
         this.ballIndicators = [];
-
-        // Destroy all UI elements
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
-        this.uiElements = [];
     }
 }

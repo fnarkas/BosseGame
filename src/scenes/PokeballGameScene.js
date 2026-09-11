@@ -644,14 +644,17 @@ export class PokeballGameScene extends Phaser.Scene {
             // Check if this is legendary mode
             const modeName = this.gameMode.constructor.name;
             const isLegendaryMode = modeName === 'LegendaryAlphabetMatchMode' || modeName === 'LegendaryNumbersMode';
-            // Speed reading pays out a variable amount it computed itself, with no
-            // streak/multiplier (like legendary, but with a normal gift box).
-            const isSpeedReading = modeName === 'SpeedReadingMode';
+            // The timed modes work out their own variable payout from how much the
+            // player got done, with no streak/multiplier (like legendary, but with
+            // a normal gift box). They flag themselves rather than being listed by
+            // name here, so a new timed mode cannot silently fall through to the
+            // streak payout.
+            const paysOwnCoins = this.gameMode.paysOwnCoins === true;
 
             // Increment streak and get multiplier (only for streak-based modes)
             let newStreak, multiplier, baseCoinReward, finalCoinReward;
 
-            if (!isLegendaryMode && !isSpeedReading) {
+            if (!isLegendaryMode && !paysOwnCoins) {
                 newStreak = incrementStreak();
                 multiplier = getMultiplier();
 
@@ -661,7 +664,7 @@ export class PokeballGameScene extends Phaser.Scene {
                 // Generate random coin reward (1-3)
                 baseCoinReward = getRandomCoinReward();
                 finalCoinReward = baseCoinReward * multiplier;
-            } else if (isSpeedReading) {
+            } else if (paysOwnCoins) {
                 // Speed reading: 1 coin per word read, computed by the mode.
                 multiplier = null;
                 finalCoinReward = this.gameMode.earnedCoins;
@@ -675,7 +678,7 @@ export class PokeballGameScene extends Phaser.Scene {
             this.showSuccessFeedback(x, y);
 
             // Show reward animation (gift box for normal, treasure chest for legendary)
-            showGiftBoxReward(this, finalCoinReward, (isLegendaryMode || isSpeedReading) ? null : multiplier, isLegendaryMode, async () => {
+            showGiftBoxReward(this, finalCoinReward, (isLegendaryMode || paysOwnCoins) ? null : multiplier, isLegendaryMode, async () => {
                 // Animation complete - update coin count
                 this.coinCount = addCoins(finalCoinReward);
                 this.coinCounterText.setText(`${this.coinCount}`);
@@ -720,13 +723,11 @@ export class PokeballGameScene extends Phaser.Scene {
             // Show error feedback
             this.showErrorFeedback(x, y);
 
-            // Show error message
-            const errorText = this.add.text(this.cameras.main.width / 2, 600, 'Fel! Försök igen', {
-                font: 'bold 36px Arial',
-                fill: '#E74C3C',
-                stroke: '#FFFFFF',
-                strokeThickness: 4
-            }).setOrigin(0.5);
+            // Show a visual (non-text) error cue - the players can't read yet
+            const errorText = this.add.text(this.cameras.main.width / 2, 600, '😢', {
+                fontSize: '96px',
+                padding: { y: 20 }
+            }).setOrigin(0.5).setDepth(1001);
 
             // Remove error message and allow retry
             this.time.delayedCall(1000, () => {

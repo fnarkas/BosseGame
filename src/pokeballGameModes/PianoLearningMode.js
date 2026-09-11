@@ -1,6 +1,5 @@
-import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
-import { getRandomSong, getPianoKey, PIANO_KEYS } from '../pianoSongs.js';
+import { getRandomSong, PIANO_KEYS } from '../pianoSongs.js';
 
 /**
  * Piano Learning Mode - Learn melodies by repeating notes in patterns
@@ -35,8 +34,11 @@ export class PianoLearningMode extends BasePokeballGameMode {
             const response = await fetch('/config/minigames.json');
             if (response.ok) {
                 const serverConfig = await response.json();
-                const config = serverConfig.pianoLearning || { measuresPerPattern: 1, showNotes: true };
-                this.measuresPerPattern = config.measuresPerPattern || 1;
+                const config = serverConfig.pianoLearning || {};
+                // Patterns are whole measures: only a positive integer makes sense here
+                // (0 would give infinitely many patterns, 1.5 would index between measures).
+                const measures = Number(config.measuresPerPattern);
+                this.measuresPerPattern = Number.isInteger(measures) && measures > 0 ? measures : 1;
                 this.showNotes = config.showNotes !== false; // Default to true
 
                 console.log('PianoLearningMode config loaded from server:', {
@@ -55,11 +57,10 @@ export class PianoLearningMode extends BasePokeballGameMode {
         this.configLoaded = true;
     }
 
-    async generateChallenge() {
-        // Load config if not already loaded
-        if (!this.configLoaded) {
-            await this.loadConfig();
-        }
+    generateChallenge() {
+        // The scene awaits loadConfig() before calling us; if it didn't, the
+        // constructor defaults apply. Kept synchronous so challengeData is
+        // always set before createChallengeUI runs.
 
         // Select a random song
         this.currentSong = getRandomSong();
@@ -76,11 +77,17 @@ export class PianoLearningMode extends BasePokeballGameMode {
             song: this.currentSong,
             totalPatterns: totalPatterns
         };
+
+        return this.challengeData;
     }
 
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
-        const height = scene.cameras.main.height;
+
+        // A fresh challenge always starts accepting input again.
+        this.inputLocked = false;
+        this.isPlayingDemo = false;
+        this.playerNotes = [];
 
         // Speaker button to replay current pattern (centered at top)
         const speakerBtn = scene.add.text(width / 2, 120, '🔊', {
@@ -89,7 +96,7 @@ export class PianoLearningMode extends BasePokeballGameMode {
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
         speakerBtn.on('pointerdown', () => {
-            if (!this.isPlayingDemo) {
+            if (!this.isPlayingDemo && !this.inputLocked) {
                 this.playCurrentPattern(scene);
             }
         });
@@ -138,6 +145,7 @@ export class PianoLearningMode extends BasePokeballGameMode {
             keyRect.setOrigin(0, 0);
             keyRect.setStrokeStyle(2, 0x000000);
             keyRect.setInteractive({ useHandCursor: true });
+            keyRect.setData('note', keyData.note);
 
             // Store reference
             this.pianoKeys[keyData.note] = {
@@ -165,6 +173,7 @@ export class PianoLearningMode extends BasePokeballGameMode {
             keyRect.setStrokeStyle(2, 0x333333);
             keyRect.setInteractive({ useHandCursor: true });
             keyRect.setDepth(100); // Above white keys
+            keyRect.setData('note', keyData.note);
 
             // Store reference
             this.pianoKeys[keyData.note] = {
@@ -199,6 +208,7 @@ export class PianoLearningMode extends BasePokeballGameMode {
         const startX = (width - totalWidth) / 2;
         const y = 200;
 
+        this.ballIndicators = [];
         for (let i = 0; i < totalPatterns; i++) {
             const x = startX + i * (ballSize + spacing);
             const ball = scene.add.circle(x, y, ballSize / 2, 0xCCCCCC);
@@ -206,6 +216,9 @@ export class PianoLearningMode extends BasePokeballGameMode {
             this.ballIndicators.push(ball);
             this.uiElements.push(ball);
         }
+
+        // Mark the current pattern from the start
+        this.updateBallIndicators();
     }
 
     updateBallIndicators() {
@@ -281,14 +294,19 @@ export class PianoLearningMode extends BasePokeballGameMode {
         }
     }
 
-    removeNextPlayerMarker() {
-        // Find the first visible marker and remove it
-        const visibleMarker = this.noteMarkers.find(m => m.alpha === 1);
-        if (visibleMarker) {
-            visibleMarker.destroy();
-            const index = this.noteMarkers.indexOf(visibleMarker);
-            if (index > -1) {
-                this.noteMarkers.splice(index, 1);
+    removeMarkerAt(index) {
+        // Remove the marker for the note the player just played (by sequence
+        // position, so it works whether or not the demo has revealed it yet)
+        const marker = this.noteMarkers.find(m => m.getData('index') === index);
+        if (marker) {
+            marker.destroy();
+            const i = this.noteMarkers.indexOf(marker);
+            if (i > -1) {
+                this.noteMarkers.splice(i, 1);
+            }
+            const u = this.uiElements.indexOf(marker);
+            if (u > -1) {
+                this.uiElements.splice(u, 1);
             }
         }
     }
@@ -307,31 +325,25 @@ export class PianoLearningMode extends BasePokeballGameMode {
         return notes; // Array of {note, duration} objects
     }
 
-    async playCurrentPattern(scene) {
-        this.isPlayingDemo = true;
-        const noteObjects = this.getCurrentPatternNotes();
+    // Wait using a mode-owned timer: after cleanup() the promise simply never
+    // resolves, so an in-flight demo can't touch a torn-down keyboard.
+    wait(scene, ms) {
+        return new Promise(resolve => this.delayedCall(scene, ms, resolve));
+    }
 
-        const noteNames = noteObjects.map(n => n.note).join(', ');
-        console.log(`Playing pattern ${this.currentPatternIndex + 1}: ${noteNames}`);
-
-        // Base duration for a quarter note in milliseconds
-        const quarterNoteDuration = 500;
-
+    async playNotes(scene, noteObjects, quarterNoteDuration, highlightColor) {
         for (let i = 0; i < noteObjects.length; i++) {
             const noteObj = noteObjects[i];
             const noteName = noteObj.note;
-            const duration = noteObj.duration;
+            const noteDurationMs = quarterNoteDuration * noteObj.duration;
 
-            // Calculate actual duration based on note value
-            const noteDurationMs = quarterNoteDuration * duration;
-
-            // Show the marker for this note
+            // Show the marker for this note (only meaningful while learning)
             if (this.showNotes) {
                 this.showNextMarker(i);
             }
 
             // Highlight the key
-            this.highlightKey(noteName, true);
+            this.highlightKey(noteName, true, highlightColor);
 
             // Play the note
             const audio = this.audioCache[noteName];
@@ -339,23 +351,31 @@ export class PianoLearningMode extends BasePokeballGameMode {
                 audio.play();
             }
 
-            // Wait for note duration (highlight stays on for 80% of note duration)
-            const highlightDuration = noteDurationMs * 0.8;
-            await new Promise(resolve => {
-                scene.time.delayedCall(highlightDuration, () => {
-                    this.highlightKey(noteName, false);
-                    resolve();
-                });
-            });
+            // Highlight stays on for 80% of the note duration
+            await this.wait(scene, noteDurationMs * 0.8);
+            this.highlightKey(noteName, false);
 
             // Small gap before next note (20% of note duration)
-            const gapDuration = noteDurationMs * 0.2;
             if (i < noteObjects.length - 1) {
-                await new Promise(resolve => scene.time.delayedCall(gapDuration, resolve));
+                await this.wait(scene, noteDurationMs * 0.2);
             }
         }
+    }
+
+    async playCurrentPattern(scene) {
+        if (this.isPlayingDemo) return;
+        this.isPlayingDemo = true;
+        const noteObjects = this.getCurrentPatternNotes();
+
+        const noteNames = noteObjects.map(n => n.note).join(', ');
+        console.log(`Playing pattern ${this.currentPatternIndex + 1}: ${noteNames}`);
+
+        // Base duration for a quarter note in milliseconds
+        await this.playNotes(scene, noteObjects, 500, 0xFFFF00);
 
         this.isPlayingDemo = false;
+        // The keyboard is answerable again once the pattern has been heard
+        this.inputLocked = false;
     }
 
     highlightKey(note, isHighlighted, color = 0xFFFF00) {
@@ -372,7 +392,7 @@ export class PianoLearningMode extends BasePokeballGameMode {
     }
 
     handleKeyPress(scene, note) {
-        if (this.isPlayingDemo) return;
+        if (this.isPlayingDemo || this.inputLocked) return;
 
         console.log(`Player pressed: ${note}`);
 
@@ -381,23 +401,21 @@ export class PianoLearningMode extends BasePokeballGameMode {
         const expectedNote = expectedNotes[this.playerNotes.length]?.note;
         const isCorrectNote = (note === expectedNote);
 
+        // Play the note either way (so they hear what they pressed)
+        const audio = this.audioCache[note];
+        if (audio) {
+            audio.play();
+        }
+
         if (isCorrectNote) {
             // Correct note! Remove marker and continue
             if (this.showNotes) {
-                this.removeNextPlayerMarker();
+                this.removeMarkerAt(this.playerNotes.length);
             }
 
             // Highlight the pressed key briefly
             this.highlightKey(note, true);
-
-            // Play the note
-            const audio = this.audioCache[note];
-            if (audio) {
-                audio.play();
-            }
-
-            // Reset highlight after a moment
-            scene.time.delayedCall(300, () => {
+            this.delayedCall(scene, 300, () => {
                 this.highlightKey(note, false);
             });
 
@@ -414,15 +432,7 @@ export class PianoLearningMode extends BasePokeballGameMode {
 
             // Highlight wrong key in red
             this.highlightKey(note, true, 0xFF0000);
-
-            // Play the note (so they hear what they pressed)
-            const audio = this.audioCache[note];
-            if (audio) {
-                audio.play();
-            }
-
-            // Reset highlight after a moment
-            scene.time.delayedCall(300, () => {
+            this.delayedCall(scene, 300, () => {
                 this.highlightKey(note, false);
             });
 
@@ -432,6 +442,9 @@ export class PianoLearningMode extends BasePokeballGameMode {
     }
 
     showErrorAndReplay(scene) {
+        // No taps count until the pattern has been replayed
+        this.inputLocked = true;
+
         // Reset player notes
         this.playerNotes = [];
 
@@ -448,12 +461,12 @@ export class PianoLearningMode extends BasePokeballGameMode {
         errorFlash.setDepth(1000);
         this.uiElements.push(errorFlash);
 
-        scene.time.delayedCall(200, () => {
+        this.delayedCall(scene, 200, () => {
             errorFlash.destroy();
         });
 
-        // Replay the current pattern after a moment
-        scene.time.delayedCall(800, () => {
+        // Replay the current pattern after a moment (unlocks input when done)
+        this.delayedCall(scene, 800, () => {
             this.playCurrentPattern(scene);
         });
     }
@@ -463,6 +476,9 @@ export class PianoLearningMode extends BasePokeballGameMode {
         // (errors are caught immediately in handleKeyPress)
         console.log(`Pattern complete! Player played: ${this.playerNotes.join(', ')}`);
 
+        // Nothing is answerable until the next pattern has been played
+        this.inputLocked = true;
+
         // Move to next pattern
         this.currentPatternIndex++;
         this.playerNotes = [];
@@ -470,21 +486,21 @@ export class PianoLearningMode extends BasePokeballGameMode {
         // Update progress
         this.updateBallIndicators();
 
-        // Update note markers for new pattern
-        if (this.showNotes && this.currentPatternIndex < this.challengeData.totalPatterns) {
-            this.displayNoteMarkers(scene);
-        }
-
         // Check if song is complete
         if (this.currentPatternIndex >= this.challengeData.totalPatterns) {
             // Song complete! Play entire melody then give reward
-            scene.time.delayedCall(500, async () => {
+            this.delayedCall(scene, 500, async () => {
                 await this.playEntireMelody(scene);
-                this.answerCallback(true, 'complete', scene.cameras.main.width / 2, scene.cameras.main.height / 2);
+                this.finish(true, 'complete', scene.cameras.main.width / 2, scene.cameras.main.height / 2);
             });
         } else {
-            // Play next pattern after short delay
-            scene.time.delayedCall(800, () => {
+            // Update note markers for new pattern
+            if (this.showNotes) {
+                this.displayNoteMarkers(scene);
+            }
+
+            // Play next pattern after short delay (unlocks input when done)
+            this.delayedCall(scene, 800, () => {
                 this.playCurrentPattern(scene);
             });
         }
@@ -494,70 +510,34 @@ export class PianoLearningMode extends BasePokeballGameMode {
         console.log('Playing entire melody at 2x tempo!');
         this.isPlayingDemo = true;
 
-        // Base duration for a quarter note at 2x tempo (half the normal speed)
-        const quarterNoteDuration = 250; // 500ms / 2 = 250ms
-
         // Flatten all measures into a single array
         const allNotes = [];
         for (const measure of this.currentSong.measures) {
             allNotes.push(...measure);
         }
 
-        for (let i = 0; i < allNotes.length; i++) {
-            const noteObj = allNotes[i];
-            const noteName = noteObj.note;
-            const duration = noteObj.duration;
-
-            // Calculate actual duration at 2x tempo
-            const noteDurationMs = quarterNoteDuration * duration;
-
-            // Highlight the key in GREEN
-            this.highlightKey(noteName, true, 0x4CAF50); // Green color
-
-            // Play the note
-            const audio = this.audioCache[noteName];
-            if (audio) {
-                audio.play();
-            }
-
-            // Wait for note duration
-            const highlightDuration = noteDurationMs * 0.8;
-            await new Promise(resolve => {
-                scene.time.delayedCall(highlightDuration, () => {
-                    this.highlightKey(noteName, false);
-                    resolve();
-                });
-            });
-
-            // Small gap between notes
-            const gapDuration = noteDurationMs * 0.2;
-            if (i < allNotes.length - 1) {
-                await new Promise(resolve => scene.time.delayedCall(gapDuration, resolve));
-            }
-        }
+        // Quarter note at 2x tempo (500ms / 2), keys light up green
+        await this.playNotes(scene, allNotes, 250, 0x4CAF50);
 
         this.isPlayingDemo = false;
     }
 
     cleanup(scene) {
-        // Clean up all UI elements
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
-        this.uiElements = [];
+        super.cleanup(scene);
 
         // Clean up audio
         Object.values(this.audioCache).forEach(audio => {
             if (audio) {
                 audio.stop();
+                if (audio.destroy) audio.destroy();
             }
         });
         this.audioCache = {};
 
         this.pianoKeys = {};
         this.ballIndicators = [];
+        this.noteMarkers = [];
         this.progressText = null;
+        this.isPlayingDemo = false;
     }
 }

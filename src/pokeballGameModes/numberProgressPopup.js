@@ -12,6 +12,11 @@
  * @param {Set} activeNumbers - Optional set of active numbers (others shown as inactive)
  */
 export function showNumberProgressPopup(clearedNumbers, minNumber, maxNumber, title = 'Progress', activeNumbers = null) {
+    // Only one popup at a time - a second tap while it's open would stack
+    // another copy on top.
+    const existing = document.getElementById('number-progress-popup');
+    if (existing) existing.remove();
+
     // Create HTML popup overlay
     const popup = document.createElement('div');
     popup.id = 'number-progress-popup';

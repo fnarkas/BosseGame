@@ -64,7 +64,7 @@ PokemonCounting/
 │       ├── BootScene.js      # Laddning
 │       ├── MainGameScene.js  # Huvudspel
 │       └── PokedexScene.js   # Pokedex
-└── pokemon_images/        # 100 Pokemon-bilder
+└── public/pokemon_images/ # Pokemon-bilder (laddas ner, ej i git)
 ```
 
 ### Teknologier
@@ -90,7 +90,7 @@ PokemonCounting/
 - Öppna Developer Console (F12) för felmeddelanden
 
 ### Pokemon-bilder visas inte
-- Kontrollera att `pokemon_images/` mappen finns
+- Kontrollera att `public/pokemon_images/` mappen finns
 - Kontrollera att alla 100 bilder finns i mappen
 
 ### Pokedex sparar inte
@@ -100,7 +100,7 @@ PokemonCounting/
 ## För Utvecklare
 
 ### Lägga till fler Pokemon
-1. Lägg till bilder i `pokemon_images/`
+1. Lägg till bilder i `public/pokemon_images/`
 2. Uppdatera `js/pokemonData.js` med nya Pokemon
 3. Klart!
 

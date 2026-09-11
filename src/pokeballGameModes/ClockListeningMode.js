@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { resetStreak } from '../streak.js';
+import { updateBoosterBar } from '../boosterBar.js';
 
 /**
  * Clock Listening Mode - Listen to Swedish time and set clock hands
@@ -33,6 +35,7 @@ export class ClockListeningMode extends BasePokeballGameMode {
         this.isDragging = false;
         this.draggedHand = null;
         this.isRevealing = false;
+        this.feedbackFlash = null;
         this.configLoaded = false;
     }
 
@@ -62,13 +65,21 @@ export class ClockListeningMode extends BasePokeballGameMode {
     }
 
     generateChallenge() {
-        // Generate random time (whole hours or half hours)
-        this.currentHour = Math.floor(Math.random() * 12) + 1; // 1-12
+        const previousHour = this.currentHour;
+        const previousMinute = this.currentMinute;
 
-        if (this.includeHalfHours && Math.random() < 0.5) {
-            this.currentMinute = 30; // Half hour
-        } else {
-            this.currentMinute = 0; // Whole hour
+        // Generate random time (whole hours or half hours), avoiding the same
+        // time twice in a row.
+        for (let attempt = 0; attempt < 20; attempt++) {
+            this.currentHour = Math.floor(Math.random() * 12) + 1; // 1-12
+
+            if (this.includeHalfHours && Math.random() < 0.5) {
+                this.currentMinute = 30; // Half hour
+            } else {
+                this.currentMinute = 0; // Whole hour
+            }
+
+            if (this.currentHour !== previousHour || this.currentMinute !== previousMinute) break;
         }
 
         this.challengeData = {
@@ -82,6 +93,10 @@ export class ClockListeningMode extends BasePokeballGameMode {
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
+
+        // A new question is answerable again
+        this.inputLocked = false;
+        this.isRevealing = false;
 
         // Speaker button to replay audio (centered at top)
         const speakerBtn = scene.add.text(width / 2, 150, '🔊', {
@@ -199,7 +214,8 @@ export class ClockListeningMode extends BasePokeballGameMode {
         });
 
         hitbox.on('drag', (pointer) => {
-            if (this.isRevealing) return;
+            // Hands are frozen while an answer is being resolved / revealed
+            if (this.isRevealing || this.inputLocked) return;
 
             // Calculate angle from clock center to pointer
             const dx = pointer.x - this.clockCenter.x;
@@ -250,9 +266,9 @@ export class ClockListeningMode extends BasePokeballGameMode {
         this.uiElements.push(submitText);
 
         submitBtn.on('pointerdown', () => {
-            if (!this.isRevealing) {
-                this.checkAnswer(scene);
-            }
+            if (this.isRevealing || this.inputLocked) return;
+            this.inputLocked = true;
+            this.checkAnswer(scene);
         });
     }
 
@@ -315,14 +331,14 @@ export class ClockListeningMode extends BasePokeballGameMode {
 
             // Check if won
             if (this.correctInRow >= this.requiredCorrect) {
-                scene.time.delayedCall(1000, () => {
+                this.delayedCall(scene, 1000, () => {
                     const x = scene.cameras.main.width / 2;
                     const y = scene.cameras.main.height / 2;
-                    this.answerCallback(true, 'clock-listening', x, y);
+                    this.finish(true, 'clock-listening', x, y);
                 });
             } else {
                 // Load next challenge
-                scene.time.delayedCall(1000, () => {
+                this.delayedCall(scene, 1000, () => {
                     this.loadNextChallenge(scene);
                 });
             }
@@ -338,11 +354,28 @@ export class ClockListeningMode extends BasePokeballGameMode {
             this.correctInRow = 0;
             this.updateBallIndicators();
 
-            // Reset and try again
-            scene.time.delayedCall(2000, () => {
+            // Reset streak since player made an error
+            resetStreak();
+            if (scene.boosterBarElements) {
+                updateBoosterBar(scene.boosterBarElements, 0, scene);
+            }
+
+            // Reset and try again (same time, hands back to 12:00)
+            this.delayedCall(scene, 2000, () => {
                 this.resetHands();
+                this.removeFeedbackFlash();
                 this.isRevealing = false;
+                this.inputLocked = false;
             });
+        }
+    }
+
+    removeFeedbackFlash() {
+        if (this.feedbackFlash) {
+            const index = this.uiElements.indexOf(this.feedbackFlash);
+            if (index >= 0) this.uiElements.splice(index, 1);
+            this.feedbackFlash.destroy();
+            this.feedbackFlash = null;
         }
     }
 
@@ -350,6 +383,7 @@ export class ClockListeningMode extends BasePokeballGameMode {
         // Green flash on clock
         const greenFlash = scene.add.circle(this.clockCenter.x, this.clockCenter.y, 150, 0x27AE60, 0.3);
         this.uiElements.push(greenFlash);
+        this.feedbackFlash = greenFlash;
 
         // Success particles
         this.showSuccessParticles(scene, this.clockCenter.x, this.clockCenter.y);
@@ -361,10 +395,11 @@ export class ClockListeningMode extends BasePokeballGameMode {
         // Red flash on clock
         const redFlash = scene.add.circle(this.clockCenter.x, this.clockCenter.y, 150, 0xFF0000, 0.3);
         this.uiElements.push(redFlash);
+        this.feedbackFlash = redFlash;
 
         // Shake animation
         const originalX = this.clockCenter.x;
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: this.uiElements.filter(el =>
                 el.x === originalX && el.y === this.clockCenter.y
             ),
@@ -385,7 +420,7 @@ export class ClockListeningMode extends BasePokeballGameMode {
         const correctMinuteAngle = (this.currentMinute / 5) * 30;
 
         // Animate hour hand and hitbox to correct position
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: [this.hourHand, this.hourHitbox],
             angle: correctHourAngle,
             duration: 800,
@@ -393,7 +428,7 @@ export class ClockListeningMode extends BasePokeballGameMode {
         });
 
         // Animate minute hand and hitbox to correct position
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: [this.minuteHand, this.minuteHitbox],
             angle: correctMinuteAngle,
             duration: 800,
@@ -410,8 +445,8 @@ export class ClockListeningMode extends BasePokeballGameMode {
         this.setHour = 12;
         this.setMinute = 0;
         this.updateHandVisuals();
-        this.hourHand.setFillStyle(0x2C3E50);
-        this.minuteHand.setFillStyle(0xE74C3C);
+        if (this.hourHand) this.hourHand.setFillStyle(0x2C3E50);
+        if (this.minuteHand) this.minuteHand.setFillStyle(0xE74C3C);
     }
 
     loadNextChallenge(scene) {
@@ -469,9 +504,10 @@ export class ClockListeningMode extends BasePokeballGameMode {
         });
         particles.setDepth(100);
         particles.explode();
+        this.uiElements.push(particles);
 
         // Clean up
-        scene.time.delayedCall(700, () => {
+        this.delayedCall(scene, 700, () => {
             particles.destroy();
         });
     }
@@ -514,14 +550,13 @@ export class ClockListeningMode extends BasePokeballGameMode {
         this.hourHitbox = null;
         this.minuteHitbox = null;
         this.clockGraphics = null;
+        this.feedbackFlash = null;
         this.ballIndicators = [];
+        this.isDragging = false;
+        this.draggedHand = null;
+        this.isRevealing = false;
 
-        // Destroy all UI elements
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
-        this.uiElements = [];
+        // Destroy all UI elements, cancel pending timers/tweens, unlock input
+        super.cleanup(scene);
     }
 }

@@ -414,3 +414,23 @@ scene.time.delayedCall(delayMs, () => this.secondAudio.play());
 ```
 
 Gap guide: 0-50ms = tight, 50-100ms = natural, 100ms+ = slow
+
+## Automated Tests
+
+Run `npm test` (vitest, Node). Phaser can't run headless, so the minigames are
+exercised against `test/helpers/fakeScene.js` — see `test/README.md`.
+
+### Rules for game modes (enforced by `test/lint.test.js`)
+- Schedule with `this.delayedCall(scene, ms, fn)` and `this.addTween(scene, cfg)`,
+  never `scene.time.delayedCall` / `scene.tweens.add` directly — `cleanup()`
+  cancels them so an old challenge can't rebuild UI over the next mode.
+- Report the win with `this.finish(true, answer, x, y)` (fires once), not
+  `this.answerCallback(...)`.
+- `cleanup()` must call `super.cleanup(scene)`; push every game object into
+  `this.uiElements` (particles too).
+- Gate taps with `this.inputLocked` while an answer is being resolved; reset it at
+  the top of `createChallengeUI()`.
+- Never read `.destroyed` on a game object (Phaser has no such flag); use `obj.scene`.
+- Every new mode needs `test/modes/<name>.test.js`: generation invariants, happy path
+  to exactly one reward, wrong-answer path, double-tap lockout, cleanup + 10 s
+  advance leaves no orphaned objects, and no unknown audio keys.

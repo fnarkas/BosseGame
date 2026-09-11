@@ -6,13 +6,19 @@ import { hasPokeballs, removePokeball, getInventory, POKEBALL_TYPES } from '../i
 import { showPokeballSelector } from '../pokeballSelector.js';
 import { getRarityInfo, attemptCatch } from '../pokemonRarity.js';
 import { getCoinCount, deductCoins } from '../currency.js';
+import { POKEMON_DATA, getAvailablePokemon } from '../pokemonData.js';
+
+// First three catches are guaranteed tutorial Pokemon (Onix, Zubat, Seel):
+// names with letters whose upper/lowercase shapes look alike.
+const TUTORIAL_POKEMON_IDS = [95, 41, 86];
 
 export class MainGameScene extends Phaser.Scene {
     constructor() {
         super({ key: 'MainGameScene' });
         this.currentPokemon = null;
         this.currentPokemonSprite = null;
-        this.attemptsLeft = 3;
+        this.MAX_ATTEMPTS = 3;
+        this.attemptsLeft = this.MAX_ATTEMPTS;
         this.isAnimating = false; // Prevent multiple clicks during animation
         this.answerMode = null; // Will be set in create() based on game mode
         this.inventoryHUD = null;
@@ -184,7 +190,7 @@ export class MainGameScene extends Phaser.Scene {
 
     startNewEncounter(forceNewPokemon = false) {
         // Reset attempts
-        this.attemptsLeft = 3;
+        this.attemptsLeft = this.MAX_ATTEMPTS;
 
         // Clean up previous Pokemon sprite and its tweens
         if (this.currentPokemonSprite) {
@@ -204,8 +210,11 @@ export class MainGameScene extends Phaser.Scene {
             this.answerMode.cleanup(this);
         }
 
-        // Clear previous UI
-        this.children.list.forEach(child => {
+        // Clear previous UI. Iterate over a copy: destroy() removes the child
+        // from the display list, and mutating the list mid-forEach skips the
+        // element right after every destroyed one (leaving e.g. the re-roll
+        // price text behind on every encounter).
+        [...this.children.list].forEach(child => {
             if (child.getData && child.getData('clearOnNewEncounter')) {
                 child.destroy();
             }
@@ -222,6 +231,12 @@ export class MainGameScene extends Phaser.Scene {
         if (!forceNewPokemon && this.registry.get('currentPokemon')) {
             // Restore previous Pokemon from registry
             this.currentPokemon = this.registry.get('currentPokemon');
+            // Re-derive the tutorial flag: it is per-scene state and would
+            // otherwise be lost after a trip to the minigame scene, turning a
+            // guaranteed tutorial catch into a random one.
+            const caughtList = this.registry.get('caughtPokemon') || [];
+            this.isTutorialCatch = caughtList.length < TUTORIAL_POKEMON_IDS.length &&
+                TUTORIAL_POKEMON_IDS.includes(this.currentPokemon.id);
             console.log('Restoring previous Pokemon:', this.currentPokemon.name);
         } else {
             // Spawn new random Pokemon
@@ -251,20 +266,23 @@ export class MainGameScene extends Phaser.Scene {
     spawnPokemon() {
         // Tutorial system: First 3 encounters are always Onix, Zubat, Seel (100% catch rate)
         const caughtList = this.registry.get('caughtPokemon') || [];
-        const tutorialPokemonIds = [95, 41, 86]; // Onix, Zubat, Seel - names with similar upper/lowercase letters
+        const tutorialPokemonIds = TUTORIAL_POKEMON_IDS;
+
+        // Get available Pokemon (Gen 1 only)
+        const availablePokemon = getAvailablePokemon();
 
         let selectedPokemon;
         if (caughtList.length < 3) {
             // Tutorial mode: spawn specific Pokemon in order
             const tutorialIndex = caughtList.length;
             const tutorialId = tutorialPokemonIds[tutorialIndex];
-            selectedPokemon = POKEMON_DATA.find(p => p.id === tutorialId);
+            selectedPokemon = availablePokemon.find(p => p.id === tutorialId);
             this.isTutorialCatch = true;
             console.log(`Tutorial mode: Spawning ${selectedPokemon.name} (${tutorialIndex + 1}/3)`);
         } else {
             // Normal mode: random Pokemon from UNCAUGHT ones only
             const caughtIds = new Set(caughtList.map(p => p.id || p));
-            const uncaughtPokemon = POKEMON_DATA.filter(p => !caughtIds.has(p.id));
+            const uncaughtPokemon = availablePokemon.filter(p => !caughtIds.has(p.id));
 
             if (uncaughtPokemon.length > 0) {
                 // Select from uncaught Pokemon
@@ -272,7 +290,7 @@ export class MainGameScene extends Phaser.Scene {
                 console.log(`Spawning uncaught Pokemon: ${selectedPokemon.name} (${uncaughtPokemon.length} uncaught remaining)`);
             } else {
                 // All Pokemon caught! Allow any Pokemon to spawn
-                selectedPokemon = Phaser.Utils.Array.GetRandom(POKEMON_DATA);
+                selectedPokemon = Phaser.Utils.Array.GetRandom(availablePokemon);
                 console.log(`All Pokemon caught! Spawning ${selectedPokemon.name} (repeat)`);
             }
             this.isTutorialCatch = false;
@@ -545,12 +563,11 @@ export class MainGameScene extends Phaser.Scene {
         this.saveCaughtPokemon();
     }
 
-    showSuccessParticles(pokeball) {
-        console.log('showSuccessParticles called!', 'pokeball position:', pokeball.x, pokeball.y);
-
-        // Create star-shaped particle texture if it doesn't exist
+    // The 'star' particle texture is shared by the catch-success burst, the
+    // break-free explosion and the triumphant return. It must exist before any
+    // of them runs, otherwise Phaser draws the green "missing texture" squares.
+    ensureStarTexture() {
         if (!this.textures.exists('star')) {
-            console.log('Creating star texture in showSuccessParticles');
             const particleGraphics = this.add.graphics();
             particleGraphics.fillStyle(0xFFFF00, 1);
             particleGraphics.lineStyle(2, 0xFFD700);
@@ -579,6 +596,12 @@ export class MainGameScene extends Phaser.Scene {
             particleGraphics.generateTexture('star', 24, 24);
             particleGraphics.destroy();
         }
+    }
+
+    showSuccessParticles(pokeball) {
+        console.log('showSuccessParticles called!', 'pokeball position:', pokeball.x, pokeball.y);
+
+        this.ensureStarTexture();
 
         // More intense yellow star particles with multiple bursts (behind pokeball)
         const particles = this.add.particles(pokeball.x, pokeball.y, 'star', {
@@ -621,7 +644,7 @@ export class MainGameScene extends Phaser.Scene {
             window.showPokemonCaughtPopup(this.currentPokemon.id, () => {
                 this.isAnimating = false;
                 // Explicitly reset hearts before starting new encounter
-                this.attemptsLeft = 3;
+                this.attemptsLeft = this.MAX_ATTEMPTS;
                 this.startNewEncounter();
             });
         });
@@ -891,6 +914,8 @@ export class MainGameScene extends Phaser.Scene {
     pokeballBreakOpen(pokeball) {
         const pokeballX = pokeball.x;
         const pokeballY = pokeball.y;
+
+        this.ensureStarTexture();
 
         // Create explosion particle burst
         const explosionParticles = this.add.particles(pokeballX, pokeballY, 'star', {

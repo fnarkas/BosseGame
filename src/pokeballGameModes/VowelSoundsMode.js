@@ -2,6 +2,8 @@ import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { VOWEL_PAIRS, firstVowelOf } from '../vowelLengthPairs.js';
 import { splitPair } from './VowelLengthMode.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { resetStreak } from '../streak.js';
+import { updateBoosterBar } from '../boosterBar.js';
 
 /**
  * Vowel sounds game mode - the two steps that come BEFORE VowelLengthMode.
@@ -106,20 +108,31 @@ export class VowelSoundsMode extends BasePokeballGameMode {
             this.roundType = this.correctCount % 2 === 0 ? ROUND_SOUND : ROUND_LETTERS;
         }
 
-        const targetIsLong = Phaser.Math.Between(0, 1) === 0;
+        // Re-roll if the draw is identical to the previous question, so the
+        // same sound or word never comes twice in a row.
+        const previous = this.challengeData;
+        for (let attempt = 0; attempt < 10; attempt++) {
+            const targetIsLong = Phaser.Math.Between(0, 1) === 0;
 
-        if (this.roundType === ROUND_SOUND) {
-            const vowel = VOWELS[Phaser.Math.Between(0, VOWELS.length - 1)];
-            this.challengeData = { vowel, targetIsLong, pair: null, parts: null, target: null };
-        } else {
-            const { pair, parts } = DOUBLING_PAIRS[Phaser.Math.Between(0, DOUBLING_PAIRS.length - 1)];
-            this.challengeData = {
-                vowel: firstVowelOf(pair.long),
-                targetIsLong,
-                pair,
-                parts,
-                target: targetIsLong ? pair.long : pair.short
-            };
+            if (this.roundType === ROUND_SOUND) {
+                const vowel = VOWELS[Phaser.Math.Between(0, VOWELS.length - 1)];
+                this.challengeData = { vowel, targetIsLong, pair: null, parts: null, target: null };
+            } else {
+                const { pair, parts } = DOUBLING_PAIRS[Phaser.Math.Between(0, DOUBLING_PAIRS.length - 1)];
+                this.challengeData = {
+                    vowel: firstVowelOf(pair.long),
+                    targetIsLong,
+                    pair,
+                    parts,
+                    target: targetIsLong ? pair.long : pair.short
+                };
+            }
+
+            const same = previous
+                && previous.pair === this.challengeData.pair
+                && previous.vowel === this.challengeData.vowel
+                && previous.targetIsLong === this.challengeData.targetIsLong;
+            if (!same) break;
         }
 
         return this.challengeData;
@@ -140,7 +153,7 @@ export class VowelSoundsMode extends BasePokeballGameMode {
             this.createConsonantOptions(scene);
         }
 
-        scene.time.delayedCall(300, () => this.playVowel(scene, vowel, targetIsLong));
+        this.delayedCall(scene, 300, () => this.playVowel(scene, vowel, targetIsLong));
         this.createBallIndicators(scene);
     }
 
@@ -157,7 +170,7 @@ export class VowelSoundsMode extends BasePokeballGameMode {
         speaker.on('pointerout', () => speaker.setScale(1.0));
         speaker.on('pointerdown', () => {
             speaker.setScale(0.9);
-            scene.time.delayedCall(100, () => speaker.setScale(1.0));
+            this.delayedCall(scene, 100, () => speaker.setScale(1.0));
             onPlay();
         });
 
@@ -231,7 +244,7 @@ export class VowelSoundsMode extends BasePokeballGameMode {
 
             badge.on('pointerdown', () => {
                 badge.setScale(0.9);
-                scene.time.delayedCall(100, () => badge.setScale(1.0));
+                this.delayedCall(scene, 100, () => badge.setScale(1.0));
                 onListen();
             });
             this.uiElements.push(badge);
@@ -330,10 +343,14 @@ export class VowelSoundsMode extends BasePokeballGameMode {
             this.reveal(scene, () => this.advance(scene));
         } else {
             trackWrongAnswer('VowelSoundsMode', label, String(answer));
+            resetStreak();
+            if (scene.boosterBarElements) {
+                updateBoosterBar(scene.boosterBarElements, 0, scene);
+            }
 
             chosen.card.setFillStyle(0xFF0000, 0.5);
             const originalX = chosen.card.x;
-            scene.tweens.add({
+            this.addTween(scene, {
                 targets: [chosen.card, ...chosen.contents],
                 x: '-=10',
                 duration: 50,
@@ -353,14 +370,12 @@ export class VowelSoundsMode extends BasePokeballGameMode {
 
     advance(scene) {
         if (this.correctCount >= this.requiredCorrect) {
-            scene.time.delayedCall(500, () => {
-                if (this.answerCallback) {
-                    const answer = this.challengeData.target || this.challengeData.vowel;
-                    this.answerCallback(true, answer, scene.cameras.main.width / 2, WORD_Y);
-                }
+            this.delayedCall(scene, 500, () => {
+                const answer = this.challengeData.target || this.challengeData.vowel;
+                this.finish(true, answer, scene.cameras.main.width / 2, WORD_Y);
             });
         } else {
-            scene.time.delayedCall(700, () => {
+            this.delayedCall(scene, 700, () => {
                 this.isRevealing = false;
                 this.cleanup(scene);
                 this.generateChallenge();
@@ -408,11 +423,11 @@ export class VowelSoundsMode extends BasePokeballGameMode {
         this.playVowel(scene, vowel, targetIsLong);
 
         if (targetIsLong) {
-            scene.tweens.add({ targets: letter, scaleX: VOWEL_STRETCH, duration: 600, ease: 'Sine.easeOut' });
+            this.addTween(scene, { targets: letter, scaleX: VOWEL_STRETCH, duration: 600, ease: 'Sine.easeOut' });
             // The bar grows from short to long (56px -> 280px) along with the letter
-            scene.tweens.add({ targets: bar, scaleX: 5, duration: 600, ease: 'Sine.easeOut' });
+            this.addTween(scene, { targets: bar, scaleX: 5, duration: 600, ease: 'Sine.easeOut' });
         } else {
-            scene.tweens.add({
+            this.addTween(scene, {
                 targets: letter,
                 scaleX: VOWEL_SQUEEZE,
                 duration: 180,
@@ -423,7 +438,7 @@ export class VowelSoundsMode extends BasePokeballGameMode {
             });
         }
 
-        scene.time.delayedCall(1100, onDone);
+        this.delayedCall(scene, 1100, onDone);
     }
 
     // Step 2: the whole word is spelled out and read aloud. The consonant(s)
@@ -456,7 +471,7 @@ export class VowelSoundsMode extends BasePokeballGameMode {
         const vowel = this.letterObjects.find(l => l.isVowel);
         if (targetIsLong) {
             const delta = (VOWEL_STRETCH - 1) * LETTER_STEP * 0.6;
-            scene.tweens.add({
+            this.addTween(scene, {
                 targets: vowel.text,
                 scaleX: VOWEL_STRETCH,
                 x: vowel.baseX + delta / 2,
@@ -465,9 +480,9 @@ export class VowelSoundsMode extends BasePokeballGameMode {
             });
             this.letterObjects
                 .filter(l => l.index > vowel.index)
-                .forEach(l => scene.tweens.add({ targets: l.text, x: l.baseX + delta, duration: 600, ease: 'Sine.easeOut' }));
+                .forEach(l => this.addTween(scene, { targets: l.text, x: l.baseX + delta, duration: 600, ease: 'Sine.easeOut' }));
         } else {
-            scene.tweens.add({
+            this.addTween(scene, {
                 targets: vowel.text,
                 scaleX: VOWEL_SQUEEZE,
                 duration: 180,
@@ -477,7 +492,7 @@ export class VowelSoundsMode extends BasePokeballGameMode {
             });
             this.letterObjects
                 .filter(l => l.index > vowel.index && l.index <= vowel.index + clusterLength)
-                .forEach(l => scene.tweens.add({
+                .forEach(l => this.addTween(scene, {
                     targets: l.text,
                     scaleX: 1.25,
                     scaleY: 1.25,
@@ -487,7 +502,7 @@ export class VowelSoundsMode extends BasePokeballGameMode {
                 }));
         }
 
-        scene.time.delayedCall(1300, onDone);
+        this.delayedCall(scene, 1300, onDone);
     }
 
     destroyWord() {
@@ -538,10 +553,7 @@ export class VowelSoundsMode extends BasePokeballGameMode {
             this.currentAudio = null;
         }
 
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) element.destroy();
-        });
-        this.uiElements = [];
+        super.cleanup(scene);
         this.optionButtons = [];
         this.letterObjects = [];
         this.wordElements = [];

@@ -1,6 +1,8 @@
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
 import { VOWEL_PAIRS, firstVowelOf } from '../vowelLengthPairs.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { resetStreak } from '../streak.js';
+import { updateBoosterBar } from '../boosterBar.js';
 
 /**
  * Vowel length game mode
@@ -135,7 +137,7 @@ export class VowelLengthMode extends BasePokeballGameMode {
         if (this.roundType === ROUND_PICK_SPELLING) {
             this.createSpeaker(scene, STIMULUS_Y, () => this.playWord(scene, target));
             this.createWordOptions(scene);
-            scene.time.delayedCall(300, () => this.playWord(scene, target));
+            this.delayedCall(scene, 300, () => this.playWord(scene, target));
 
         } else if (this.roundType === ROUND_JUDGE_READING) {
             // The written word is the stimulus; one reading of it is played.
@@ -143,13 +145,13 @@ export class VowelLengthMode extends BasePokeballGameMode {
             this.createSpeaker(scene, STIMULUS_Y, () => this.playWord(scene, played));
             this.renderWord(scene, target, targetIsLong);
             this.createJudgeOptions(scene);
-            scene.time.delayedCall(300, () => this.playWord(scene, played));
+            this.delayedCall(scene, 300, () => this.playWord(scene, played));
 
         } else {
             this.createSpeaker(scene, STIMULUS_Y, () => this.playWord(scene, target));
             this.renderWord(scene, `${parts.stem}${parts.tail}`, targetIsLong, { gapAfter: parts.stem.length - 1 });
             this.createConsonantOptions(scene);
-            scene.time.delayedCall(300, () => this.playWord(scene, target));
+            this.delayedCall(scene, 300, () => this.playWord(scene, target));
         }
 
         this.createBallIndicators(scene);
@@ -168,7 +170,7 @@ export class VowelLengthMode extends BasePokeballGameMode {
         speaker.on('pointerout', () => speaker.setScale(1.0));
         speaker.on('pointerdown', () => {
             speaker.setScale(0.9);
-            scene.time.delayedCall(100, () => speaker.setScale(1.0));
+            this.delayedCall(scene, 100, () => speaker.setScale(1.0));
             onPlay();
         });
 
@@ -297,7 +299,7 @@ export class VowelLengthMode extends BasePokeballGameMode {
 
             badge.on('pointerdown', () => {
                 badge.setScale(0.9);
-                scene.time.delayedCall(100, () => badge.setScale(1.0));
+                this.delayedCall(scene, 100, () => badge.setScale(1.0));
                 onListen();
             });
             this.uiElements.push(badge);
@@ -391,10 +393,14 @@ export class VowelLengthMode extends BasePokeballGameMode {
             this.revealWord(scene, () => this.advance(scene));
         } else {
             trackWrongAnswer('VowelLengthMode', target, String(answer));
+            resetStreak();
+            if (scene.boosterBarElements) {
+                updateBoosterBar(scene.boosterBarElements, 0, scene);
+            }
 
             chosen.card.setFillStyle(0xFF0000, 0.5);
             const originalX = chosen.card.x;
-            scene.tweens.add({
+            this.addTween(scene, {
                 targets: [chosen.card, chosen.text],
                 x: originalX - 10,
                 duration: 50,
@@ -414,13 +420,11 @@ export class VowelLengthMode extends BasePokeballGameMode {
 
     advance(scene) {
         if (this.correctCount >= this.requiredCorrect) {
-            scene.time.delayedCall(500, () => {
-                if (this.answerCallback) {
-                    this.answerCallback(true, this.challengeData.target, scene.cameras.main.width / 2, WORD_Y);
-                }
+            this.delayedCall(scene, 500, () => {
+                this.finish(true, this.challengeData.target, scene.cameras.main.width / 2, WORD_Y);
             });
         } else {
-            scene.time.delayedCall(700, () => {
+            this.delayedCall(scene, 700, () => {
                 this.isRevealing = false;
                 this.cleanup(scene);
                 this.generateChallenge();
@@ -442,13 +446,13 @@ export class VowelLengthMode extends BasePokeballGameMode {
 
         const vowel = this.letterObjects.find(l => l.isVowel);
         if (!vowel) {
-            scene.time.delayedCall(600, onDone);
+            this.delayedCall(scene, 600, onDone);
             return;
         }
 
         if (targetIsLong) {
             const delta = (VOWEL_STRETCH - 1) * LETTER_STEP * 0.6;
-            scene.tweens.add({
+            this.addTween(scene, {
                 targets: vowel.text,
                 scaleX: VOWEL_STRETCH,
                 x: vowel.baseX + delta / 2,
@@ -459,7 +463,7 @@ export class VowelLengthMode extends BasePokeballGameMode {
             this.letterObjects
                 .filter(l => l.index > vowel.index)
                 .forEach(l => {
-                    scene.tweens.add({
+                    this.addTween(scene, {
                         targets: l.text,
                         x: l.baseX + delta,
                         duration: 600,
@@ -467,7 +471,7 @@ export class VowelLengthMode extends BasePokeballGameMode {
                     });
                 });
         } else {
-            scene.tweens.add({
+            this.addTween(scene, {
                 targets: vowel.text,
                 scaleX: 0.75,
                 duration: 180,
@@ -478,7 +482,7 @@ export class VowelLengthMode extends BasePokeballGameMode {
             this.letterObjects
                 .filter(l => l.index > vowel.index)
                 .forEach(l => {
-                    scene.tweens.add({
+                    this.addTween(scene, {
                         targets: l.text,
                         scaleX: 1.25,
                         scaleY: 1.25,
@@ -489,7 +493,7 @@ export class VowelLengthMode extends BasePokeballGameMode {
                 });
         }
 
-        scene.time.delayedCall(1100, onDone);
+        this.delayedCall(scene, 1100, onDone);
     }
 
     // ---------------- Audio ----------------
@@ -529,10 +533,7 @@ export class VowelLengthMode extends BasePokeballGameMode {
             this.currentAudio = null;
         }
 
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) element.destroy();
-        });
-        this.uiElements = [];
+        super.cleanup(scene);
         this.optionButtons = [];
         this.letterObjects = [];
         this.wordElements = [];

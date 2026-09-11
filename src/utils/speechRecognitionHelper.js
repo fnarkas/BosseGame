@@ -204,8 +204,9 @@ export class SpeechRecognitionHelper {
 
             console.log('❌ Network connection test: FAILED', error.message);
 
-            // Retry after 5 seconds
+            // Retry after 5 seconds (unless the helper was cleaned up meanwhile)
             scene.time.delayedCall(5000, () => {
+                if (!this.recognition) return;
                 if (!this.hasNetworkConnection) {
                     this.testNetworkConnection(scene);
                 }

@@ -7,13 +7,13 @@ import os
 from pathlib import Path
 
 
-def download_pokemon_images(num_pokemon=151, output_dir="pokemon_images"):
+def download_pokemon_images(num_pokemon=151, output_dir="public/pokemon_images"):
     """
     Download images of the first num_pokemon Pokémon.
 
     Args:
         num_pokemon: Number of Pokémon to download (default: 151)
-        output_dir: Directory to save images (default: "pokemon_images")
+        output_dir: Directory to save images (default: "public/pokemon_images")
     """
     # Create output directory if it doesn't exist
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -58,4 +58,4 @@ def download_pokemon_images(num_pokemon=151, output_dir="pokemon_images"):
 
 
 if __name__ == "__main__":
-    download_pokemon_images(num_pokemon=151)
+    download_pokemon_images(num_pokemon=1025)

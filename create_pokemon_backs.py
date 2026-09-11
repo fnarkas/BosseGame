@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def create_pokemon_backs_pdf(
-    image_dir="pokemon_images",
+    image_dir="public/pokemon_images",
     output_pdf="pokemon_backs.pdf",
     cards_per_row=3,
     cards_per_col=3
@@ -115,7 +115,7 @@ def create_pokemon_backs_pdf(
 
 if __name__ == "__main__":
     create_pokemon_backs_pdf(
-        image_dir="pokemon_images",
+        image_dir="public/pokemon_images",
         output_pdf="pokemon_backs.pdf",
         cards_per_row=3,  # Must match the front
         cards_per_col=3   # Must match the front

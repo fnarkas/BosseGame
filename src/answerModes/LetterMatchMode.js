@@ -27,6 +27,15 @@ export class LetterMatchMode extends BaseAnswerMode {
         this.currentHighlightText = null;
         this.currentHighlightGlow = null;
 
+        // Input gate: one tap is resolved at a time. Without it a quick double
+        // tap on the right letter counted the second tap against the NEXT
+        // letter (losing a life), and taps during the catch sequence replayed
+        // the whole "all letters collected" flow.
+        this.inputLocked = false;
+        // Timers scheduled by this mode; cancelled by cleanup() so a pending UI
+        // refresh can't redraw the old Pokemon's name over a new encounter.
+        this.pendingTimers = new Set();
+
         // Configuration options
         this.config = {
             nameCase: config.nameCase || 'lowercase',      // 'lowercase' | 'uppercase'
@@ -83,12 +92,22 @@ export class LetterMatchMode extends BaseAnswerMode {
         return this.challengeData;
     }
 
+    delayedCall(delay, callback) {
+        const event = this.scene.time.delayedCall(delay, () => {
+            this.pendingTimers.delete(event);
+            callback();
+        });
+        this.pendingTimers.add(event);
+        return event;
+    }
+
     createChallengeUI(scene, attemptsLeft) {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
 
         // Store scene reference for later updates
         this.scene = scene;
+        this.inputLocked = false;
 
         // Show attempts (hearts) - positioned above Pokemon with more margin
         const heartsText = '❤️'.repeat(attemptsLeft) + '🖤'.repeat(3 - attemptsLeft);
@@ -331,7 +350,8 @@ export class LetterMatchMode extends BaseAnswerMode {
         particles.explode();
 
         // Clean up particles after animation
-        this.scene.time.delayedCall(900, () => {
+        this.uiElements.push(particles);
+        this.delayedCall(900, () => {
             particles.destroy();
         });
     }
@@ -423,6 +443,9 @@ export class LetterMatchMode extends BaseAnswerMode {
                 });
 
                 button.on('pointerdown', () => {
+                    if (this.inputLocked) return;
+                    this.inputLocked = true;
+
                     // Play letter audio immediately for any letter pressed
                     this.playLetterAudio(letter);
 
@@ -439,8 +462,9 @@ export class LetterMatchMode extends BaseAnswerMode {
                         this.showCorrectLetterEffect();
 
                         // Delay UI update so particle effect is fully visible before redraw
-                        this.scene.time.delayedCall(600, () => {
+                        this.delayedCall(600, () => {
                             this.updateLetterDisplay();
+                            this.inputLocked = false;
                         });
                     } else if (result === false) {
                         // Wrong answer - letter audio already played above
@@ -448,8 +472,10 @@ export class LetterMatchMode extends BaseAnswerMode {
                         // Show shake/red effect
                         this.showIncorrectLetterEffect();
 
-                        // Delay callback until shake animation completes (400ms)
-                        this.scene.time.delayedCall(450, () => {
+                        // Delay callback until shake animation completes (400ms).
+                        // The scene answers with updateUI() (or an animation that
+                        // ends in createChallengeUI()), both of which unlock input.
+                        this.delayedCall(450, () => {
                             if (this.answerCallback) {
                                 this.answerCallback(result);
                             }
@@ -465,13 +491,13 @@ export class LetterMatchMode extends BaseAnswerMode {
                         this.updateLetterDisplay();
 
                         // Small delay to let the green letter render, then show particle effect
-                        this.scene.time.delayedCall(50, () => {
+                        this.delayedCall(50, () => {
                             this.showCorrectLetterEffect();
                         });
 
                         // Wait for last letter audio to finish before playing Pokemon name
                         // 800ms delay to prevent audio overlap
-                        this.scene.time.delayedCall(800, () => {
+                        this.delayedCall(800, () => {
                             // Play Pokemon name audio
                             const pokemonAudio = this.scene.sound.add(audioKey);
 
@@ -512,6 +538,7 @@ export class LetterMatchMode extends BaseAnswerMode {
 
         // Update Pokemon name display to show collected letters
         this.updateLetterDisplay();
+        this.inputLocked = false;
 
         // Note: updateLetterDisplay() now calls recreateLetterButtons() internally
         // No need to recreate buttons here separately
@@ -557,6 +584,13 @@ export class LetterMatchMode extends BaseAnswerMode {
     }
 
     cleanup(scene) {
+        // Cancel pending refresh/callback timers from the previous challenge
+        this.pendingTimers.forEach(event => {
+            if (event && event.remove) event.remove(false);
+        });
+        this.pendingTimers.clear();
+        this.inputLocked = false;
+
         // Destroy all UI elements
         this.uiElements.forEach(element => {
             if (element && element.destroy) {

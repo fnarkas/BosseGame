@@ -77,20 +77,22 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
         const challenge = Phaser.Utils.Array.GetRandom(availableChallenges);
         this.usedChallengeIds.add(challenge.id);
 
-        // Pick 4 random other emojis as distractors
+        // Pick 4 random other emojis as distractors. Several words share an
+        // emoji (BIL/AUTO 🚗, BOLL/FOTBOLL ⚽), so exclude the correct emoji
+        // and de-duplicate, otherwise the same picture appears twice.
         let otherChallenges;
         if (letterFilterEnabled) {
             // Distractors from same letter
             otherChallenges = dictionary.filter(
-                c => c.id !== challenge.id && c.letter === this.currentLetter
+                c => c.id !== challenge.id && c.letter === this.currentLetter && c.emoji !== challenge.emoji
             );
         } else {
             // Distractors from any letter
-            otherChallenges = dictionary.filter(c => c.id !== challenge.id);
+            otherChallenges = dictionary.filter(c => c.id !== challenge.id && c.emoji !== challenge.emoji);
         }
 
         const shuffledOthers = Phaser.Utils.Array.Shuffle([...otherChallenges]);
-        const distractorEmojis = shuffledOthers.slice(0, 4).map(c => c.emoji);
+        const distractorEmojis = [...new Set(shuffledOthers.map(c => c.emoji))].slice(0, 4);
 
         // Shuffle emojis (correct + distractors)
         const allEmojis = [challenge.emoji, ...distractorEmojis];
@@ -108,6 +110,10 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
     async createChallengeUI(scene) {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
+
+        // A fresh challenge always starts accepting input again.
+        this.inputLocked = false;
+        this.isRevealing = false;
 
         // Display the word with text case transformation
         const displayWord = await transformWordCase(this.challengeData.word);
@@ -165,7 +171,9 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
 
             // Click handler
             button.on('pointerdown', () => {
-                if (this.isRevealing) return; // Don't allow clicks during reveal
+                // Ignore taps during the reveal and while an answer is being resolved
+                if (this.isRevealing || this.inputLocked) return;
+                this.inputLocked = true;
 
                 const isCorrect = this.checkAnswer(emoji);
 
@@ -174,7 +182,7 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
                     this.showWrongAnswerFeedback(scene, button);
                 } else {
                     // Correct answer - proceed as normal
-                    this.answerCallback(isCorrect, emoji, x, y);
+                    this.finish(true, emoji, x, y);
                 }
             });
         });
@@ -200,7 +208,7 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
 
         // Shake animation
         const originalX = wrongButton.x;
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: wrongButton,
             x: originalX - 10,
             duration: 50,
@@ -240,7 +248,7 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
         correctButton.button.setStrokeStyle(6, 0xFFD700); // Thick gold border
 
         // Pulsing scale animation
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: [correctButton.button, correctButton.emojiText],
             scaleX: 1.2,
             scaleY: 1.2,
@@ -251,7 +259,7 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
         });
 
         // Pulsing alpha on button
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: correctButton.button,
             alpha: 0.7,
             duration: 500,
@@ -261,7 +269,7 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
         });
 
         // After 2 seconds of pulsing, restart with new challenge
-        scene.time.delayedCall(2000, () => {
+        this.delayedCall(scene, 2000, () => {
             // Clean up current UI
             this.cleanup(scene);
 
@@ -284,13 +292,7 @@ export class WordEmojiMatchMode extends BasePokeballGameMode {
     }
 
     cleanup(scene) {
-        // Destroy all UI elements
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
-        this.uiElements = [];
+        super.cleanup(scene);
         this.emojiButtons = [];
     }
 }

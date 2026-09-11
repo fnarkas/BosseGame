@@ -1,10 +1,18 @@
+import Phaser from 'phaser';
 import { BasePokeballGameMode } from './BasePokeballGameMode.js';
+import { trackWrongAnswer } from '../wrongAnswers.js';
+import { resetStreak } from '../streak.js';
+import { updateBoosterBar } from '../boosterBar.js';
 
 /**
  * Addition game mode
  * Player solves simple addition problems by dragging digits
  * Configurable: number of terms, maximum sum, and whether only one term can have multiple digits
  */
+
+// The answer has a tens and a ones slot, so sums must stay below 100.
+const MAX_TWO_DIGIT_SUM = 99;
+
 export class AdditionMode extends BasePokeballGameMode {
     constructor() {
         super();
@@ -17,10 +25,12 @@ export class AdditionMode extends BasePokeballGameMode {
         this.onesZone = null;
         this.digitBoxes = [];
         this.isRevealing = false;
+        this.dragHandler = null;
+        this.dragEndHandler = null;
 
         // Default settings (will be loaded from config)
         this.numberOfTerms = 2;
-        this.maxSum = 99;
+        this.maxSum = MAX_TWO_DIGIT_SUM;
         this.onlyOneMultiDigit = true;
         this.configLoaded = false;
     }
@@ -31,8 +41,10 @@ export class AdditionMode extends BasePokeballGameMode {
             if (response.ok) {
                 const config = await response.json();
                 if (config.addition) {
-                    this.numberOfTerms = config.addition.numberOfTerms || 2;
-                    this.maxSum = config.addition.maxSum || 99;
+                    this.numberOfTerms = Math.max(1, parseInt(config.addition.numberOfTerms, 10) || 2);
+                    const maxSum = parseInt(config.addition.maxSum, 10) || MAX_TWO_DIGIT_SUM;
+                    // Two drop zones: the sum can never need three digits
+                    this.maxSum = Math.max(1, Math.min(maxSum, MAX_TWO_DIGIT_SUM));
                     this.onlyOneMultiDigit = config.addition.onlyOneMultiDigit !== false;
                 }
             }
@@ -48,6 +60,27 @@ export class AdditionMode extends BasePokeballGameMode {
     }
 
     generateChallenge() {
+        const previous = this.challengeData ? this.challengeData.terms.join('+') : null;
+        let terms = this.generateTerms();
+
+        // Don't show the very same problem twice in a row
+        for (let attempt = 0; attempt < 10 && terms.join('+') === previous; attempt++) {
+            terms = this.generateTerms();
+        }
+
+        const correctAnswer = terms.reduce((sum, term) => sum + term, 0);
+
+        this.challengeData = {
+            terms: terms,
+            correctAnswer: correctAnswer,
+            tens: Math.floor(correctAnswer / 10),
+            ones: correctAnswer % 10
+        };
+
+        return this.challengeData;
+    }
+
+    generateTerms() {
         const terms = [];
         let sum = 0;
         let multiDigitCount = 0;
@@ -63,14 +96,16 @@ export class AdditionMode extends BasePokeballGameMode {
             } else if (this.onlyOneMultiDigit && multiDigitCount > 0) {
                 // Only single digits allowed from now on
                 term = Phaser.Math.Between(0, Math.min(9, maxPossibleTerm));
-            } else if (this.onlyOneMultiDigit && i === this.numberOfTerms - 1 && multiDigitCount === 0) {
+            } else if (this.onlyOneMultiDigit && i === this.numberOfTerms - 1 && multiDigitCount === 0
+                       && maxPossibleTerm >= 10) {
                 // Last term and we haven't had a multi-digit yet, force one
-                term = Phaser.Math.Between(10, Math.min(maxPossibleTerm, this.maxSum));
+                // (only when there is room for it under maxSum)
+                term = Phaser.Math.Between(10, maxPossibleTerm);
                 multiDigitCount++;
             } else {
                 // Generate any valid term
-                const maxTermValue = Math.min(maxPossibleTerm, this.maxSum);
-                if (this.onlyOneMultiDigit && multiDigitCount === 0) {
+                const maxTermValue = maxPossibleTerm;
+                if (this.onlyOneMultiDigit) {
                     // Randomly decide if this should be the multi-digit term
                     const shouldBeMultiDigit = Math.random() < 0.5 && maxTermValue >= 10;
                     if (shouldBeMultiDigit) {
@@ -89,21 +124,13 @@ export class AdditionMode extends BasePokeballGameMode {
             sum += term;
         }
 
-        const correctAnswer = sum;
-
-        this.challengeData = {
-            terms: terms,
-            correctAnswer: correctAnswer,
-            tens: Math.floor(correctAnswer / 10),
-            ones: correctAnswer % 10
-        };
-
-        return this.challengeData;
+        return terms;
     }
 
     createChallengeUI(scene) {
         const width = scene.cameras.main.width;
-        const height = scene.cameras.main.height;
+        this.inputLocked = false;
+        this.isRevealing = false;
 
         // Display the addition problem at the top
         const problemText = this.challengeData.terms.join(' + ') + ' = ?';
@@ -228,6 +255,8 @@ export class AdditionMode extends BasePokeballGameMode {
         const gridWidth = cols * boxSize + (cols - 1) * spacing;
         const startX = (width - gridWidth) / 2 + boxSize / 2;
 
+        this.digitBoxes = [];
+
         for (let digit = 0; digit <= 9; digit++) {
             const row = Math.floor(digit / cols);
             const col = digit % cols;
@@ -258,9 +287,11 @@ export class AdditionMode extends BasePokeballGameMode {
             this.digitBoxes.push({ box, digitText, digit });
         }
 
-        // Set up drag and drop handlers
-        scene.input.on('drag', (pointer, gameObject, dragX, dragY) => {
-            if (this.isRevealing) return;
+        // Set up drag and drop handlers. Kept as named handlers so cleanup()
+        // removes only ours and not other listeners on the scene input.
+        this.dragHandler = (pointer, gameObject, dragX, dragY) => {
+            if (this.isRevealing || this.inputLocked) return;
+            if (!this.isDigitBox(gameObject)) return;
 
             gameObject.x = dragX;
             gameObject.y = dragY;
@@ -271,10 +302,11 @@ export class AdditionMode extends BasePokeballGameMode {
                 text.x = dragX;
                 text.y = dragY;
             }
-        });
+        };
 
-        scene.input.on('dragend', (pointer, gameObject) => {
-            if (this.isRevealing) return;
+        this.dragEndHandler = (pointer, gameObject) => {
+            if (this.isRevealing || this.inputLocked) return;
+            if (!this.isDigitBox(gameObject)) return;
 
             const digit = gameObject.getData('digit');
 
@@ -293,13 +325,20 @@ export class AdditionMode extends BasePokeballGameMode {
 
             // Check if answer is complete
             this.checkAnswer();
-        });
+        };
+
+        scene.input.on('drag', this.dragHandler);
+        scene.input.on('dragend', this.dragEndHandler);
+    }
+
+    isDigitBox(gameObject) {
+        return this.digitBoxes.some(d => d.box === gameObject);
     }
 
     placeDigitInZone(digitBox, zone, digit) {
         // If zone already has a digit, return it to original position
         const currentDigit = zone.getData('occupyingBox');
-        if (currentDigit) {
+        if (currentDigit && currentDigit !== digitBox) {
             this.returnDigitToOriginal(currentDigit);
         }
 
@@ -336,12 +375,12 @@ export class AdditionMode extends BasePokeballGameMode {
         }
 
         // Clear any zone that had this box
-        if (this.tensZone.getData('occupyingBox') === digitBox) {
+        if (this.tensZone && this.tensZone.getData('occupyingBox') === digitBox) {
             this.tensZone.setData('value', null);
             this.tensZone.setData('occupyingBox', null);
             this.tensZone.getData('label').setText('');
         }
-        if (this.onesZone.getData('occupyingBox') === digitBox) {
+        if (this.onesZone && this.onesZone.getData('occupyingBox') === digitBox) {
             this.onesZone.setData('value', null);
             this.onesZone.setData('occupyingBox', null);
             this.onesZone.getData('label').setText('');
@@ -360,6 +399,8 @@ export class AdditionMode extends BasePokeballGameMode {
     }
 
     checkAnswer() {
+        if (this.inputLocked || this.isRevealing) return;
+
         const tensValue = this.tensZone.getData('value');
         const onesValue = this.onesZone.getData('value');
 
@@ -376,11 +417,13 @@ export class AdditionMode extends BasePokeballGameMode {
             this.handleCorrectAnswer();
         } else {
             // Wrong answer
-            this.handleWrongAnswer();
+            this.handleWrongAnswer(playerAnswer);
         }
     }
 
     handleCorrectAnswer() {
+        // No more drops while the feedback plays
+        this.inputLocked = true;
         this.correctInRow++;
         this.updateBallIndicators();
 
@@ -394,14 +437,14 @@ export class AdditionMode extends BasePokeballGameMode {
         // Check if won
         if (this.correctInRow >= this.requiredCorrect) {
             // Player got 3 in a row! Give Pokemon
-            scene.time.delayedCall(500, () => {
-                if (this.answerCallback) {
-                    this.answerCallback(true, this.challengeData.correctAnswer, this.onesZone.x, this.onesZone.y);
-                }
+            const x = this.onesZone.x;
+            const y = this.onesZone.y;
+            this.delayedCall(scene, 500, () => {
+                this.finish(true, this.challengeData.correctAnswer, x, y);
             });
         } else {
             // Continue to next challenge
-            scene.time.delayedCall(800, () => {
+            this.delayedCall(scene, 800, () => {
                 this.cleanup(scene);
                 this.generateChallenge();
                 this.createChallengeUI(scene);
@@ -409,10 +452,13 @@ export class AdditionMode extends BasePokeballGameMode {
         }
     }
 
-    handleWrongAnswer() {
+    handleWrongAnswer(playerAnswer) {
         this.isRevealing = true;
+        this.inputLocked = true;
         this.correctInRow = 0;
         this.updateBallIndicators();
+
+        trackWrongAnswer('AdditionMode', String(this.challengeData.correctAnswer), String(playerAnswer));
 
         // Flash zones red
         this.tensZone.setFillStyle(0xFF0000, 0.5);
@@ -425,7 +471,7 @@ export class AdditionMode extends BasePokeballGameMode {
         const tensOriginalX = this.tensZone.x;
         const onesOriginalX = this.onesZone.x;
 
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: [this.tensZone, this.tensZone.getData('label')],
             x: tensOriginalX - 10,
             duration: 50,
@@ -437,7 +483,7 @@ export class AdditionMode extends BasePokeballGameMode {
             }
         });
 
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: [this.onesZone, this.onesZone.getData('label')],
             x: onesOriginalX - 10,
             duration: 50,
@@ -485,7 +531,7 @@ export class AdditionMode extends BasePokeballGameMode {
         this.onesZone.setFillStyle(0xFFD700, 0.5);
 
         // Pulse animation
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: [this.tensZone, this.onesZone],
             scaleX: 1.1,
             scaleY: 1.1,
@@ -496,26 +542,28 @@ export class AdditionMode extends BasePokeballGameMode {
         });
 
         // After 2 seconds, restart with new challenge
-        scene.time.delayedCall(2000, () => {
-            this.isRevealing = false;
+        this.delayedCall(scene, 2000, () => {
             this.cleanup(scene);
+
+            // Reset streak since player made an error
+            resetStreak();
+            if (scene.boosterBarElements) {
+                updateBoosterBar(scene.boosterBarElements, 0, scene);
+            }
+
             this.generateChallenge();
             this.createChallengeUI(scene);
         });
     }
 
     cleanup(scene) {
-        // Remove drag and drop listeners
-        scene.input.off('drag');
-        scene.input.off('dragend');
+        // Remove only our drag and drop listeners
+        if (this.dragHandler) scene.input.off('drag', this.dragHandler);
+        if (this.dragEndHandler) scene.input.off('dragend', this.dragEndHandler);
+        this.dragHandler = null;
+        this.dragEndHandler = null;
 
-        // Destroy all UI elements
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
-        this.uiElements = [];
+        super.cleanup(scene);
         this.digitBoxes = [];
         this.ballIndicators = [];
         this.tensZone = null;

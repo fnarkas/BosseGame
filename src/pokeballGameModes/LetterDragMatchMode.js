@@ -33,6 +33,10 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         const width = scene.cameras.main.width;
         const height = scene.cameras.main.height;
 
+        // A fresh challenge always starts accepting input again.
+        this.isRevealing = false;
+        this.hasError = false;
+
         // Create uppercase letters (drop zones) at top
         const upperY = 250;
         const spacing = 200;
@@ -109,6 +113,7 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
 
             // Set up drag events on the BOX
             box.on('drag', (pointer, dragX, dragY) => {
+                if (this.isRevealing) return; // Frozen while the answer is shown
                 box.x = dragX;
                 box.y = dragY;
                 lowerText.x = dragX;
@@ -230,7 +235,7 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
                     zone.setStrokeStyle(4, 0x27AE60); // Solid green border
 
                     // Visual feedback animation
-                    scene.tweens.add({
+                    this.addTween(scene, {
                         targets: [draggedBox, letterText],
                         scale: 1.2,
                         duration: 200,
@@ -256,10 +261,10 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
                     // Check if all matched
                     if (this.correctMatches >= this.requiredMatches) {
                         // Success!
-                        scene.time.delayedCall(800, () => {
+                        this.delayedCall(scene, 800, () => {
                             const x = scene.cameras.main.width / 2;
                             const y = scene.cameras.main.height / 2;
-                            this.answerCallback(true, 'all-matched', x, y);
+                            this.finish(true, 'all-matched', x, y);
                         });
                     }
                 } else if (!alreadyMatched) {
@@ -280,11 +285,13 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
                     wrongZoneLetter // Wrong zone letter (lowercase)
                 );
 
-                // Wrong zone - show error feedback
+                // Wrong zone - show error feedback. Freeze the other letters
+                // right away: one error ends this round.
+                this.isRevealing = true;
                 this.showWrongDropFeedback(scene, draggedBox, letterText);
             } else {
                 // Dropped outside all zones - just return to start
-                scene.tweens.add({
+                this.addTween(scene, {
                     targets: [draggedBox, letterText],
                     x: draggedBox.getData('startX'),
                     y: draggedBox.getData('startY'),
@@ -310,7 +317,7 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
 
         // Shake animation
         const originalX = draggedBox.x;
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: [draggedBox, letterText],
             x: originalX - 10,
             duration: 50,
@@ -323,7 +330,7 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
                 draggedBox.setFillStyle(0xFFFFFF, 0.3); // Back to white fill
 
                 // Return to start position
-                scene.tweens.add({
+                this.addTween(scene, {
                     targets: [draggedBox, letterText],
                     x: draggedBox.getData('startX'),
                     y: draggedBox.getData('startY'),
@@ -344,9 +351,9 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
     highlightCorrectZone(scene, letter) {
         this.isRevealing = true;
 
-        // Disable all dragging
-        this.draggableLetters.forEach(l => {
-            l.disableInteractive();
+        // Disable all dragging (the boxes are the draggable objects, not the text)
+        this.draggableBoxes.forEach(box => {
+            box.disableInteractive();
         });
 
         // Find the correct drop zone for this letter
@@ -364,7 +371,7 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         correctZone.setStrokeStyle(6, 0xFFD700); // Thick gold border
 
         // Pulsing scale animation
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: correctZone,
             scaleX: 1.15,
             scaleY: 1.15,
@@ -375,7 +382,7 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         });
 
         // Pulsing alpha on fill
-        scene.tweens.add({
+        this.addTween(scene, {
             targets: correctZone,
             alpha: 0.7,
             duration: 500,
@@ -385,7 +392,7 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
         });
 
         // After 2 seconds of pulsing, restart with new letters
-        scene.time.delayedCall(2000, () => {
+        this.delayedCall(scene, 2000, () => {
             // Clean up current UI
             this.cleanup(scene);
 
@@ -409,13 +416,7 @@ export class LetterDragMatchMode extends BasePokeballGameMode {
     }
 
     cleanup(scene) {
-        // Remove all UI elements
-        this.uiElements.forEach(element => {
-            if (element && element.destroy) {
-                element.destroy();
-            }
-        });
-        this.uiElements = [];
+        super.cleanup(scene);
         this.dropZones = [];
         this.draggableLetters = [];
         this.draggableBoxes = [];
