@@ -10,6 +10,7 @@ const SWEDISH_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ'.split('');
  * @param {Phaser.Scene} scene - The Phaser scene
  * @param {Object} config - Configuration options
  * @param {number} config.startY - Y position for keyboard (default: 600)
+ * @param {string[]} config.letters - Letters to show, in order (default: the whole alphabet)
  * @param {string[]} config.usedLetters - Letters to disable (default: [])
  * @param {Function} config.onLetterClick - Callback when letter clicked (letter) => void
  * @param {string} config.alphabetCase - 'uppercase' or 'lowercase' (default: 'uppercase')
@@ -19,6 +20,7 @@ const SWEDISH_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ'.split('');
 export function createLetterKeyboard(scene, config = {}) {
     const {
         startY = 600,
+        letters = SWEDISH_ALPHABET,
         usedLetters = [],
         onLetterClick = null,
         alphabetCase = 'uppercase',
@@ -30,15 +32,18 @@ export function createLetterKeyboard(scene, config = {}) {
     const buttonHeight = 50;
     const spacing = 10;
     const lettersPerRow = 10;
+    const keys = letters.map(l => l.toUpperCase());
 
     const elements = [];
     const letterButtons = [];
 
-    SWEDISH_ALPHABET.forEach((letter, index) => {
+    keys.forEach((letter, index) => {
         const row = Math.floor(index / lettersPerRow);
         const col = index % lettersPerRow;
+        // Centre each row: a short keyboard (only the word's letters) sits in the middle
+        const inThisRow = Math.min(lettersPerRow, keys.length - row * lettersPerRow);
 
-        const x = width / 2 - (lettersPerRow * (buttonWidth + spacing)) / 2 + col * (buttonWidth + spacing) + buttonWidth / 2;
+        const x = width / 2 - (inThisRow * (buttonWidth + spacing)) / 2 + col * (buttonWidth + spacing) + buttonWidth / 2;
         const y = startY + row * (buttonHeight + spacing);
 
         const isUsed = usedLetters.includes(letter);

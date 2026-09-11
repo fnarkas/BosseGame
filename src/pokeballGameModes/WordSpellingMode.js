@@ -5,6 +5,7 @@ import { loadModeConfig } from '../minigameConfig.js';
 import { createLetterKeyboard, updateLetterKeyboard, destroyLetterKeyboard } from '../components/LetterKeyboard.js';
 import { createLetterSlots, showSlotParticleEffect, showSlotErrorEffect, destroyLetterSlots } from '../components/LetterSlots.js';
 import { trackWrongAnswer } from '../wrongAnswers.js';
+import { hardIndices, DEFAULT_HARD_CLUSTERS } from '../hardSpellings.js';
 
 const SWEDISH_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ'.split('');
 
@@ -60,13 +61,29 @@ export class WordSpellingMode extends BasePokeballGameMode {
         this.requiredWords = 3; // Default, will be loaded from config
         this.wordCount = 0;     // 0 = the whole pool; narrowed from config
         this.usedWords = [];    // No repeats within one session
+        // Prefill: hard letter groups (sj/tj-sounds, ck, ng ...) are filled in
+        // for the child so the rest of the word can be sounded out.
+        this.prefillHard = false;
+        this.hardClusters = DEFAULT_HARD_CLUSTERS.join(',');
+        this.prefillDoubles = false;
+        this.givenIndices = new Set();
+        // 'all' = the whole alphabet, 'word' = only the letters in this word
+        this.keyboardLetters = 'all';
         this.configLoaded = false;
     }
 
     async loadConfig() {
-        const config = await loadModeConfig('wordSpelling', { requiredWords: 3, wordCount: 0 });
+        const config = await loadModeConfig('wordSpelling', {
+            requiredWords: 3, wordCount: 0,
+            prefillHard: false, hardClusters: DEFAULT_HARD_CLUSTERS.join(','), prefillDoubles: false,
+            keyboardLetters: 'all'
+        });
         this.requiredWords = config.requiredWords || this.requiredWords;
         this.wordCount = config.wordCount || this.wordCount;
+        this.prefillHard = config.prefillHard === true;
+        this.hardClusters = config.hardClusters || this.hardClusters;
+        this.prefillDoubles = config.prefillDoubles === true;
+        this.keyboardLetters = config.keyboardLetters === 'word' ? 'word' : 'all';
         this.configLoaded = true;
         console.log('WordSpellingMode loaded config:', {
             requiredWords: this.requiredWords,
@@ -89,14 +106,22 @@ export class WordSpellingMode extends BasePokeballGameMode {
         this.currentWord = this.takeRetry() ?? this.pickWord();
         this.acceptedSpellings = acceptedSpellingsFor(this.currentWord);
 
-        // Find valid letter indices
+        // Letters the game fills in (hard groups), and the ones left to spell
+        this.givenIndices = this.prefilledIndicesFor(this.currentWord);
         const normalizedWord = this.currentWord.toUpperCase();
         this.validIndices = [];
         normalizedWord.split('').forEach((char, index) => {
-            if (SWEDISH_ALPHABET.includes(char)) {
+            if (SWEDISH_ALPHABET.includes(char) && !this.givenIndices.has(index)) {
                 this.validIndices.push(index);
             }
         });
+        // Never hand the whole word over: if nothing is left to spell, prefill nothing
+        if (this.validIndices.length === 0) {
+            this.givenIndices = new Set();
+            normalizedWord.split('').forEach((char, index) => {
+                if (SWEDISH_ALPHABET.includes(char)) this.validIndices.push(index);
+            });
+        }
 
         this.challengeData = {
             word: this.currentWord,
@@ -110,6 +135,14 @@ export class WordSpellingMode extends BasePokeballGameMode {
         this.hasError = false;
         this.isRevealing = false;
         this.livesRemaining = MAX_LIVES;
+    }
+
+    // Indices of the hard letter groups to prefill, per the admin settings.
+    prefilledIndicesFor(word) {
+        if (!this.prefillHard) return new Set();
+        const rules = String(this.hardClusters || '').split(',');
+        if (this.prefillDoubles) rules.push('dubbel');
+        return hardIndices(word, rules);
     }
 
     createChallengeUI(scene) {
@@ -130,6 +163,7 @@ export class WordSpellingMode extends BasePokeballGameMode {
             showWord: false, // Don't show the word!
             highlightIndex: this.validIndices[this.currentLetterIndex],
             collectedIndices: this.collectedIndices,
+            givenIndices: this.givenIndices,
             nameCase: 'lowercase'
         });
         this.uiElements.push(...this.slotsData.elements);
@@ -147,9 +181,19 @@ export class WordSpellingMode extends BasePokeballGameMode {
         return this.playAudio(scene, getWordAudioKey(this.challengeData.word));
     }
 
+    // The keys to offer: the whole alphabet, or just the letters the child has
+    // to type in this word (alphabetical, so nothing about the order leaks).
+    keyboardLettersFor() {
+        if (this.keyboardLetters !== 'word') return SWEDISH_ALPHABET;
+        const word = this.challengeData.word.toUpperCase();
+        const needed = new Set(this.validIndices.map(i => word[i]));
+        return SWEDISH_ALPHABET.filter(letter => needed.has(letter));
+    }
+
     createKeyboard(scene, usedLetters) {
         this.keyboardData = createLetterKeyboard(scene, {
             startY: KEYBOARD_Y,
+            letters: this.keyboardLettersFor(),
             usedLetters,
             onLetterClick: (letter) => this.handleLetterClick(scene, letter),
             alphabetCase: 'uppercase'
@@ -172,6 +216,7 @@ export class WordSpellingMode extends BasePokeballGameMode {
         this.slotsData = createLetterSlots(scene, this.challengeData.word, {
             y: SLOTS_Y,
             nameCase: 'lowercase',
+            givenIndices: this.givenIndices,
             ...config
         });
         this.uiElements.push(...this.slotsData.elements);

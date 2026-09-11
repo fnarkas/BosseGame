@@ -14,6 +14,7 @@ const SWEDISH_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ'.split('');
  * @param {boolean} config.showWord - Show letters in slots (default: true)
  * @param {number} config.highlightIndex - Index of highlighted letter (default: null)
  * @param {Set|Array} config.collectedIndices - Indices of collected letters (default: new Set())
+ * @param {Set|Array} config.givenIndices - Indices filled in for the player (hard letter groups), shown in blue
  * @param {string} config.nameCase - 'uppercase' or 'lowercase' (default: 'lowercase')
  * @param {boolean} config.clearOnNewEncounter - Add clearOnNewEncounter data flag (default: true)
  * @returns {Object} { elements: [], slots: [], highlightedSlot: {} } - UI elements and slot data
@@ -24,6 +25,7 @@ export function createLetterSlots(scene, word, config = {}) {
         showWord = true,
         highlightIndex = null,
         collectedIndices = new Set(),
+        givenIndices = new Set(),
         nameCase = 'lowercase',
         clearOnNewEncounter = true
     } = config;
@@ -46,11 +48,13 @@ export function createLetterSlots(scene, word, config = {}) {
 
     // Convert collectedIndices to Set if it's an array
     const collected = collectedIndices instanceof Set ? collectedIndices : new Set(collectedIndices);
+    const given = givenIndices instanceof Set ? givenIndices : new Set(givenIndices);
 
     letters.forEach((letter, index) => {
         const x = startX + index * (letterWidth + spacing);
         const isHighlight = (index === highlightIndex);
-        const isCollected = collected.has(index);
+        const isGiven = given.has(index);
+        const isCollected = collected.has(index) || isGiven;
 
         // Normalize to uppercase for checking against alphabet
         const isLetter = SWEDISH_ALPHABET.includes(letter.toUpperCase());
@@ -59,7 +63,13 @@ export function createLetterSlots(scene, word, config = {}) {
             // Determine visual state
             let bgColor, borderColor, borderWidth, alpha;
 
-            if (isCollected) {
+            if (isGiven) {
+                // Given state: the game filled this letter in (hard group), blue
+                bgColor = 0x64B5F6;
+                borderColor = 0x1976D2;
+                borderWidth = 3;
+                alpha = 1.0;
+            } else if (isCollected) {
                 // Collected state: solid green
                 bgColor = 0x4CAF50;
                 borderColor = 0x388E3C;
@@ -146,6 +156,7 @@ export function createLetterSlots(scene, word, config = {}) {
                 glow,
                 isHighlight,
                 isCollected,
+                isGiven,
                 isLetter
             };
             slots.push(slotData);

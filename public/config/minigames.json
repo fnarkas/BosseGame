@@ -48,7 +48,11 @@
   },
   "wordSpelling": {
     "requiredWords": 3,
-    "wordCount": 447
+    "wordCount": 447,
+    "prefillHard": true,
+    "hardClusters": "stj,skj,sch,sj,sk*,tj,kj,^k*,^g*,^hj,^lj,^dj,^gj,ck,ng,gn,x",
+    "prefillDoubles": false,
+    "keyboardLetters": "all"
   },
   "dayMatch": {
     "maxErrors": 3

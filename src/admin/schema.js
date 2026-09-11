@@ -28,6 +28,8 @@
 
 import { parseLetterRange } from '../letterData.js';
 import { parseNumberRange } from '../utils/parseNumberRange.js';
+import { parseClusterRules, markHardParts, DEFAULT_HARD_CLUSTERS } from '../hardSpellings.js';
+import { SPELLING_WORDS } from '../spellingWords.js';
 import { escapeHtml, html, toHtml } from './html.js';
 
 // Previews -----------------------------------------------------------------
@@ -81,6 +83,16 @@ export function pokemonCatchingPreview(values) {
             Keyboard: <span class="admin-mono">${keyboard}</span>
         </div>
     `);
+}
+
+export function hardClustersPreview(value) {
+    const rules = parseClusterRules(String(value ?? ''));
+    if (rules.length === 0) {
+        return { error: '❌ No valid rules. Example: ' + DEFAULT_HARD_CLUSTERS.join(','), html: '' };
+    }
+    const marked = SPELLING_WORDS.map(word => markHardParts(word, rules)).filter(m => m.includes('['));
+    const summary = `✓ ${rules.length} rule${rules.length === 1 ? '' : 's'} — ${marked.length} of ${SPELLING_WORDS.length} words get letters filled in (brackets):`;
+    return { error: null, html: chipList(marked, 'admin-chip-letter', summary) };
 }
 
 // Field shorthands ---------------------------------------------------------
@@ -207,7 +219,26 @@ export const MINIGAME_CONFIG_SCHEMA = [
             number('requiredWords', 'Words Required for Gift:', 3, 1, 10,
                 'How many words player must spell correctly to earn coins'),
             number('spellingWordCount', 'Size of Word Pool:', 447, 5, 447,
-                'Draw from the N most common words (5–447). Lower it to drill the very commonest.', { key: 'wordCount' })
+                'Draw from the N most common words (5–447). Lower it to drill the very commonest.', { key: 'wordCount' }),
+            checkbox('prefillHard', 'Prefill hard letter groups', false,
+                'Fill in the parts of a word that cannot be sounded out (sj/tj-sounds, ck, ng ...) so the child only spells the rest. They show in blue.'),
+            {
+                id: 'hardClusters', label: 'Hard letter groups:', type: 'text', default: DEFAULT_HARD_CLUSTERS.join(','),
+                help: { html: 'Comma separated. <code>ck</code> anywhere; <code>sk*</code> only before a soft vowel (e i y ä ö); ' +
+                    '<code>^k*</code> only at the start of the word and before a soft vowel; <code>^hj</code> only at the start. ' +
+                    'Add <code>rs,rt,rd,rn,rl</code> for the r-blends (först, bort, barn) if those are hard too.' },
+                preview: hardClustersPreview
+            },
+            checkbox('prefillDoubles', 'Also prefill double consonants', false,
+                'Fill in the second letter of tt, ll, mm, nn, ss ... (boll → bol[l]). Applies only when prefilling is on.'),
+            {
+                id: 'keyboardLetters', label: 'Keyboard shows:', type: 'select', default: 'all',
+                options: [
+                    { value: 'all', label: 'The whole alphabet (A–Ö)' },
+                    { value: 'word', label: 'Only the letters in the word' }
+                ],
+                help: 'With only the word\'s letters shown, the child picks the order rather than hunting through 29 keys.'
+            }
         ],
         about: {
             title: 'ℹ️ About Word Spelling:',
@@ -216,6 +247,7 @@ export const MINIGAME_CONFIG_SCHEMA = [
                 'teach the wrong thing are filtered out — subtitle junk, spoken forms (nåt, dom, va), ' +
                 'words that cannot be sounded out (och, är, jag, mig, säger) and silent opening ' +
                 'consonants (hjälp, gjorde, själv). See generate_spelling_words.py to change the list.<br>' +
+                'With "Prefill hard letter groups" on, the letters the rules mark are filled in (blue) and the child spells the rest.<br>' +
                 'Each word allows 2 mistakes (❤️❤️) before showing the correct answer and restarting.<br>' +
                 'Progress is shown with balls (○ ○ ○ → 🎁) representing completed words.<br>' +
                 'Running out of hearts resets word progress back to 0.'
