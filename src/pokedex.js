@@ -1,4 +1,4 @@
-import { POKEMON_DATA } from './pokemonData.js';
+import { POKEMON_DATA, getAvailablePokemon } from './pokemonData.js';
 import { getRarityInfo } from './pokemonRarity.js';
 
 let gameInstance = null;
@@ -52,13 +52,17 @@ function renderPokedexGrid() {
     const grid = document.getElementById('pokedex-grid');
     const statsDiv = document.getElementById('pokedex-stats');
 
+    // Get available Pokemon (Gen 1 only)
+    const availablePokemon = getAvailablePokemon();
+
     // Load caught Pokemon from localStorage
     const caughtPokemon = JSON.parse(localStorage.getItem('pokemonCaughtList') || '[]');
     // Handle both object format {id: 1, name: "...", caughtDate: "..."} and plain ID format [1, 2, 3]
     const caughtIds = new Set(caughtPokemon.map(p => p.id || p));
 
-    // Update stats
-    statsDiv.textContent = `Fångade: ${caughtPokemon.length} / ${POKEMON_DATA.length}`;
+    // Update stats (count only Gen 1 Pokemon that are caught)
+    const gen1CaughtCount = caughtPokemon.filter(p => (p.id || p) <= 151).length;
+    statsDiv.textContent = `Fångade: ${gen1CaughtCount} / ${availablePokemon.length}`;
 
     // Clear existing grid
     grid.innerHTML = '';
@@ -72,8 +76,8 @@ function renderPokedexGrid() {
     placeholderCard.appendChild(placeholderNumber);
     grid.appendChild(placeholderCard);
 
-    // Generate all Pokemon cards
-    POKEMON_DATA.forEach((pokemon) => {
+    // Generate Pokemon cards (Gen 1 only)
+    availablePokemon.forEach((pokemon) => {
         const isCaught = caughtIds.has(pokemon.id);
         const rarityInfo = getRarityInfo(pokemon);
 

@@ -688,6 +688,60 @@ async function showAdminPage() {
                     <div id="config-multiplication-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
                 </div>
 
+                <div id="config-numberbonds" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+                    <h3 style="margin-top: 0;">Number Bonds Configuration</h3>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">The Whole:</label>
+                        <input type="number" id="config-numberbonds-sum" value="${serverConfig.numberBonds?.sum || 10}" min="5" max="20" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">10 for tiokompisar. Raise it later for larger bonds (5–20).</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Time Limit (seconds):</label>
+                        <input type="number" id="config-numberbonds-duration" value="${serverConfig.numberBonds?.durationSeconds || 60}" min="15" max="180" step="5" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">How long the round lasts.</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Answers for Full Reward:</label>
+                        <input type="number" id="config-numberbonds-target" value="${serverConfig.numberBonds?.targetCount || 20}" min="5" max="100" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">Reaching this many pays the max coins and ends the round.</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">Max Coins:</label>
+                        <input type="number" id="config-numberbonds-maxcoins" value="${serverConfig.numberBonds?.maxCoins || 100}" min="1" max="200" style="width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <span style="color: #666; margin-left: 10px;">Reward at the target. Fewer answers pay less, on an accelerating curve.</span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="config-numberbonds-tenframe" ${serverConfig.numberBonds?.showTenFrame !== false ? 'checked' : ''} style="width: 24px; height: 24px; margin-right: 10px; cursor: pointer;">
+                            <span style="font-weight: bold;">Show the Ten-Frame</span>
+                        </label>
+                        <div style="color: #666; margin-top: 5px; font-size: 14px; margin-left: 34px;">
+                            Ten slots, some filled with pokeballs, the rest empty — the answer can be counted
+                            instead of recalled. Turn it off once the facts are memorised, so the round becomes
+                            pure recall and the score rewards speed.
+                        </div>
+                    </div>
+
+                    <div style="padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #2196F3; margin-bottom: 20px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ About Number Bonds:</div>
+                        <div style="color: #666; font-size: 14px;">
+                            How many more to reach ten? The child taps the answer on a 0–10 keypad, and the empty
+                            slots fill in to complete the frame.<br>
+                            Scored on time, exactly like Speed Reading: coins = maxCoins × (answers / target)², so
+                            the last answers are worth far more than the first. A wrong tap costs nothing but the
+                            seconds it took — the same challenge stays up.
+                        </div>
+                    </div>
+
+                    <button onclick="saveMinigameConfig('numberbonds')" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">💾 Save Number Bonds Config</button>
+                    <div id="config-numberbonds-message" style="margin-top: 10px; color: #4CAF50; font-weight: bold;"></div>
+                </div>
+
                 <div id="config-vowellength" style="display: none; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
                     <h3 style="margin-top: 0;">Vowel Length Configuration</h3>
 
@@ -1733,6 +1787,62 @@ async function showAdminPage() {
             setTimeout(() => {
                 message.textContent = '';
             }, 5000);
+        } else if (game === 'numberbonds') {
+            const sum = parseInt(document.getElementById('config-numberbonds-sum').value);
+            const durationSeconds = parseInt(document.getElementById('config-numberbonds-duration').value);
+            const targetCount = parseInt(document.getElementById('config-numberbonds-target').value);
+            const maxCoins = parseInt(document.getElementById('config-numberbonds-maxcoins').value);
+            const showTenFrame = document.getElementById('config-numberbonds-tenframe').checked;
+
+            const message = document.getElementById('config-numberbonds-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                // Load current config
+                const response = await fetch('/config/minigames.json', { cache: 'no-store' });
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' },
+                    numberBonds: { sum: 10, durationSeconds: 60, targetCount: 20, maxCoins: 100, showTenFrame: true }
+                };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                // Update number bonds config
+                fullConfig.numberBonds = {
+                    sum: sum,
+                    durationSeconds: durationSeconds,
+                    targetCount: targetCount,
+                    maxCoins: maxCoins,
+                    showTenFrame: showTenFrame
+                };
+
+                // Save to server
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Number Bonds config saved to server! All devices will use these settings.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save number bonds config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
         } else if (game === 'vowellength') {
             const required = parseInt(document.getElementById('config-vowellength-required').value);
             const showListenHelp = document.getElementById('config-vowellength-listenhelp').checked;
@@ -1776,6 +1886,54 @@ async function showAdminPage() {
                 }
             } catch (error) {
                 console.error('Failed to save vowel length config:', error);
+                message.textContent = '❌ Failed to save config. Check console for details.';
+                message.style.color = '#f44336';
+            }
+
+            setTimeout(() => {
+                message.textContent = '';
+            }, 5000);
+        } else if (game === 'vowelsounds') {
+            const stage = document.getElementById('config-vowelsounds-stage').value;
+            const required = parseInt(document.getElementById('config-vowelsounds-required').value);
+            const showListenHelp = document.getElementById('config-vowelsounds-listenhelp').checked;
+
+            const message = document.getElementById('config-vowelsounds-message');
+            message.textContent = '⏳ Saving...';
+            message.style.color = '#FF9800';
+
+            try {
+                const response = await fetch('/config/minigames.json', { cache: 'no-store' });
+                let fullConfig = {
+                    numbers: { required: 1, numbers: '10-99' },
+                    letters: { letters: 'A-Z,Å,Ä,Ö' }
+                };
+                if (response.ok) {
+                    fullConfig = await response.json();
+                }
+
+                fullConfig.vowelSounds = {
+                    required: required,
+                    stage: stage,
+                    showListenHelp: showListenHelp
+                };
+
+                const saveResponse = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(fullConfig)
+                });
+
+                if (saveResponse.ok) {
+                    message.textContent = '✓ Vowel Sounds config saved to server! All devices will use these settings.';
+                    message.style.color = '#4CAF50';
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                console.error('Failed to save vowel sounds config:', error);
                 message.textContent = '❌ Failed to save config. Check console for details.';
                 message.style.color = '#f44336';
             }
@@ -1882,54 +2040,6 @@ async function showAdminPage() {
                 }
             } catch (error) {
                 console.error('Failed to save piano config:', error);
-                message.textContent = '❌ Failed to save config. Check console for details.';
-                message.style.color = '#f44336';
-            }
-
-            setTimeout(() => {
-                message.textContent = '';
-            }, 5000);
-        } else if (game === 'vowelsounds') {
-            const stage = document.getElementById('config-vowelsounds-stage').value;
-            const required = parseInt(document.getElementById('config-vowelsounds-required').value);
-            const showListenHelp = document.getElementById('config-vowelsounds-listenhelp').checked;
-
-            const message = document.getElementById('config-vowelsounds-message');
-            message.textContent = '⏳ Saving...';
-            message.style.color = '#FF9800';
-
-            try {
-                const response = await fetch('/config/minigames.json', { cache: 'no-store' });
-                let fullConfig = {
-                    numbers: { required: 1, numbers: '10-99' },
-                    letters: { letters: 'A-Z,Å,Ä,Ö' }
-                };
-                if (response.ok) {
-                    fullConfig = await response.json();
-                }
-
-                fullConfig.vowelSounds = {
-                    required: required,
-                    stage: stage,
-                    showListenHelp: showListenHelp
-                };
-
-                const saveResponse = await fetch('/api/config/save', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(fullConfig)
-                });
-
-                if (saveResponse.ok) {
-                    message.textContent = '✓ Vowel Sounds config saved to server! All devices will use these settings.';
-                    message.style.color = '#4CAF50';
-                } else {
-                    throw new Error('Server returned error');
-                }
-            } catch (error) {
-                console.error('Failed to save vowel sounds config:', error);
                 message.textContent = '❌ Failed to save config. Check console for details.';
                 message.style.color = '#f44336';
             }

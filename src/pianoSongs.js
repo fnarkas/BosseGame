@@ -217,6 +217,293 @@ export const PIANO_SONGS = [
                 { note: 'C4', duration: 3 }
             ]
         ]
+    },
+    {
+        id: 'happybirthday',
+        name: 'Happy Birthday',
+        timeSignature: '4/4',
+        measures: [
+            // Happy birthday to you
+            [
+                { note: 'G3', duration: 0.5 },
+                { note: 'G3', duration: 0.5 },
+                { note: 'A3', duration: 1 },
+                { note: 'G3', duration: 1 },
+                { note: 'C4', duration: 1 }
+            ],
+            [
+                { note: 'B3', duration: 2 },
+                { note: 'G3', duration: 0.5 },
+                { note: 'G3', duration: 0.5 },
+                { note: 'A3', duration: 1 }
+            ],
+            // Happy birthday to you
+            [
+                { note: 'G3', duration: 1 },
+                { note: 'D4', duration: 1 },
+                { note: 'C4', duration: 2 }
+            ],
+            [
+                { note: 'G3', duration: 0.5 },
+                { note: 'G3', duration: 0.5 },
+                { note: 'G4', duration: 1 },
+                { note: 'E4', duration: 1 },
+                { note: 'C4', duration: 1 }
+            ],
+            // Happy birthday dear [name]
+            [
+                { note: 'B3', duration: 1 },
+                { note: 'A3', duration: 1 },
+                { note: 'F4', duration: 0.5 },
+                { note: 'F4', duration: 0.5 },
+                { note: 'E4', duration: 1 }
+            ],
+            [
+                { note: 'C4', duration: 1 },
+                { note: 'D4', duration: 1 },
+                { note: 'C4', duration: 2 }
+            ]
+        ]
+    },
+    {
+        id: 'jinglebells',
+        name: 'Jingle Bells',
+        timeSignature: '4/4',
+        measures: [
+            // Jingle bells, jingle bells
+            [
+                { note: 'E4', duration: 1 },
+                { note: 'E4', duration: 1 },
+                { note: 'E4', duration: 2 }
+            ],
+            [
+                { note: 'E4', duration: 1 },
+                { note: 'E4', duration: 1 },
+                { note: 'E4', duration: 2 }
+            ],
+            // Jingle all the way
+            [
+                { note: 'E4', duration: 1 },
+                { note: 'G4', duration: 1 },
+                { note: 'C4', duration: 1 },
+                { note: 'D4', duration: 1 }
+            ],
+            [
+                { note: 'E4', duration: 4 }
+            ],
+            // Oh what fun it is to ride
+            [
+                { note: 'F4', duration: 1 },
+                { note: 'F4', duration: 1 },
+                { note: 'F4', duration: 1 },
+                { note: 'F4', duration: 1 }
+            ],
+            [
+                { note: 'F4', duration: 1 },
+                { note: 'E4', duration: 1 },
+                { note: 'E4', duration: 1 },
+                { note: 'E4', duration: 1 }
+            ],
+            // In a one horse open sleigh
+            [
+                { note: 'E4', duration: 1 },
+                { note: 'D4', duration: 1 },
+                { note: 'D4', duration: 1 },
+                { note: 'E4', duration: 1 }
+            ],
+            [
+                { note: 'D4', duration: 2 },
+                { note: 'G4', duration: 2 }
+            ]
+        ]
+    },
+    {
+        id: 'oldmacdonald',
+        name: 'Old MacDonald Had a Farm',
+        timeSignature: '4/4',
+        measures: [
+            // Old MacDonald had a farm
+            [
+                { note: 'C4', duration: 1 },
+                { note: 'C4', duration: 1 },
+                { note: 'C4', duration: 1 },
+                { note: 'G3', duration: 1 }
+            ],
+            [
+                { note: 'A3', duration: 1 },
+                { note: 'A3', duration: 1 },
+                { note: 'G3', duration: 2 }
+            ],
+            // E-I-E-I-O
+            [
+                { note: 'E4', duration: 1 },
+                { note: 'E4', duration: 1 },
+                { note: 'D4', duration: 1 },
+                { note: 'D4', duration: 1 }
+            ],
+            [
+                { note: 'C4', duration: 4 }
+            ],
+            // And on that farm he had a [animal]
+            [
+                { note: 'G3', duration: 1 },
+                { note: 'G3', duration: 1 },
+                { note: 'G3', duration: 1 },
+                { note: 'C4', duration: 1 }
+            ],
+            [
+                { note: 'D4', duration: 1 },
+                { note: 'D4', duration: 1 },
+                { note: 'C4', duration: 2 }
+            ]
+        ]
+    },
+    {
+        id: 'rowboat',
+        name: 'Row Row Row Your Boat',
+        timeSignature: '4/4',
+        measures: [
+            // Row row row your boat
+            [
+                { note: 'C4', duration: 1 },
+                { note: 'C4', duration: 1 },
+                { note: 'C4', duration: 0.75 },
+                { note: 'D4', duration: 0.25 },
+                { note: 'E4', duration: 1 }
+            ],
+            // Gently down the stream
+            [
+                { note: 'E4', duration: 0.75 },
+                { note: 'D4', duration: 0.25 },
+                { note: 'E4', duration: 0.75 },
+                { note: 'F4', duration: 0.25 },
+                { note: 'G4', duration: 2 }
+            ],
+            // Merrily merrily merrily merrily
+            [
+                { note: 'C5', duration: 0.5 },
+                { note: 'C5', duration: 0.5 },
+                { note: 'C5', duration: 0.5 },
+                { note: 'G4', duration: 0.5 },
+                { note: 'G4', duration: 0.5 },
+                { note: 'G4', duration: 0.5 },
+                { note: 'E4', duration: 0.5 },
+                { note: 'E4', duration: 0.5 }
+            ],
+            // Life is but a dream
+            [
+                { note: 'G4', duration: 0.75 },
+                { note: 'F4', duration: 0.25 },
+                { note: 'E4', duration: 0.75 },
+                { note: 'D4', duration: 0.25 },
+                { note: 'C4', duration: 2 }
+            ]
+        ]
+    },
+    {
+        id: 'londonbridge',
+        name: 'London Bridge Is Falling Down',
+        timeSignature: '4/4',
+        measures: [
+            // London Bridge is falling down
+            [
+                { note: 'G4', duration: 1 },
+                { note: 'A4', duration: 1 },
+                { note: 'G4', duration: 1 },
+                { note: 'F4', duration: 1 }
+            ],
+            [
+                { note: 'E4', duration: 1 },
+                { note: 'F4', duration: 1 },
+                { note: 'G4', duration: 2 }
+            ],
+            // Falling down, falling down
+            [
+                { note: 'D4', duration: 1 },
+                { note: 'E4', duration: 1 },
+                { note: 'F4', duration: 2 }
+            ],
+            [
+                { note: 'E4', duration: 1 },
+                { note: 'F4', duration: 1 },
+                { note: 'G4', duration: 2 }
+            ],
+            // London Bridge is falling down
+            [
+                { note: 'G4', duration: 1 },
+                { note: 'A4', duration: 1 },
+                { note: 'G4', duration: 1 },
+                { note: 'F4', duration: 1 }
+            ],
+            [
+                { note: 'E4', duration: 1 },
+                { note: 'F4', duration: 1 },
+                { note: 'G4', duration: 2 }
+            ],
+            // My fair lady
+            [
+                { note: 'D4', duration: 1 },
+                { note: 'G4', duration: 1 },
+                { note: 'E4', duration: 2 }
+            ],
+            [
+                { note: 'C4', duration: 4 }
+            ]
+        ]
+    },
+    {
+        id: 'wheelsonthebus',
+        name: 'The Wheels on the Bus',
+        timeSignature: '4/4',
+        measures: [
+            // The wheels on the bus go round and round
+            [
+                { note: 'C4', duration: 1 },
+                { note: 'C4', duration: 1 },
+                { note: 'C4', duration: 1 },
+                { note: 'D4', duration: 1 }
+            ],
+            [
+                { note: 'E4', duration: 1 },
+                { note: 'E4', duration: 1 },
+                { note: 'D4', duration: 2 }
+            ],
+            // Round and round, round and round
+            [
+                { note: 'E4', duration: 1 },
+                { note: 'F4', duration: 1 },
+                { note: 'G4', duration: 2 }
+            ],
+            [
+                { note: 'G4', duration: 0.5 },
+                { note: 'F4', duration: 0.5 },
+                { note: 'E4', duration: 1 },
+                { note: 'F4', duration: 1 },
+                { note: 'G4', duration: 1 }
+            ],
+            // The wheels on the bus go round and round
+            [
+                { note: 'C4', duration: 1 },
+                { note: 'C4', duration: 1 },
+                { note: 'C4', duration: 1 },
+                { note: 'D4', duration: 1 }
+            ],
+            [
+                { note: 'E4', duration: 1 },
+                { note: 'E4', duration: 1 },
+                { note: 'D4', duration: 2 }
+            ],
+            // All through the town
+            [
+                { note: 'G4', duration: 1 },
+                { note: 'E4', duration: 1 },
+                { note: 'C4', duration: 1 },
+                { note: 'D4', duration: 1 }
+            ],
+            [
+                { note: 'C4', duration: 4 }
+            ]
+        ]
     }
 ];
 

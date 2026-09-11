@@ -41,3 +41,38 @@ export function playWordAudio(scene, word) {
         console.warn(`Word audio not found: ${word}, key: ${audioKey}`);
     }
 }
+
+/**
+ * Play a sentence by stitching word audio together
+ * @param {Phaser.Scene} scene - The Phaser scene
+ * @param {string} sentence - The sentence to play (space-separated words)
+ * @param {number} gapMs - Gap between words in milliseconds (default 50ms)
+ */
+export function playSentenceAudio(scene, sentence, gapMs = 50) {
+    const words = sentence.toLowerCase().split(' ').filter(w => w.length > 0);
+
+    if (words.length === 0) return;
+
+    let cumulativeDelay = 0;
+
+    words.forEach((word, index) => {
+        const audioKey = getWordAudioKey(word);
+
+        if (!scene.cache.audio.exists(audioKey)) {
+            console.warn(`Sentence word audio not found: ${word}, key: ${audioKey}`);
+            return;
+        }
+
+        // Get audio duration for timing the next word
+        const sound = scene.sound.get(audioKey) || scene.sound.add(audioKey);
+        const duration = sound.duration * 1000; // Convert to ms
+
+        // Schedule this word
+        scene.time.delayedCall(cumulativeDelay, () => {
+            scene.sound.play(audioKey);
+        });
+
+        // Add this word's duration + gap for next word
+        cumulativeDelay += duration + gapMs;
+    });
+}

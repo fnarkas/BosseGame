@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { getAvailablePokemon } from '../pokemonData.js';
 
 export class PokedexScene extends Phaser.Scene {
     constructor() {
@@ -96,8 +97,9 @@ export class PokedexScene extends Phaser.Scene {
         const cols = 4; // 4 Pokemon per row
         const spacing = 30;
 
-        // Display all 100 Pokemon
-        POKEMON_DATA.forEach((pokemon, index) => {
+        // Display all available Pokemon (Gen 1)
+        const availablePokemon = getAvailablePokemon();
+        availablePokemon.forEach((pokemon, index) => {
             const row = Math.floor(index / cols);
             const col = index % cols;
 
@@ -205,7 +207,7 @@ export class PokedexScene extends Phaser.Scene {
         });
 
         // Calculate max scroll based on content height
-        const totalRows = Math.ceil(POKEMON_DATA.length / cols);
+        const totalRows = Math.ceil(availablePokemon.length / cols);
         const contentHeight = startY + totalRows * (itemHeight + spacing);
         this.maxScroll = Math.max(0, contentHeight - this.cameras.main.height + 100);
     }
