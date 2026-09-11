@@ -5,7 +5,7 @@
 
 import { MINIGAMES } from '../../minigameRegistry.js';
 import { DEFAULT_MODE_WEIGHTS } from '../../minigameWheel.js';
-import { saveConfig, isConfigSaveAvailable } from '../configApi.js';
+import { saveConfig } from '../configApi.js';
 import { html, toHtml, flash, MESSAGE_COLORS } from '../html.js';
 
 export const CHART_JS_URL = 'https://cdn.jsdelivr.net/npm/chart.js';
@@ -167,10 +167,9 @@ export function mountWeightsSection(root) {
 
     const saveButton = root.querySelector('#weights-save');
     const resetButton = root.querySelector('#weights-reset');
-    saveButton.disabled = resetButton.disabled = !isConfigSaveAvailable();
 
     saveButton.addEventListener('click', () => {
-        save(readWeightInputs(root), '✓ Probabilities saved to config file! All devices will use these settings.', MESSAGE_COLORS.ok);
+        save(readWeightInputs(root), '✓ Probabilities saved for this account.', MESSAGE_COLORS.ok);
     });
     resetButton.addEventListener('click', () => {
         const defaults = { ...DEFAULT_MODE_WEIGHTS };
@@ -178,6 +177,6 @@ export function mountWeightsSection(root) {
             const input = root.querySelector(`#weight-${game.key}`);
             if (input) input.value = defaults[game.key];
         }
-        save(defaults, '✓ Reset to default probabilities and saved to config file!', MESSAGE_COLORS.busy);
+        save(defaults, '✓ Reset to default probabilities and saved for this account.', MESSAGE_COLORS.busy);
     });
 }

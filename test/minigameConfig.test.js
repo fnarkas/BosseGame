@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { loadMinigameConfig, loadModeConfig, invalidateMinigameConfig } from '../src/minigameConfig.js';
+import {
+    loadMinigameConfig, loadModeConfig, invalidateMinigameConfig,
+    getAccountConfigOverride, setAccountConfigOverride, CONFIG_OVERRIDE_KEY
+} from '../src/minigameConfig.js';
+import { setJSON } from '../src/storage.js';
 import { setTestConfig } from './helpers/setup.js';
 
 describe('minigameConfig', () => {
@@ -38,5 +42,20 @@ describe('minigameConfig', () => {
         invalidateMinigameConfig();
         await loadMinigameConfig();
         expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('lets the account override replace whole sections of the defaults', async () => {
+        const defaults = await loadMinigameConfig();
+        setAccountConfigOverride({ dayMatch: { maxErrors: 9 }, weights: { addition: 100 }, junk: 'no', arr: [1] });
+        expect(getAccountConfigOverride()).toEqual({ dayMatch: { maxErrors: 9 }, weights: { addition: 100 } });
+        const cfg = await loadMinigameConfig();
+        expect(cfg.dayMatch).toEqual({ maxErrors: 9 });
+        expect(cfg.weights).toEqual({ addition: 100 });
+        expect(cfg.addition).toEqual(defaults.addition);
+        expect(await loadModeConfig('dayMatch', { maxErrors: 3 })).toEqual({ maxErrors: 9 });
+        // A corrupt stored override is ignored.
+        setJSON(CONFIG_OVERRIDE_KEY, [1, 2]);
+        invalidateMinigameConfig();
+        expect((await loadMinigameConfig()).dayMatch).toEqual(defaults.dayMatch);
     });
 });

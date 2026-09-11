@@ -97,17 +97,16 @@ describe('server/api', () => {
         expect(list.json[0]).toMatchObject({ pokemonCount: 0 });
     });
 
-    it('imports a localStorage dump into a new account and returns the merged state', async () => {
-        const data = { coinCount: '12', pokemonCaughtList: JSON.stringify([{ id: 25 }]) };
-        const imported = await request(handler, 'POST', '/api/import', { name: 'Olle', data });
-        expect(imported.status).toBe(200);
-        expect(imported.json).toEqual({ name: 'Olle', created: true, imported: 2, state: data });
+    it('counts caught Pokemon per account in the list', async () => {
+        await request(handler, 'POST', '/api/login', { name: 'Olle' });
+        await request(handler, 'POST', '/api/state', { name: 'Olle', changes: { pokemonCaughtList: JSON.stringify([{ id: 25 }]) } });
         const list = await request(handler, 'GET', '/api/accounts');
         expect(list.json).toEqual([expect.objectContaining({ name: 'Olle', pokemonCount: 1 })]);
     });
 
     it('resets an account', async () => {
-        await request(handler, 'POST', '/api/import', { name: 'Olle', data: { coinCount: '1' } });
+        await request(handler, 'POST', '/api/login', { name: 'Olle' });
+        await request(handler, 'POST', '/api/state', { name: 'Olle', changes: { coinCount: '1' } });
         expect((await request(handler, 'POST', '/api/reset', { name: 'Olle' })).json).toEqual({ ok: true });
         const login = await request(handler, 'POST', '/api/login', { name: 'Olle' });
         expect(login.json.state).toEqual({});
@@ -122,7 +121,7 @@ describe('server/api', () => {
         await request(handler, 'POST', '/api/login', { name: 'Olle' });
         expect((await request(handler, 'POST', '/api/state', { name: 'Olle', changes: { a: 5 } })).status).toBe(400);
         expect((await request(handler, 'POST', '/api/state', { name: 'Olle', changes: [] })).status).toBe(400);
-        expect((await request(handler, 'POST', '/api/import', { name: 'Olle', data: { a: null } })).status).toBe(400);
+        expect((await request(handler, 'POST', '/api/import', { name: 'Olle', data: { a: 'b' } })).nextCalled).toBe(true);
     });
 
     it('passes unknown routes on to the next middleware', async () => {

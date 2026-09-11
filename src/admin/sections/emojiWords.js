@@ -8,7 +8,7 @@ import {
     addEmojiWord, removeEmojiWord, resetEmojiWordDictionary
 } from '../../emojiWordDictionary.js';
 import { EMOJI_PALETTE } from '../emojiPalette.js';
-import { saveConfig, isConfigSaveAvailable } from '../configApi.js';
+import { saveConfig } from '../configApi.js';
 import { html, toHtml, flash, MESSAGE_COLORS } from '../html.js';
 
 export const TEXT_CASE_OPTIONS = [
@@ -151,13 +151,12 @@ export function mountEmojiWordsSection(root) {
 
     const textCaseSave = root.querySelector('#text-case-save');
     const textCaseMessage = root.querySelector('#text-case-message');
-    textCaseSave.disabled = !isConfigSaveAvailable();
     textCaseSave.addEventListener('click', async () => {
         const textCase = root.querySelector('#text-case-select').value;
         flash(textCaseMessage, '⏳ Saving...', MESSAGE_COLORS.busy, 0);
         try {
             await saveConfig({ emojiWord: { textCase } });
-            flash(textCaseMessage, '✓ Text case saved to minigames.json! All devices will use this setting.', MESSAGE_COLORS.ok);
+            flash(textCaseMessage, '✓ Text case saved for this account.', MESSAGE_COLORS.ok);
         } catch (error) {
             console.error('Failed to save emoji-word config:', error);
             flash(textCaseMessage, '❌ Failed to save config. Check console for details.', MESSAGE_COLORS.error);

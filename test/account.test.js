@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-    login, logout, listAccounts, importLocalData, hasLegacyLocalData, resetAccount,
+    login, logout, listAccounts, resetAccount,
     getCurrentAccount, isLoggedIn, flush, flushNow, hasPendingChanges, FLUSH_DELAY_MS, RETRY_DELAY_MS
 } from '../src/account.js';
 import { getInt, setInt, remove, getAllValues } from '../src/storage.js';
@@ -26,10 +26,6 @@ function fakeServer(overrides = {}) {
                 if (v === null) delete state[body.name][k]; else state[body.name][k] = v;
             }
             return reply(200, { ok: true, saved: Object.keys(body.changes).length });
-        }
-        if (url === '/api/import') {
-            state[body.name] = { ...(state[body.name] || {}), ...body.data };
-            return reply(200, { name: body.name, created: false, imported: Object.keys(body.data).length, state: state[body.name] });
         }
         if (url === '/api/reset') { state[body.name] = {}; return reply(200, { ok: true }); }
         return reply(404, { error: 'nope' });
@@ -134,20 +130,6 @@ describe('account sync', () => {
         setInt('coinCount', 99);
         await vi.advanceTimersByTimeAsync(FLUSH_DELAY_MS + 1);
         expect(server.calls.filter(c => c.url === '/api/state')).toHaveLength(0);
-    });
-
-    it('imports the legacy localStorage progress, then clears it and logs in', async () => {
-        const server = fakeServer();
-        localStorage.setItem('coinCount', '42');
-        localStorage.setItem('gameVolume', '0.5');
-        expect(hasLegacyLocalData()).toBe(true);
-        const result = await importLocalData('Nisse');
-        expect(result).toEqual({ name: 'Nisse', created: false, imported: 1 });
-        expect(server.calls.find(c => c.url === '/api/import').body).toEqual({ name: 'Nisse', data: { coinCount: '42' } });
-        expect(hasLegacyLocalData()).toBe(false);
-        expect(localStorage.getItem('gameVolume')).toBe('0.5');
-        expect(getCurrentAccount()).toBe('Nisse');
-        expect(getInt('coinCount')).toBe(42);
     });
 
     it('lists accounts and resets the current one', async () => {

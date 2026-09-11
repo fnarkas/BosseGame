@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeCaughtLists, decodeSyncPayload, encodeSyncPayload, countCaughtAvailable, normalizeCaughtEntry } from '../../src/admin/sections/pokemon.js';
+import { countCaughtAvailable, normalizeCaughtEntry } from '../../src/admin/sections/pokemon.js';
 import { groupWordsByLetter, textCaseFromConfig } from '../../src/admin/sections/emojiWords.js';
 import { weightPercentages, currentWeights } from '../../src/admin/sections/weights.js';
 import { MINIGAMES } from '../../src/minigameRegistry.js';
@@ -12,25 +12,6 @@ describe('admin pokemon sync', () => {
         expect(normalizeCaughtEntry({ id: 1, name: 'Bulbasaur', caughtDate: 'x' })).toEqual({ id: 1, name: 'Bulbasaur', caughtDate: 'x' });
         expect(normalizeCaughtEntry({ junk: true })).toBeNull();
         expect(normalizeCaughtEntry(null)).toBeNull();
-    });
-
-    it('merges an import over the existing list, keeping existing dates', () => {
-        const existing = [{ id: 1, name: 'Bulbasaur', caughtDate: 'old' }, 4];
-        const imported = [{ id: 1, name: 'Bulbasaur', caughtDate: 'new' }, { id: 7, name: 'Squirtle', caughtDate: 'new' }];
-        const { list, added } = mergeCaughtLists(existing, imported);
-        expect(added).toBe(1);
-        expect(list.map(p => p.id)).toEqual([1, 4, 7]);
-        expect(list[0].caughtDate).toBe('old');
-        expect(list[1].name).toBe('Charmander');
-    });
-
-    it('encodes and decodes the sync payload, rejecting non-arrays', () => {
-        const list = [{ id: 1, name: 'Bulbasaur', caughtDate: 'x' }, 25];
-        const decoded = decodeSyncPayload(encodeSyncPayload(list));
-        expect(decoded.map(p => p.id)).toEqual([1, 25]);
-        expect(decoded[1].name).toBe('Pikachu');
-        expect(() => decodeSyncPayload(btoa('{"a":1}'))).toThrow(/Invalid/);
-        expect(() => decodeSyncPayload('not base64 json')).toThrow();
     });
 
     it('counts only available (Gen 1) Pokemon', () => {

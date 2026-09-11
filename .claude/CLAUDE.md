@@ -347,7 +347,7 @@ exercised against `test/helpers/fakeScene.js` — see `test/README.md`.
 | Need | Use | Never |
 |---|---|---|
 | Read/write saved state | `src/storage.js` (`getJSON/setJSON/getInt/...`) — in memory, synced to the server per account by `src/account.js` | raw `localStorage.*` (only device settings like volume live there) |
-| Accounts / login | `login()`, `logout()`, `importLocalData()` in `src/account.js`; `ensureLoggedIn()` in `src/login.js`; API in `server/api.js`, SQLite in `server/db.js` (`data/game.db`) | a second persistence path or `fetch('/api/...')` outside `account.js` |
+| Accounts / login | `login()`, `logout()` in `src/account.js`; `ensureLoggedIn()` in `src/login.js`; API in `server/api.js`, SQLite in `server/db.js` (`data/game.db`) | a second persistence path or `fetch('/api/...')` outside `account.js` |
 | Caught Pokemon list | `src/caughtPokemon.js` | parsing `pokemonCaughtList` yourself |
 | Config from `minigames.json` | `loadModeConfig('section', defaults)` in `src/minigameConfig.js` (one cached fetch) | `fetch('/config/minigames.json')` |
 | Play a sound | in modes `this.playAudio(scene, key)` / `this.playSequence(scene, keys)`; elsewhere `playAudio(scene, key)` from `src/audio.js` | `scene.sound.play(key)` (throws on a missing key) |
@@ -362,4 +362,15 @@ exercised against `test/helpers/fakeScene.js` — see `test/README.md`.
 - A wrong answer is always followed by the correct answer being **spoken** while it is highlighted (`revealAnswer` with `audioKey`/`audioKeys`).
 - The missed item is asked again right away and once more a little later (`queueRetry(item)` and `queueRetry(item, 2)`).
 - Keep calling `trackWrongAnswer(...)` — that data drives the adaptive picker.
-- The `/admin` route is dev-only for saving (Vite middleware); the game itself never writes the config.
+- `/admin` edits one account at a time. Its saves go into that account's state under `minigameConfig`
+  (`setAccountConfigOverride` in `src/minigameConfig.js`), which overrides whole sections of
+  `public/config/minigames.json`; the game itself never writes the config. Saving works in
+  production too (it is ordinary account state).
+
+## Deploying to the family server
+
+`npm run deploy` from the dev machine: runs the tests, builds, rsyncs `dist/`, `server/` and
+`deploy/` to `oloflandin@Olofs-Mac-mini.local:~/srv/pokemon` and runs `deploy/install.sh` there, which
+(re)writes the launchd agents and restarts the server. The database, certificate, backups and
+logs live in `~/srv/pokemon-data` on the server and are never uploaded or deleted.
+`DEPLOY_HOST` / `DEPLOY_DIR` override the target. Never run `deploy/install.sh` on the dev machine.

@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "serve": "node --no-warnings=ExperimentalWarning server/index.js",
+    "deploy": "bash deploy/deploy.sh",
     "test": "vitest run",
     "test:watch": "vitest"
   },

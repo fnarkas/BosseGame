@@ -5,7 +5,6 @@
 //   GET  /api/accounts          -> [{ name, pokemonCount, lastSeen, createdAt }]
 //   POST /api/login   { name }  -> { name, created, state }   (creates the account if new)
 //   POST /api/state   { name, changes: { key: string | null } }  -> { ok, saved }
-//   POST /api/import  { name, data: { key: string } }  -> { name, created, imported, state }
 //   POST /api/reset   { name }  -> { ok }
 //
 // Values are opaque strings; a null in `changes` removes the key.
@@ -66,14 +65,14 @@ function requireName(body) {
 }
 
 // Validate a { key: string | null } map from the client.
-function requireChanges(raw, { allowNull }) {
+function requireChanges(raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
         throw new HttpError(400, 'Expected an object of key/value pairs');
     }
     const changes = {};
     for (const [key, value] of Object.entries(raw)) {
         if (!key || key.length > MAX_KEY_LENGTH) throw new HttpError(400, `Invalid key '${key}'`);
-        if (value === null && allowNull) {
+        if (value === null) {
             changes[key] = null;
         } else if (typeof value === 'string') {
             changes[key] = value;
@@ -109,19 +108,11 @@ export function createApiHandler(db) {
         if (method === 'POST' && pathname === '/state') {
             const body = await readJson(req);
             const name = requireName(body);
-            const changes = requireChanges(body.changes, { allowNull: true });
+            const changes = requireChanges(body.changes);
             const account = db.findAccount(name);
             if (!account) throw new HttpError(404, `No account named '${name}'`);
             const saved = db.applyChanges(account.id, changes);
             return send(res, 200, { ok: true, saved });
-        }
-        if (method === 'POST' && pathname === '/import') {
-            const body = await readJson(req);
-            const name = requireName(body);
-            const data = requireChanges(body.data, { allowNull: false });
-            const { account, created } = db.getOrCreateAccount(name);
-            const imported = db.applyChanges(account.id, data);
-            return send(res, 200, { name: account.name, created, imported, state: db.getState(account.id) });
         }
         if (method === 'POST' && pathname === '/reset') {
             const body = await readJson(req);

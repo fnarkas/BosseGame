@@ -7,10 +7,8 @@
 // queue is sent with sendBeacon, which the browser delivers even after the
 // tab is gone.
 
-import {
-    loadState, onStorageChange, getString, setString, remove,
-    readLegacyLocalData, clearLegacyLocalData
-} from './storage.js';
+import { loadState, onStorageChange, getString, setString, remove } from './storage.js';
+import { invalidateMinigameConfig } from './minigameConfig.js';
 
 export const ACCOUNT_NAME_KEY = 'accountName';
 export const FLUSH_DELAY_MS = 300;
@@ -19,7 +17,7 @@ export const RETRY_DELAY_MS = 3000;
 let currentName = null;
 let pending = new Map();      // key -> value | null, not yet sent
 let flushTimer = null;
-let inflight = false;
+let inflight = null;          // promise of the batch currently being posted
 let unsubscribe = null;
 let lifecycleBound = false;
 
@@ -60,32 +58,21 @@ export async function listAccounts() {
 }
 
 // Log in by name. An unknown name becomes a new account. Loads that account's
-// saved state into storage.js and starts syncing changes back.
-export async function login(name) {
+// saved state into storage.js and starts syncing changes back. With
+// `remember: false` (the admin panel) the device keeps its own player.
+export async function login(name, { remember = true } = {}) {
     const payload = await parseResponse(await api('login', { name }));
-    activate(payload);
+    activate(payload, remember);
     return { name: payload.name, created: !!payload.created };
 }
 
-// Move progress saved by an older version of the game (localStorage) into an
-// account, then log in as it. The local copy is removed once the server has it.
-export async function importLocalData(name) {
-    const data = readLegacyLocalData();
-    const payload = await parseResponse(await api('import', { name, data }));
-    clearLegacyLocalData();
-    activate(payload);
-    return { name: payload.name, created: !!payload.created, imported: payload.imported || 0 };
-}
-
-export function hasLegacyLocalData() {
-    return Object.keys(readLegacyLocalData()).length > 0;
-}
-
-function activate(payload) {
+function activate(payload, remember) {
+    flushNow();
     pending = new Map();
     currentName = payload.name;
-    setString(ACCOUNT_NAME_KEY, payload.name);
+    if (remember) setString(ACCOUNT_NAME_KEY, payload.name);
     loadState(payload.state || {});
+    invalidateMinigameConfig();
     if (!unsubscribe) unsubscribe = onStorageChange(queueChange);
     bindLifecycle();
 }
@@ -101,6 +88,7 @@ export function logout() {
         unsubscribe = null;
     }
     loadState({});
+    invalidateMinigameConfig();
 }
 
 // Wipe an account's progress on the server and locally.
@@ -108,6 +96,7 @@ export async function resetAccount(name = getCurrentAccount()) {
     if (name) await parseResponse(await api('reset', { name }));
     pending = new Map();
     loadState({});
+    invalidateMinigameConfig();
 }
 
 // ---- change queue ----------------------------------------------------------
@@ -115,44 +104,57 @@ export async function resetAccount(name = getCurrentAccount()) {
 function queueChange(key, value) {
     if (!currentName) return;
     pending.set(key, value);
-    if (flushTimer === null) {
-        flushTimer = setTimeout(() => {
-            flushTimer = null;
-            flush();
-        }, FLUSH_DELAY_MS);
-    }
+    scheduleFlush(FLUSH_DELAY_MS);
+}
+
+function scheduleFlush(delayMs) {
+    if (flushTimer !== null) return;
+    flushTimer = setTimeout(() => {
+        flushTimer = null;
+        flush();
+    }, delayMs);
 }
 
 export function hasPendingChanges() {
     return pending.size > 0;
 }
 
-// Post everything queued. Resolves when the queue is empty or a retry has been
-// scheduled; never rejects.
-export async function flush() {
-    if (inflight || pending.size === 0 || !currentName) return;
-    inflight = true;
+// Post one batch. On failure the batch goes back under anything written since
+// and a retry is scheduled. Resolves true when the server confirmed it.
+async function sendBatch() {
     const name = currentName;
     const batch = pending;
     pending = new Map();
     try {
         await parseResponse(await api('state', { name, changes: Object.fromEntries(batch) }));
+        return true;
     } catch (error) {
         console.warn('account: failed to save, will retry', error);
-        // Put the batch back under anything written since, then retry later.
         if (currentName === name) {
             for (const [key, value] of batch) if (!pending.has(key)) pending.set(key, value);
-            if (flushTimer === null) {
-                flushTimer = setTimeout(() => {
-                    flushTimer = null;
-                    flush();
-                }, RETRY_DELAY_MS);
-            }
+            scheduleFlush(RETRY_DELAY_MS);
         }
-    } finally {
-        inflight = false;
+        return false;
     }
-    if (pending.size > 0 && flushTimer === null) flush();
+}
+
+// Post everything queued. Resolves true once the server has confirmed every
+// change, false when a post failed and a retry has been scheduled. Never
+// rejects.
+export async function flush() {
+    while (currentName && pending.size > 0) {
+        if (inflight) {
+            await inflight;
+            continue;
+        }
+        if (flushTimer !== null) {
+            clearTimeout(flushTimer);
+            flushTimer = null;
+        }
+        inflight = sendBatch().finally(() => { inflight = null; });
+        if (!(await inflight)) return false;
+    }
+    return true;
 }
 
 // Fire-and-forget delivery for pagehide: the browser keeps a beacon alive
@@ -188,7 +190,7 @@ export function _resetForTests() {
     if (flushTimer !== null) clearTimeout(flushTimer);
     flushTimer = null;
     pending = new Map();
-    inflight = false;
+    inflight = null;
     currentName = null;
     if (unsubscribe) unsubscribe();
     unsubscribe = null;

@@ -39,8 +39,21 @@ och kör sedan `npm run serve` (serverar `dist/` och kontot-API:t på port 8080)
 Spelet frågar efter ett namn första gången (eller efter 👤 i inställningarna). Ett nytt
 namn skapar ett nytt konto, ett känt namn öppnar det kontot. All progression sparas på
 servern i `data/game.db` (SQLite, ej i git; flytta med `POKEMON_DB_PATH`), så samma barn
-kan spela på vilken enhet som helst. Progression som en äldre version sparat i webbläsaren
-kan flyttas till ett konto med 📥 på inloggningsskärmen. API:t finns i `server/api.js`.
+kan spela på vilken enhet som helst. API:t finns i `server/api.js`.
+
+### Driftsätta på hemmaservern
+
+```bash
+ssh-copy-id oloflandin@Olofs-Mac-mini.local   # en gång, så slipper du lösenord
+npm run deploy                   # test + bygg + ladda upp + starta om
+```
+
+`deploy/deploy.sh` rsyncar `dist/`, `server/` och `deploy/` till `~/srv/pokemon` på servern och
+kör `deploy/install.sh` där. Det skriptet skapar ett självsignerat certifikat (HTTPS krävs för
+mikrofonen; godkänn varningen en gång per iPad), installerar en launchd-tjänst som håller servern
+igång på port 443 och en nattlig säkerhetskopia av databasen. Allt som ska överleva en
+driftsättning (databas, certifikat, kopior, loggar) ligger i `~/srv/pokemon-data`.
+Spelet nås sedan på `https://olofs-mac-mini.local/`. `DEPLOY_HOST` och `DEPLOY_DIR` ändrar målet.
 
 ### Adresser
 
@@ -50,7 +63,7 @@ kan flyttas till ett konto med 📥 på inloggningsskärmen. API:t finns i `serv
 | `/pokeballs` | Lyckohjulet med slumpade minispel |
 | `/games` | Lista över alla minispel med direktlänkar (t.ex. `/letters`, `/addition`) |
 | `/store` | Affären |
-| `/admin` | Adminpanel: sannolikheter, inställningar per minispel, ordlista, Pokemon |
+| `/admin` | Adminpanel per konto: sannolikheter, inställningar per minispel, ordlista, Pokemon (`?user=Namn`) |
 | `/reset` | Nollställ allt |
 
 ## Tester
@@ -81,11 +94,11 @@ src/
 └── pokemonData.js           # genereras av fetch_pokemon_data.py
 server/
 ├── db.js                    # SQLite (node:sqlite): konton + sparat läge per nyckel
-├── api.js                   # /api/accounts, /api/login, /api/state, /api/import, /api/reset
+├── api.js                   # /api/accounts, /api/login, /api/state, /api/reset
 ├── vitePlugin.js            # monterar API:t på dev-servern
 └── index.js                 # fristående server för dist/ (npm run serve)
 public/
-├── config/minigames.json    # inställningar (sparas från /admin i dev-läge)
+├── config/minigames.json    # standardinställningar; /admin sparar per konto ovanpå dessa
 ├── pokemon_images/          # laddas ner, ej i git
 └── *_audio/                 # inspelat tal (edge-tts, trimmat)
 ```

@@ -1,70 +1,70 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readDefaultConfig } from '../helpers/setup.js';
-import { loadMinigameConfig } from '../../src/minigameConfig.js';
-import {
-    getConfig, saveConfig, resetConfigCache, setConfigSaveAvailable, isConfigSaveAvailable,
-    CONFIG_URL, SAVE_URL, SAVE_UNAVAILABLE_MESSAGE
-} from '../../src/admin/configApi.js';
+import { loadMinigameConfig, CONFIG_OVERRIDE_KEY } from '../../src/minigameConfig.js';
+import { getConfig, saveConfig, resetConfigCache, SAVE_UNAVAILABLE_MESSAGE } from '../../src/admin/configApi.js';
+import { login, hasPendingChanges, FLUSH_DELAY_MS, RETRY_DELAY_MS } from '../../src/account.js';
+import { getJSON } from '../../src/storage.js';
 
-// A stateful stand-in for the dev server: POST /api/config/save stores the
-// body, GET /config/minigames.json returns what was last stored.
-let stored;
+// A stand-in for the account API: POST /api/state stores the account's keys,
+// everything else (the defaults file) goes to the shared test fetch.
+let saved;
 let posts;
 let failNextPost;
-const baseImpl = fetch.getMockImplementation();
+let originalFetch;
 
 function json(body, status = 200) {
     return { ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) };
 }
 
-beforeEach(() => {
-    stored = readDefaultConfig();
+beforeEach(async () => {
+    saved = {};
     posts = [];
     failNextPost = false;
-    resetConfigCache();
-    setConfigSaveAvailable(true);
-    fetch.mockClear();
-    fetch.mockImplementation(async (url, options = {}) => {
+    originalFetch = globalThis.fetch;
+    const base = originalFetch;
+    globalThis.fetch = async (url, options = {}) => {
         const str = String(url);
-        if (str.startsWith(SAVE_URL) && options.method === 'POST') {
-            posts.push(JSON.parse(options.body));
+        if (str === '/api/login') return json({ name: 'Olle', created: false, state: {} });
+        if (str === '/api/state') {
+            const body = JSON.parse(options.body);
+            posts.push(body.changes);
             if (failNextPost) {
                 failNextPost = false;
-                return json({ success: false }, 500);
+                return json({ error: 'boom' }, 500);
             }
-            stored = JSON.parse(options.body);
-            return json({ success: true });
+            Object.assign(saved, body.changes);
+            return json({ ok: true, saved: Object.keys(body.changes).length });
         }
-        if (str.startsWith(CONFIG_URL)) return json(stored);
-        return baseImpl(url, options);
-    });
+        return base(url, options);
+    };
+    resetConfigCache();
+    await login('Olle');
 });
 
 afterEach(() => {
-    fetch.mockImplementation(baseImpl);
-    setConfigSaveAvailable(null);
+    globalThis.fetch = originalFetch;
     resetConfigCache();
 });
 
 describe('admin configApi', () => {
-    it('getConfig loads once and caches', async () => {
+    it('getConfig loads the defaults once and caches', async () => {
         const a = await getConfig();
         const b = await getConfig();
         expect(a).toBe(b);
-        expect(a.weights).toBeTypeOf('object');
-        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(a.weights).toEqual(readDefaultConfig().weights);
     });
 
-    it('saveConfig merges a patch over the fetched config and posts once', async () => {
+    it('saveConfig stores only the patched sections in the account and posts them', async () => {
         const original = readDefaultConfig();
-        const saved = await saveConfig({ addition: { numberOfTerms: 3, maxSum: 50, onlyOneMultiDigit: false } });
+        const patch = { addition: { numberOfTerms: 3, maxSum: 50, onlyOneMultiDigit: false } };
+        const merged = await saveConfig(patch);
         expect(posts).toHaveLength(1);
-        expect(posts[0]).toEqual({ ...original, addition: { numberOfTerms: 3, maxSum: 50, onlyOneMultiDigit: false } });
-        expect(saved).toEqual(posts[0]);
-        // Other sections are untouched.
-        expect(posts[0].weights).toEqual(original.weights);
-        expect(posts[0].letters).toEqual(original.letters);
-        // The cached copy now reflects the save.
+        expect(JSON.parse(posts[0][CONFIG_OVERRIDE_KEY])).toEqual(patch);
+        expect(JSON.parse(saved[CONFIG_OVERRIDE_KEY])).toEqual(patch);
+        // The merged view keeps every other section from the defaults.
+        expect(merged.addition).toEqual(patch.addition);
+        expect(merged.weights).toEqual(original.weights);
+        expect(merged.letters).toEqual(original.letters);
         expect((await getConfig()).addition.maxSum).toBe(50);
     });
 
@@ -73,19 +73,13 @@ describe('admin configApi', () => {
             saveConfig({ letters: { letters: 'a-f' } }),
             saveConfig({ dayMatch: { maxErrors: 7 } })
         ]);
-        expect(posts).toHaveLength(2);
-        expect(posts[0].letters).toEqual({ letters: 'a-f' });
-        expect(posts[0].dayMatch).toEqual(readDefaultConfig().dayMatch);
-        // The second save was built on top of the first one's result.
-        expect(posts[1].letters).toEqual({ letters: 'a-f' });
-        expect(posts[1].dayMatch).toEqual({ maxErrors: 7 });
         expect(a.letters).toEqual({ letters: 'a-f' });
         expect(b.letters).toEqual({ letters: 'a-f' });
         expect(b.dayMatch).toEqual({ maxErrors: 7 });
-        expect(stored).toEqual(b);
+        expect(JSON.parse(saved[CONFIG_OVERRIDE_KEY])).toEqual({ letters: { letters: 'a-f' }, dayMatch: { maxErrors: 7 } });
     });
 
-    it('invalidates the game config cache after a save', async () => {
+    it('the game sees the saved override on its next config load', async () => {
         const before = await loadMinigameConfig();
         expect(before.dayMatch.maxErrors).toBe(3);
         await saveConfig({ dayMatch: { maxErrors: 9 } });
@@ -94,32 +88,21 @@ describe('admin configApi', () => {
         expect(after.dayMatch.maxErrors).toBe(9);
     });
 
-    it('re-reads the file before saving so edits from elsewhere survive', async () => {
-        await getConfig();
-        // Another device saved in the meantime.
-        stored = { ...stored, legendary: { coinReward: 555, maxErrors: 1 } };
-        await saveConfig({ dayMatch: { maxErrors: 2 } });
-        expect(posts[0].legendary).toEqual({ coinReward: 555, maxErrors: 1 });
-        expect(posts[0].dayMatch).toEqual({ maxErrors: 2 });
-    });
-
-    it('rejects a failed POST but keeps later saves working', async () => {
+    it('rejects when the server refuses, keeps the change queued, and later saves still work', async () => {
         failNextPost = true;
-        await expect(saveConfig({ dayMatch: { maxErrors: 4 } })).rejects.toThrow(/500/);
+        await expect(saveConfig({ dayMatch: { maxErrors: 4 } })).rejects.toThrow(SAVE_UNAVAILABLE_MESSAGE);
+        expect(hasPendingChanges()).toBe(true);
+        // The override is already in the account state, so the game would use it.
+        expect(getJSON(CONFIG_OVERRIDE_KEY).dayMatch.maxErrors).toBe(4);
         await expect(saveConfig({ dayMatch: { maxErrors: 5 } })).resolves.toBeTruthy();
-        expect(posts).toHaveLength(2);
-        expect(stored.dayMatch).toEqual({ maxErrors: 5 });
+        expect(hasPendingChanges()).toBe(false);
+        expect(JSON.parse(saved[CONFIG_OVERRIDE_KEY]).dayMatch).toEqual({ maxErrors: 5 });
     });
 
-    it('refuses to save outside the dev server and never posts', async () => {
-        setConfigSaveAvailable(false);
-        expect(isConfigSaveAvailable()).toBe(false);
-        await expect(saveConfig({ dayMatch: { maxErrors: 1 } })).rejects.toThrow(SAVE_UNAVAILABLE_MESSAGE);
-        expect(posts).toHaveLength(0);
-    });
-
-    it('is available under vitest (import.meta.env.DEV)', () => {
-        setConfigSaveAvailable(null);
-        expect(isConfigSaveAvailable()).toBe(true);
+    it('does not wait for the batching delay', async () => {
+        const start = Date.now();
+        await saveConfig({ dayMatch: { maxErrors: 2 } });
+        expect(Date.now() - start).toBeLessThan(Math.min(FLUSH_DELAY_MS, RETRY_DELAY_MS));
+        expect(posts).toHaveLength(1);
     });
 });

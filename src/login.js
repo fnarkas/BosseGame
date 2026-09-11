@@ -3,10 +3,9 @@
 // Shown before the game boots unless this device already has an account name
 // saved. Existing accounts are big tappable cards with an avatar and the size
 // of the Pokedex, so a child can find their own without reading. Typing a new
-// name creates a new account. A parent can also move progress that an older
-// version of the game saved on this device into an account (📥).
+// name creates a new account.
 
-import { getCurrentAccount, listAccounts, login, importLocalData, hasLegacyLocalData } from './account.js';
+import { getCurrentAccount, listAccounts, login } from './account.js';
 
 const AVATARS = ['🦊', '🐢', '🐉', '🐭', '🐱', '🦋', '🐸', '🦄', '🐼', '🦁', '🐧', '🐙'];
 
@@ -65,13 +64,6 @@ export function showLoginScreen() {
         form.appendChild(submit);
         panel.appendChild(form);
 
-        let importButton = null;
-        if (hasLegacyLocalData()) {
-            importButton = el('button', 'login-button login-button-import', '📥 Flytta sparat spel hit');
-            importButton.type = 'button';
-            panel.appendChild(importButton);
-        }
-
         let busy = false;
         const setBusy = (value) => {
             busy = value;
@@ -101,28 +93,18 @@ export function showLoginScreen() {
             }
         };
 
-        const requireTypedName = () => {
+        form.addEventListener('submit', event => {
+            event.preventDefault();
             const name = input.value.trim();
-            if (name) return name;
+            if (name) {
+                attempt(() => login(name));
+                return;
+            }
             input.focus();
             input.classList.remove('login-shake');
             void input.offsetWidth; // restart the animation
             input.classList.add('login-shake');
-            return null;
-        };
-
-        form.addEventListener('submit', event => {
-            event.preventDefault();
-            const name = requireTypedName();
-            if (name) attempt(() => login(name));
         });
-
-        if (importButton) {
-            importButton.addEventListener('click', () => {
-                const name = requireTypedName();
-                if (name) attempt(() => importLocalData(name));
-            });
-        }
 
         const renderAccounts = async () => {
             grid.textContent = '';

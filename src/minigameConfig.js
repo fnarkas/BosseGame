@@ -1,4 +1,12 @@
-// One cached fetch of public/config/minigames.json for the whole game.
+// One cached load of the minigame config for the whole game.
+//
+// The config has two layers:
+//   1. public/config/minigames.json — the defaults, checked into git.
+//   2. The logged-in account's overrides, saved from /admin into the account
+//      state under CONFIG_OVERRIDE_KEY (storage.js, synced to the server by
+//      account.js). Each top-level section in the override replaces the same
+//      section of the defaults, so every child can have their own probabilities,
+//      number ranges and word settings.
 //
 // Previously every game mode, the wheel, the letter data and the emoji
 // dictionary each fetched the file on their own (16+ requests at startup, some
@@ -8,10 +16,16 @@
 // the game can never sit on the loading screen forever; a failed or missing
 // file yields `{}` so every caller falls back to its own defaults.
 
+import { getJSON, setJSON } from './storage.js';
+
 const CONFIG_URL = '/config/minigames.json';
 const TIMEOUT_MS = 4000;
 
+export const CONFIG_OVERRIDE_KEY = 'minigameConfig';
+
 let configPromise = null;
+
+const isPlainObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 
 function timeoutSignal(ms) {
     if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
@@ -20,21 +34,42 @@ function timeoutSignal(ms) {
     return undefined;
 }
 
+// The account's saved overrides (sections only), `{}` when it has none.
+export function getAccountConfigOverride() {
+    const stored = getJSON(CONFIG_OVERRIDE_KEY, {}, isPlainObject);
+    const override = {};
+    for (const [key, section] of Object.entries(stored)) {
+        if (isPlainObject(section)) override[key] = section;
+    }
+    return override;
+}
+
+export function setAccountConfigOverride(override) {
+    setJSON(CONFIG_OVERRIDE_KEY, override && typeof override === 'object' ? override : {});
+    invalidateMinigameConfig();
+}
+
+// The checked-in defaults, without any account overrides.
+export async function loadDefaultConfig() {
+    try {
+        const response = await fetch(CONFIG_URL, { cache: 'no-store', signal: timeoutSignal(TIMEOUT_MS) });
+        if (!response.ok) {
+            console.warn(`Minigame config: HTTP ${response.status}, using defaults`);
+            return {};
+        }
+        const config = await response.json();
+        return isPlainObject(config) ? config : {};
+    } catch (error) {
+        console.warn('Minigame config: failed to load, using defaults:', error);
+        return {};
+    }
+}
+
 export function loadMinigameConfig() {
     if (!configPromise) {
         configPromise = (async () => {
-            try {
-                const response = await fetch(CONFIG_URL, { cache: 'no-store', signal: timeoutSignal(TIMEOUT_MS) });
-                if (!response.ok) {
-                    console.warn(`Minigame config: HTTP ${response.status}, using defaults`);
-                    return {};
-                }
-                const config = await response.json();
-                return (config && typeof config === 'object') ? config : {};
-            } catch (error) {
-                console.warn('Minigame config: failed to load, using defaults:', error);
-                return {};
-            }
+            const defaults = await loadDefaultConfig();
+            return { ...defaults, ...getAccountConfigOverride() };
         })();
     }
     return configPromise;
@@ -72,8 +107,8 @@ function coerceLike(defaultValue, value) {
     return value;
 }
 
-// Forget the cached config so the next caller re-fetches it (the admin panel
-// calls this after saving; tests call it between cases).
+// Forget the cached config so the next caller re-reads it (after a login, an
+// admin save, or between test cases).
 export function invalidateMinigameConfig() {
     configPromise = null;
 }

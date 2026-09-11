@@ -620,12 +620,6 @@ canvas {
     background: #4CAF50;
 }
 
-.login-button-import {
-    margin-top: 20px;
-    background: #FF9800;
-    font-size: 22px;
-}
-
 .login-button-retry {
     background: #4A90E2;
     font-size: 40px;

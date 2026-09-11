@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     getJSON, setJSON, getInt, setInt, getFloat, setFloat, getBool, setBool, getString, setString, remove, has,
-    loadState, getAllValues, onStorageChange, resetStorage, readLegacyLocalData, clearLegacyLocalData, DEVICE_KEYS
+    loadState, getAllValues, onStorageChange, resetStorage, DEVICE_KEYS
 } from '../src/storage.js';
 import { getCoinCount, addCoins } from '../src/currency.js';
 import { getStreak, incrementStreak, MAX_STREAK } from '../src/streak.js';
@@ -64,17 +64,6 @@ describe('storage helpers', () => {
         getSpy.mockRestore();
     });
 
-    it('exposes progress an older version left in localStorage, minus device keys', () => {
-        localStorage.setItem('coinCount', '12');
-        localStorage.setItem('pokemonCaughtList', '[1]');
-        localStorage.setItem('gameVolume', '0.5');
-        localStorage.setItem('accountName', 'Olle');
-        expect(readLegacyLocalData()).toEqual({ coinCount: '12', pokemonCaughtList: '[1]' });
-        clearLegacyLocalData();
-        expect(readLegacyLocalData()).toEqual({});
-        expect(localStorage.getItem('gameVolume')).toBe('0.5');
-        expect(localStorage.getItem('accountName')).toBe('Olle');
-    });
 });
 
 describe('game state survives corrupt saves', () => {

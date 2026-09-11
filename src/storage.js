@@ -109,29 +109,6 @@ function removeDevice(key) {
     }
 }
 
-// Progress saved by older versions of the game straight into localStorage.
-// The login screen offers to move it to an account (account.js).
-export function readLegacyLocalData() {
-    const store = localStorageOrNull();
-    const data = {};
-    if (!store) return data;
-    try {
-        for (let i = 0; i < store.length; i++) {
-            const key = store.key(i);
-            if (key === null || DEVICE_KEYS.has(key)) continue;
-            const value = store.getItem(key);
-            if (typeof value === 'string') data[key] = value;
-        }
-    } catch (error) {
-        console.warn('storage: failed to read legacy data', error);
-    }
-    return data;
-}
-
-export function clearLegacyLocalData() {
-    for (const key of Object.keys(readLegacyLocalData())) removeDevice(key);
-}
-
 // ---- public API used by the game ------------------------------------------
 
 export function getString(key, fallback = null) {

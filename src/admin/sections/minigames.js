@@ -3,7 +3,7 @@
 // are all generated from the schema; nothing here knows about a specific game.
 
 import { MINIGAME_CONFIG_SCHEMA, readSectionValues, sectionPatch, validateSection, helpHtml } from '../schema.js';
-import { saveConfig, isConfigSaveAvailable } from '../configApi.js';
+import { saveConfig } from '../configApi.js';
 import { html, raw, toHtml, flash, MESSAGE_COLORS } from '../html.js';
 
 const fieldDomId = (field) => `config-field-${field.id}`;
@@ -142,7 +142,7 @@ async function savePanel(root, section) {
     flash(message, '⏳ Saving...', MESSAGE_COLORS.busy, 0);
     try {
         await saveConfig(sectionPatch(section, values));
-        flash(message, `✓ ${section.title.replace(/ Configuration$/, '')} config saved to server! All devices will use these settings.`, MESSAGE_COLORS.ok);
+        flash(message, `✓ ${section.title.replace(/ Configuration$/, '')} config saved for this account.`, MESSAGE_COLORS.ok);
     } catch (error) {
         console.error(`Failed to save ${section.key} config:`, error);
         flash(message, '❌ Failed to save config. Check console for details.', MESSAGE_COLORS.error);
@@ -170,7 +170,6 @@ export function mountMinigamesSection(root) {
         }
         const button = root.querySelector(`[data-save="${section.id}"]`);
         if (button) {
-            button.disabled = !isConfigSaveAvailable();
             button.addEventListener('click', () => savePanel(root, section));
         }
         updatePreviews(root, section);
