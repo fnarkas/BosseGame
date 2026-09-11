@@ -66,8 +66,8 @@ export function renderEmojiWordsSection(config) {
     const textCase = textCaseFromConfig(config);
     return toHtml(html`
         <div class="admin-section" id="admin-emoji-words">
-            <h2>📚 Emoji-Word Dictionary</h2>
-            <p class="admin-lead">Manage words for emoji-word matching games (/emojiword and /words).</p>
+            <h2>📚 Dictionary</h2>
+            <p class="admin-lead">Words and emoji for the word-matching games. Adding and removing words saves right away.</p>
 
             <div class="admin-card" style="margin-bottom: 20px;">
                 <div class="admin-card-head">

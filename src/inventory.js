@@ -102,6 +102,34 @@ export function removePokeball(type) {
 }
 
 /**
+ * Set the count of one pokeball type outright (the admin panel). Anything
+ * that is not a non-negative integer becomes 0.
+ * @param {string} type - Type of pokeball
+ * @param {number} count - New count
+ * @returns {number|null} The stored count, or null for an unknown type
+ */
+export function setPokeballCount(type, count) {
+  if (!POKEBALL_TYPES[type]) {
+    console.error(`Invalid pokeball type: ${type}`);
+    return null;
+  }
+  const inventory = getInventory();
+  inventory[type] = clampCount(count);
+  saveInventory(inventory);
+  return inventory[type];
+}
+
+/**
+ * Sanitise a count entered by hand: integer, never negative, never absurd.
+ */
+export const MAX_ITEM_COUNT = 9999;
+export function clampCount(value, max = MAX_ITEM_COUNT) {
+  const n = Math.trunc(Number(value));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(n, max);
+}
+
+/**
  * Check if player has any pokeballs
  * @returns {boolean} True if player has at least one pokeball
  */

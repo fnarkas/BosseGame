@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     login, logout, listAccounts, resetAccount,
-    getCurrentAccount, isLoggedIn, flush, flushNow, hasPendingChanges, FLUSH_DELAY_MS, RETRY_DELAY_MS
+    getCurrentAccount, isLoggedIn, flush, flushNow, hasPendingChanges, FLUSH_DELAY_MS, RETRY_DELAY_MS,
+    getSyncStatus, onSyncChange
 } from '../src/account.js';
 import { getInt, setInt, remove, getAllValues } from '../src/storage.js';
 import { addCoins, getCoinCount } from '../src/currency.js';
@@ -139,6 +140,32 @@ describe('account sync', () => {
         await resetAccount();
         expect(server.calls.find(c => c.url === '/api/reset').body).toEqual({ name: 'Olle' });
         expect(getCoinCount()).toBe(0);
+    });
+
+    it('reports the sync status as changes are queued, posted and confirmed', async () => {
+        fakeServer();
+        await login('Olle');
+        const seen = [];
+        const stop = onSyncChange(status => seen.push(status));
+        expect(getSyncStatus()).toBe('saved');
+        addCoins(1);
+        expect(getSyncStatus()).toBe('pending');
+        await vi.advanceTimersByTimeAsync(FLUSH_DELAY_MS + 1);
+        expect(getSyncStatus()).toBe('saved');
+        expect(seen).toEqual(['pending', 'saving', 'saved']);
+        stop();
+    });
+
+    it('reports an error while a failed save waits for its retry', async () => {
+        let fail = true;
+        fakeServer({ '/api/state': (body, reply) => (fail ? reply(500, { error: 'down' }) : reply(200, { ok: true })) });
+        await login('Olle');
+        addCoins(1);
+        await vi.advanceTimersByTimeAsync(FLUSH_DELAY_MS + 1);
+        expect(getSyncStatus()).toBe('error');
+        fail = false;
+        await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS + 1);
+        expect(getSyncStatus()).toBe('saved');
     });
 
     it('surfaces server errors from login', async () => {

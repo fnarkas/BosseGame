@@ -4,6 +4,8 @@ import { renderAdminPage } from '../../src/admin/index.js';
 import { MINIGAME_CONFIG_SCHEMA } from '../../src/admin/schema.js';
 import { MINIGAMES } from '../../src/minigameRegistry.js';
 import { getAvailablePokemon } from '../../src/pokemonData.js';
+import { INVENTORY_ITEMS } from '../../src/admin/sections/inventory.js';
+import { ADMIN_TABS } from '../../src/admin/index.js';
 
 // The page is rendered as one HTML string before any DOM exists, so the
 // markup can be checked in Node.
@@ -30,6 +32,30 @@ describe('admin page markup', () => {
         expect(empty).toContain('none');
         expect(empty).not.toContain('id="admin-weights"');
         expect(empty).not.toContain('id="admin-account"');
+        expect(empty).not.toContain('id="admin-tabs"');
+    });
+
+    it('renders one tab and one panel per section, the requested tab open', () => {
+        for (const tab of ADMIN_TABS) {
+            expect(page).toContain(`data-tab="${tab.id}"`);
+            expect(page).toContain(`data-panel="${tab.id}"`);
+            expect(page).toContain(`id="${tab.section}"`);
+        }
+        expect(page).toMatch(/data-panel="inventory" >/);
+        expect(page).toMatch(/data-panel="pokedex" hidden>/);
+        const other = renderAdminPage(readDefaultConfig(), { accounts, selected: 'Olle', tab: 'pokedex' });
+        expect(other).toMatch(/data-panel="pokedex" >/);
+        expect(other).toMatch(/data-panel="inventory" hidden>/);
+        const bogus = renderAdminPage(readDefaultConfig(), { accounts, selected: 'Olle', tab: 'nope' });
+        expect(bogus).toMatch(/data-panel="inventory" >/);
+    });
+
+    it('has a stepper input per inventory item showing the stored value', () => {
+        for (const item of INVENTORY_ITEMS) expect(page).toContain(`data-inv-input="${item.id}"`);
+        expect(page).toMatch(/data-inv-input="coins"\s+value="0"/);
+        expect(page).toContain('pokeball_sprites/poke-ball.png');
+        expect(page).toContain('id="admin-sync"');
+        expect(page).toContain('All changes saved');
     });
 
     it('has an input for every schema field, a weight input per minigame and a card per Pokemon', () => {

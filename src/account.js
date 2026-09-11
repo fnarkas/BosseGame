@@ -20,6 +20,8 @@ let flushTimer = null;
 let inflight = null;          // promise of the batch currently being posted
 let unsubscribe = null;
 let lifecycleBound = false;
+const syncListeners = new Set();
+let syncStatus = 'saved';       // 'saved' | 'pending' | 'saving' | 'error'
 
 function api(path, body) {
     return fetch(`/api/${path}`, {
@@ -40,6 +42,33 @@ async function parseResponse(response) {
         throw new Error(payload && payload.error ? payload.error : `Server returned ${response.status}`);
     }
     return payload;
+}
+
+// ---- sync status (for the admin panel's "all changes saved" indicator) ------
+
+// 'saved' when nothing is queued, 'pending' while a batch waits for its
+// timer, 'saving' while it is being posted, 'error' after a failed post (a
+// retry is scheduled). Listeners get the new status; the current one is
+// returned by getSyncStatus().
+export function getSyncStatus() {
+    return syncStatus;
+}
+
+export function onSyncChange(listener) {
+    syncListeners.add(listener);
+    return () => syncListeners.delete(listener);
+}
+
+function setSyncStatus(status) {
+    if (status === syncStatus) return;
+    syncStatus = status;
+    for (const listener of syncListeners) {
+        try {
+            listener(status);
+        } catch (error) {
+            console.warn('account: sync listener failed', error);
+        }
+    }
 }
 
 // The account this device last played as, if any.
@@ -104,6 +133,7 @@ export async function resetAccount(name = getCurrentAccount()) {
 function queueChange(key, value) {
     if (!currentName) return;
     pending.set(key, value);
+    setSyncStatus('pending');
     scheduleFlush(FLUSH_DELAY_MS);
 }
 
@@ -125,14 +155,19 @@ async function sendBatch() {
     const name = currentName;
     const batch = pending;
     pending = new Map();
+    setSyncStatus('saving');
     try {
         await parseResponse(await api('state', { name, changes: Object.fromEntries(batch) }));
+        setSyncStatus(pending.size > 0 ? 'pending' : 'saved');
         return true;
     } catch (error) {
         console.warn('account: failed to save, will retry', error);
         if (currentName === name) {
             for (const [key, value] of batch) if (!pending.has(key)) pending.set(key, value);
             scheduleFlush(RETRY_DELAY_MS);
+            setSyncStatus('error');
+        } else {
+            setSyncStatus('saved');
         }
         return false;
     }
@@ -167,6 +202,7 @@ export function flushNow() {
         clearTimeout(flushTimer);
         flushTimer = null;
     }
+    setSyncStatus('saved');
     if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
         const blob = new Blob([body], { type: 'application/json' });
         if (navigator.sendBeacon('/api/state', blob)) return;
@@ -195,4 +231,6 @@ export function _resetForTests() {
     if (unsubscribe) unsubscribe();
     unsubscribe = null;
     lifecycleBound = false;
+    syncListeners.clear();
+    syncStatus = 'saved';
 }

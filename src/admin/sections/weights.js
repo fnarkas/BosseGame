@@ -47,8 +47,8 @@ export function renderWeightsSection(config) {
     const weights = currentWeights(config);
     return toHtml(html`
         <div class="admin-section" id="admin-weights">
-            <h2>Minigame Probabilities</h2>
-            <p class="admin-lead">Adjust the probability weights for each minigame. Higher values = higher chance of appearing.</p>
+            <h2>🎲 Probabilities</h2>
+            <p class="admin-lead">How often each minigame comes up on the wheel. Higher weight = more often; the chart shows the resulting share.</p>
             <div class="admin-grid admin-weights-grid">
                 ${MINIGAMES.map(game => html`
                     <div>

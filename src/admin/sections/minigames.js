@@ -78,13 +78,11 @@ function renderPanel(section, config, visible) {
 export function renderMinigamesSection(config) {
     return toHtml(html`
         <div class="admin-section" id="admin-minigames">
-            <h2>Minigame Configuration</h2>
-            <p class="admin-lead">Configure settings for individual minigames.</p>
-            <div style="margin-bottom: 15px;">
-                <label class="admin-label" for="minigame-selector">Select Minigame:</label>
-                <select id="minigame-selector" class="admin-input" style="width: 100%; max-width: 400px; padding: 10px; font-size: 16px;">
-                    ${MINIGAME_CONFIG_SCHEMA.map(section => html`<option value="${section.id}">${section.option}</option>`)}
-                </select>
+            <h2>🎮 Minigames</h2>
+            <p class="admin-lead">Settings for each minigame. Pick a game, change its fields and press Save.</p>
+            <div class="admin-subnav" id="minigame-selector" role="tablist">
+                ${MINIGAME_CONFIG_SCHEMA.map((section, index) => html`
+                    <button type="button" class="admin-subtab ${index === 0 ? 'active' : ''}" data-minigame="${section.id}" role="tab">${section.option}</button>`)}
             </div>
             ${MINIGAME_CONFIG_SCHEMA.map((section, index) => renderPanel(section, config, index === 0))}
         </div>`);
@@ -156,10 +154,16 @@ export function mountMinigamesSection(root) {
             const panel = root.querySelector(`#${panelDomId(section)}`);
             if (panel) panel.hidden = section.id !== id;
         }
+        for (const button of selector.querySelectorAll('[data-minigame]')) {
+            button.classList.toggle('active', button.dataset.minigame === id);
+        }
         const section = MINIGAME_CONFIG_SCHEMA.find(s => s.id === id);
         if (section) updatePreviews(root, section);
     };
-    selector.addEventListener('change', () => showPanel(selector.value));
+    selector.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-minigame]');
+        if (button) showPanel(button.dataset.minigame);
+    });
 
     for (const section of MINIGAME_CONFIG_SCHEMA) {
         for (const field of section.fields) {
@@ -174,5 +178,5 @@ export function mountMinigamesSection(root) {
         }
         updatePreviews(root, section);
     }
-    showPanel(selector.value);
+    showPanel(MINIGAME_CONFIG_SCHEMA[0].id);
 }

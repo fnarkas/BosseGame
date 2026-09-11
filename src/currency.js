@@ -1,4 +1,5 @@
 import { getInt, setInt } from './storage.js';
+import { clampCount } from './inventory.js';
 
 /**
  * Currency Management System
@@ -25,6 +26,18 @@ export function addCoins(amount) {
   const newAmount = current + amount;
   setInt(COIN_KEY, newAmount);
   return newAmount;
+}
+
+/**
+ * Set the balance outright (the admin panel). Negative or invalid input
+ * becomes 0.
+ * @param {number} amount - New coin count
+ * @returns {number} The stored coin count
+ */
+export function setCoinCount(amount) {
+  const value = clampCount(amount);
+  setInt(COIN_KEY, value);
+  return value;
 }
 
 /**

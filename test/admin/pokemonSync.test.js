@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { countCaughtAvailable, normalizeCaughtEntry } from '../../src/admin/sections/pokemon.js';
+import { countCaughtAvailable, normalizeCaughtEntry, matchesPokedexQuery } from '../../src/admin/sections/pokemon.js';
+import { tabFromHash, DEFAULT_TAB } from '../../src/admin/index.js';
 import { groupWordsByLetter, textCaseFromConfig } from '../../src/admin/sections/emojiWords.js';
 import { weightPercentages, currentWeights } from '../../src/admin/sections/weights.js';
 import { MINIGAMES } from '../../src/minigameRegistry.js';
@@ -16,6 +17,31 @@ describe('admin pokemon sync', () => {
 
     it('counts only available (Gen 1) Pokemon', () => {
         expect(countCaughtAvailable([1, { id: 151 }, { id: 152 }, 9999])).toBe(2);
+    });
+
+    it('filters cards by name, number and caught state', () => {
+        const pikachu = { id: 25, name: 'Pikachu' };
+        expect(matchesPokedexQuery(pikachu, true, '', 'all')).toBe(true);
+        expect(matchesPokedexQuery(pikachu, true, 'PIKA', 'all')).toBe(true);
+        expect(matchesPokedexQuery(pikachu, true, 'chu', 'all')).toBe(true);
+        expect(matchesPokedexQuery(pikachu, true, 'bulba', 'all')).toBe(false);
+        expect(matchesPokedexQuery(pikachu, true, '#25', 'all')).toBe(true);
+        expect(matchesPokedexQuery(pikachu, true, '2', 'all')).toBe(true);
+        expect(matchesPokedexQuery(pikachu, true, '5', 'all')).toBe(false);
+        expect(matchesPokedexQuery(pikachu, true, '', 'caught')).toBe(true);
+        expect(matchesPokedexQuery(pikachu, false, '', 'caught')).toBe(false);
+        expect(matchesPokedexQuery(pikachu, false, '', 'missing')).toBe(true);
+        expect(matchesPokedexQuery(pikachu, true, 'pika', 'missing')).toBe(false);
+    });
+});
+
+describe('admin tabs', () => {
+    it('reads the tab from the hash and falls back to the first one', () => {
+        expect(tabFromHash('#pokedex')).toBe('pokedex');
+        expect(tabFromHash('weights')).toBe('weights');
+        expect(tabFromHash('#nope')).toBe(DEFAULT_TAB);
+        expect(tabFromHash('')).toBe(DEFAULT_TAB);
+        expect(tabFromHash(undefined)).toBe(DEFAULT_TAB);
     });
 });
 

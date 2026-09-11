@@ -59,6 +59,19 @@ export function resetStreak() {
 }
 
 /**
+ * Set the streak outright (the admin panel), clamped to 0..MAX_STREAK. A
+ * value of 0 clears the timestamp like resetStreak().
+ * @returns {number} The stored streak
+ */
+export function setStreak(value, now = Date.now()) {
+  const streak = Math.min(MAX_STREAK, Math.max(0, Math.trunc(Number(value)) || 0));
+  if (streak === 0) return resetStreak();
+  setInt(STREAK_KEY, streak);
+  setInt(STREAK_TIME_KEY, now);
+  return streak;
+}
+
+/**
  * Get multiplier based on current streak
  * @returns {number} Multiplier (1-5)
  */
