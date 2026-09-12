@@ -6,11 +6,14 @@
 #     on the LAN (browsers only allow the microphone on HTTPS; accept the
 #     warning once per device)
 #   * Tailscale Serve, when Tailscale is installed: publishes the game on the
-#     tailnet at https://<machine>.<tailnet>.ts.net/ with a real Let's Encrypt
-#     certificate that Tailscale issues and renews by itself, so devices on
-#     the tailnet get no warning. Needs MagicDNS and "HTTPS Certificates"
-#     enabled under DNS in the Tailscale admin console. POKEMON_TAILSCALE=0
-#     skips this step.
+#     tailnet at https://<machine>.<tailnet>.ts.net:8443/ with a real Let's
+#     Encrypt certificate that Tailscale issues and renews by itself, so
+#     devices on the tailnet get no warning. Needs MagicDNS and "HTTPS
+#     Certificates" enabled under DNS in the Tailscale admin console.
+#     POKEMON_TAILSCALE=0 skips this step. It listens on 8443, not 443: the
+#     Tailscale app binds its Serve port on every interface of the Mac, so a
+#     Serve on 443 would take the port the game itself listens on
+#     (POKEMON_TAILSCALE_PORT overrides; 443, 8443 and 10000 are allowed).
 #   * launchd agent  se.landin.pokemon         keeps the server running,
 #                                              restarts it on crash and at login
 #   * launchd agent  se.landin.pokemon.backup  copies the database every night
@@ -32,6 +35,7 @@ CERT="$DATA_DIR/cert.pem"
 KEY="$DATA_DIR/key.pem"
 UID_NUM="$(id -u)"
 USE_TAILSCALE="${POKEMON_TAILSCALE:-1}"
+TS_PORT="${POKEMON_TAILSCALE_PORT:-8443}"
 
 mkdir -p "$DATA_DIR" "$LOG_DIR" "$DATA_DIR/backups" "$AGENTS"
 
@@ -149,23 +153,52 @@ restart_agent() {
     return 1
 }
 
+# The Mac App Store build has no `tailscale` on the PATH, only the app's CLI.
+TS="$(command -v tailscale || true)"
+if [ -z "$TS" ] && [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then
+    TS=/Applications/Tailscale.app/Contents/MacOS/Tailscale
+fi
+TS_HOST=""
+TS_URL=""
+
+# The Tailscale app binds its Serve listener on every interface of the Mac
+# (lsof shows IPNExtension on *:443), so a Serve left on the game's port takes
+# it before Node can bind: the server dies with EADDRINUSE and launchd gives
+# up. Switch such a Serve off before starting the server; Serve is set up on
+# TS_PORT further down.
+port_holders() {
+    lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | grep -v '^COMMAND\|node' || true
+}
+if [ -n "$TS" ] && [ "$TS_PORT" != "$PORT" ]; then
+    "$TS" serve --https="$PORT" off >/dev/null 2>&1 || true
+    # The extension lets go of the port a moment after the config changes.
+    for _ in $(seq 1 20); do
+        [ -n "$(port_holders)" ] || break
+        sleep 0.25
+    done
+fi
+if [ -n "$(port_holders)" ]; then
+    echo "==> Warning: something other than node already listens on port $PORT:" >&2
+    port_holders >&2
+fi
+
 echo "==> Restarting $LABEL ($DOMAIN)"
 restart_agent "$LABEL" "$AGENTS/$LABEL.plist"
 restart_agent "$LABEL.backup" "$AGENTS/$LABEL.backup.plist"
+
+# launchd sometimes leaves a freshly bootstrapped KeepAlive agent in "not
+# running" (a spawn pended after an earlier crash); a kickstart gets it going.
+agent_running() {
+    launchctl print "$DOMAIN/$LABEL" 2>/dev/null | grep -q 'state = running'
+}
+agent_running || launchctl kickstart "$DOMAIN/$LABEL" 2>/dev/null || true
 
 # Tailscale Serve terminates TLS with the certificate Tailscale issues for this
 # machine and proxies to the self-signed server on the LAN port. The serve
 # config is stored by Tailscale and survives reboots; setting the same target
 # again is a no-op, so this is safe to run on every deploy.
-TS=""
-TS_HOST=""
 setup_tailscale() {
     [ "$USE_TAILSCALE" = 1 ] || return 0
-    # The Mac App Store build has no `tailscale` on the PATH, only the app's CLI.
-    TS="$(command -v tailscale || true)"
-    if [ -z "$TS" ] && [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then
-        TS=/Applications/Tailscale.app/Contents/MacOS/Tailscale
-    fi
     if [ -z "$TS" ]; then
         echo "==> Tailscale is not installed; the game is reachable on the LAN only"
         return 0
@@ -190,8 +223,10 @@ setup_tailscale() {
         TS_HOST=""
         return 0
     fi
-    echo "==> Tailscale Serve: https://$TS_HOST/ -> https://localhost:$PORT/"
-    if ! "$TS" serve --bg --https=443 "https+insecure://localhost:$PORT" >/dev/null; then
+    TS_URL="https://$TS_HOST/"
+    [ "$TS_PORT" = 443 ] || TS_URL="https://$TS_HOST:$TS_PORT/"
+    echo "==> Tailscale Serve: $TS_URL -> https://localhost:$PORT/"
+    if ! "$TS" serve --bg --https="$TS_PORT" "https+insecure://localhost:$PORT" >/dev/null; then
         echo "    tailscale serve failed; the game is still reachable on the LAN" >&2
         TS_HOST=""
     fi
@@ -202,6 +237,7 @@ setup_tailscale
 # Give the server a moment, then prove it answers.
 for _ in 1 2 3 4 5 6 7 8 9 10; do
     sleep 1
+    agent_running || launchctl kickstart "$DOMAIN/$LABEL" 2>/dev/null || true
     if curl -sk --max-time 2 "https://localhost:$PORT/api/accounts" >/dev/null 2>&1; then
         if [ "$PORT" = 443 ]; then
             echo "==> Up: https://$GAME_HOST/  (LAN, self-signed certificate)"
@@ -211,10 +247,15 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
         # A machine can not reach its own Tailscale Serve (its tailnet IP is
         # local, so the request lands on the Node server directly), so the
         # tailnet address is checked by deploy.sh from the dev machine.
-        [ -z "$TS_HOST" ] || echo "==> Tailnet: https://$TS_HOST/  (trusted certificate)"
+        [ -z "$TS_HOST" ] || echo "==> Tailnet: $TS_URL  (trusted certificate)"
         exit 0
     fi
 done
-echo "The server did not answer on port $PORT. Last log lines:" >&2
+echo "The server did not answer on port $PORT." >&2
+if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "Port $PORT is held by:" >&2
+    lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >&2 || true
+fi
+echo "Last log lines:" >&2
 tail -n 20 "$LOG_DIR/server.log" >&2 || true
 exit 1

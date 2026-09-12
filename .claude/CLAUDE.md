@@ -394,6 +394,7 @@ exercised against `test/helpers/fakeScene.js` — see `test/README.md`.
 logs live in `~/srv/pokemon-data` on the server and are never uploaded or deleted.
 The server speaks HTTPS with a self-signed certificate on the LAN (`https://olofs-mac-mini.local/`);
 when Tailscale is running on the server, `install.sh` also sets up Tailscale Serve so the game is
-reachable on the tailnet at `https://olofs-mac-mini.<tailnet>.ts.net/` with a trusted certificate
-(`POKEMON_TAILSCALE=0` skips that).
+reachable on the tailnet at `https://olofs-mac-mini.<tailnet>.ts.net:8443/` with a trusted certificate
+(`POKEMON_TAILSCALE=0` skips that). Serve must not use 443: the Tailscale app binds its Serve port on
+every interface, which would take 443 from the Node server (EADDRINUSE, launchd gives up).
 `DEPLOY_HOST` / `DEPLOY_DIR` override the target. Never run `deploy/install.sh` on the dev machine.
