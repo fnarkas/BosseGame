@@ -195,7 +195,7 @@ export class MainGameScene extends Phaser.Scene {
         }
 
         const encounter = ++this.encounterSeq;
-        const stale = () => encounter !== this.encounterSeq || (this.scene.isActive && !this.scene.isActive());
+        const stale = () => encounter !== this.encounterSeq || this.sceneGone();
 
         // Before drawing a new Pokemon, pick up what the parent may have queued
         // in /admin meanwhile (throttled; instant when nothing changed).
@@ -260,9 +260,16 @@ export class MainGameScene extends Phaser.Scene {
         });
     }
 
+    // True once this scene has been stopped, so a late async step must not
+    // build UI into it. A paused scene (Pokedex or store open) is not gone.
+    sceneGone() {
+        if (!this.scene.isActive || this.scene.isActive()) return false;
+        return !(this.scene.isPaused && this.scene.isPaused());
+    }
+
     // Keys the live sync just changed on this device.
     onRemoteChange(keys) {
-        if (this.scene.isActive && !this.scene.isActive()) return;
+        if (this.sceneGone()) return;
         if (keys.includes(COIN_KEY) || keys.includes(INVENTORY_KEY) || keys.includes(SPAWN_QUEUE_KEY)) {
             if (this.inventoryHUD) updateInventoryHUD(this.inventoryHUD);
             // A parent restocking the bag, or queueing a present, lifts the

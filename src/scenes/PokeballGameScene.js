@@ -222,7 +222,7 @@ export class PokeballGameScene extends Phaser.Scene {
         } catch (error) {
             console.warn('Could not refresh the wheel, using the current one:', error);
         }
-        if (this.scene.isActive && !this.scene.isActive()) return;
+        if (this.sceneGone()) return;
 
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
@@ -356,7 +356,7 @@ export class PokeballGameScene extends Phaser.Scene {
         const start = () => {
             // Skip if the scene stopped or moved on while we were loading.
             if (this.gameMode !== mode) return;
-            if (this.scene.isActive && !this.scene.isActive()) return;
+            if (this.sceneGone()) return;
             mode.generateChallenge();
             mode.createChallengeUI(this);
         };
@@ -449,6 +449,10 @@ export class PokeballGameScene extends Phaser.Scene {
                     // Remember the newly rolled mode so a reload resumes it.
                     saveActiveMinigame(this.gameMode.constructor.name);
 
+                    // The reward is over: the home button works again while the
+                    // wheel waits to be spun (the wheel gates its own input).
+                    this.isProcessingAnswer = false;
+
                     // Show dice rolling animation before next challenge
                     this.showDiceRollAnimation();
                 } else {
@@ -476,6 +480,15 @@ export class PokeballGameScene extends Phaser.Scene {
                 this.isProcessingAnswer = false;
             });
         }
+    }
+
+    // True once this scene has been stopped (the home button, a debug route),
+    // so an async step that finishes late must not build UI into it. A scene
+    // that is merely paused (Pokedex or store open) is not gone: what it was
+    // preparing must still appear when it resumes.
+    sceneGone() {
+        if (!this.scene.isActive || this.scene.isActive()) return false;
+        return !(this.scene.isPaused && this.scene.isPaused());
     }
 
     // Leave the minigame scene and go back to catching Pokemon.

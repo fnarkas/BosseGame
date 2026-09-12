@@ -198,6 +198,24 @@ describe('PokeballGameScene', () => {
         expect(scene.gameMode.uiElements).toEqual([]); // shutdown tore the mode down
     });
 
+    it('the home button works again at the wheel that follows a correct answer', async () => {
+        const { scene, fake } = await makeScene();
+        const wheel = fake.liveObjectsOfType('Image').find(i => i.textureKey === 'game-wheel');
+        fake.click(wheel);
+        fake.advance(6000);
+        await flush();
+        scene.gameMode.answerCallback(true, 'x', 640, 450);
+        // Through the reward animation to the next wheel
+        fake.advance(8000);
+        await flush();
+        expect(fake.liveObjectsOfType('Image').find(i => i.textureKey === 'game-wheel')).toBeTruthy();
+        expect(scene.isProcessingAnswer).toBe(false);
+        const home = fake.liveObjectsOfType('Image').find(i => i.name === 'home-button');
+        fake.click(home);
+        expect(fake.sceneCalls).toEqual([{ method: 'start', key: 'MainGameScene', data: undefined }]);
+        expect(loadActiveMinigame()).toBeNull();
+    });
+
     it('ignores the home button while an answer is being rewarded', async () => {
         const { scene, fake } = await makeScene({ forcedMode: 'addition-only' });
         scene.gameMode.answerCallback(true, 'x', 640, 450);
