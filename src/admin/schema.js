@@ -356,7 +356,7 @@ export const MINIGAME_CONFIG_SCHEMA = [
         saveLabel: '💾 Save Vowel Length Config',
         fields: [
             number('vowelLengthRequired', 'Correct Answers Needed:', 3, 1, 9,
-                'Tasks per round. With 3 the child sees all three task types once each.', { key: 'required' }),
+                'Tasks per round. The two task types alternate: spelling, consonants, spelling, …', { key: 'required' }),
             checkbox('vowelLengthListenHelp', 'Listen Help on the Answer Cards', true,
                 'Puts a 🔊 badge on each answer card, so the child can hear both options and compare ' +
                 'before choosing. That turns task 1 into a comparison rather than a memory test — ' +
@@ -368,10 +368,9 @@ export const MINIGAME_CONFIG_SCHEMA = [
             body: 'Swedish has complementary quantity: in a stressed syllable either the vowel is long and the ' +
                 'following consonant short (tak = ta:k), or the vowel is short and the consonant long ' +
                 '(tack = tak:). The doubled consonant in writing marks which one it is.<br><br>' +
-                '27 minimal pairs, one pair per round, seen from three angles:<br>' +
+                '27 minimal pairs, one pair per round, seen from two angles in turn:<br>' +
                 '1. Hear the word → pick the written form (glas / glass)<br>' +
-                '2. See the word, hear one reading → is it right? (✅ / ❌)<br>' +
-                '3. Hear the word → pick one or two consonants (s / ss)<br><br>' +
+                '2. Hear the word → pick one or two consonants (s / ss)<br><br>' +
                 'After every answer the word is spelled out and the vowel visibly stretches or snaps together. ' +
                 'The vowel letter is tappable and plays that vowel sound alone, long or short. ' +
                 'A miss does not reset progress. Edit the pairs in src/vowelLengthPairs.js, then run ' +
