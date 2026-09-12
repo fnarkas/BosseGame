@@ -125,6 +125,10 @@ See `AdditionMode.js` for a compact mode and `SpeechRecognitionMode.js` for one 
 - **Encounter order is a saved queue** (`src/spawnQueue.js`, key `pokemonSpawnQueue`): the tutorial
   trio first, then random uncaught Pokemon. `MainGameScene.spawnPokemon()` calls `takeNextSpawn()`;
   the admin Pokédex tab shows the next 10 and can push a chosen Pokemon to the front (`queueSpawn`).
+- **Presents**: the admin can also queue a gift (`queueGift`, `src/gifts.js`), an entry
+  `{ gift: { coins, pokeball, greatball, ultraball, legendaryball }, pinned: true }`. The catching
+  scene shows a tappable gift box instead of a Pokemon (`showGift`) and grants the contents; a present
+  can be opened with an empty bag. Only the admin panel creates gifts.
 - Legendary/mythical Pokemon carry `legendary: true` in the data (from PokeAPI species data)
 
 ### Core Data Structure

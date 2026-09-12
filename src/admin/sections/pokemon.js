@@ -21,8 +21,10 @@ import {
     getPokemonById, TOTAL_POKEMON, GENERATIONS
 } from '../../pokemonPool.js';
 import {
-    peekSpawnQueue, queueSpawn, removeFromSpawnQueue, reshuffleSpawnQueue, SPAWN_QUEUE_LENGTH
+    peekSpawnQueue, queueSpawn, queueGift, removeFromSpawnQueue, reshuffleSpawnQueue, SPAWN_QUEUE_LENGTH
 } from '../../spawnQueue.js';
+import { GIFT_ITEMS, normalizeGift, describeGift } from '../../gifts.js';
+import { MAX_ITEM_COUNT } from '../../inventory.js';
 import { saveConfig } from '../configApi.js';
 import { html, raw, toHtml, flash, MESSAGE_COLORS } from '../html.js';
 
@@ -110,7 +112,21 @@ function renderPoolCard() {
         </div>`;
 }
 
+function renderGiftSlot(entry, index) {
+    return html`
+        <li class="admin-queue-slot pinned gift" data-spawn-slot="${index}" data-spawn-gift="1">
+            <span class="admin-queue-pos">${index + 1}</span>
+            <span class="admin-queue-gift-icon">🎁</span>
+            <span class="admin-pokemon-text">
+                <span class="admin-pokemon-name">Present</span>
+                <span class="admin-pokemon-status">${describeGift(entry.gift)}</span>
+            </span>
+            <button type="button" class="admin-chip-btn admin-chip-btn-muted" data-queue-remove="${index}" title="Remove from the queue" aria-label="Remove the present from the queue">✕</button>
+        </li>`;
+}
+
 function renderQueueSlot(pokemon, index, caught) {
+    if (pokemon.gift) return renderGiftSlot(pokemon, index);
     const stars = RARITY_TIERS[getPokemonRarity(pokemon)].icon;
     const notes = [dexNumber(pokemon.id)];
     if (stars) notes.push(stars);
@@ -153,6 +169,22 @@ function renderQueueCard() {
                 <input type="search" id="queue-search" class="admin-input admin-search" placeholder="🔍 Put a Pokémon next in line…" autocomplete="off">
             </div>
             <div class="admin-chips admin-queue-results" id="queue-results" hidden></div>
+            <details class="admin-gift" id="queue-gift">
+                <summary>🎁 Put a present next in line</summary>
+                <p class="admin-help">A present shows up as a gift box instead of a Pokémon. Tapping it puts the contents in the bag. Fill in what it should hold:</p>
+                <div class="admin-gift-items">
+                    ${GIFT_ITEMS.map(item => html`
+                        <label class="admin-gift-item">
+                            <img src="${item.image}" alt="" width="40" height="40" decoding="async">
+                            <span class="admin-gift-label">${item.label}</span>
+                            <input type="number" class="admin-input admin-stepper-input" id="gift-${item.id}" data-gift-item="${item.id}" value="0" min="0" max="${MAX_ITEM_COUNT}" step="1" inputmode="numeric">
+                        </label>`)}
+                </div>
+                <div class="admin-row" style="margin: 10px 0 0;">
+                    <button type="button" id="queue-gift-add" class="admin-btn admin-btn-green">🎁 Add the present</button>
+                    <span id="queue-gift-message" class="admin-message"></span>
+                </div>
+            </details>
             <ol class="admin-queue" id="spawn-queue">${renderQueueSlots()}</ol>
         </div>`;
 }
@@ -279,6 +311,20 @@ function mountQueueCard(root) {
     });
     root.querySelector('#queue-reshuffle').addEventListener('click', () => {
         reshuffleSpawnQueue();
+        refreshQueue();
+    });
+
+    const giftInputs = [...root.querySelectorAll('[data-gift-item]')];
+    const giftMessage = root.querySelector('#queue-gift-message');
+    root.querySelector('#queue-gift-add').addEventListener('click', () => {
+        const gift = normalizeGift(Object.fromEntries(giftInputs.map(input => [input.dataset.giftItem, parseInt(input.value, 10)])));
+        if (!gift) {
+            flash(giftMessage, '❌ The present is empty: give it at least one thing', MESSAGE_COLORS.error);
+            return;
+        }
+        queueGift(gift);
+        for (const input of giftInputs) input.value = 0;
+        flash(giftMessage, `✓ Present queued: ${describeGift(gift)}`, MESSAGE_COLORS.ok);
         refreshQueue();
     });
     return refreshQueue;

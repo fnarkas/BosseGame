@@ -196,6 +196,14 @@ export const ADMIN_CSS = `
 .admin-queue-slot img { width: 56px; height: 56px; object-fit: contain; flex: none; }
 .admin-queue-slot .admin-pokemon-text { flex: 1; }
 .admin-queue-pos { flex: none; width: 24px; text-align: center; font-weight: 800; color: var(--admin-muted); }
+.admin-queue-slot.gift { background: #fce4ec; border-color: #f06292; }
+.admin-queue-gift-icon { width: 56px; text-align: center; font-size: 40px; flex: none; line-height: 56px; }
+.admin-gift { margin: 0 0 14px; padding: 12px 14px; background: #fff; border: 1px dashed #f06292; border-radius: 10px; }
+.admin-gift summary { cursor: pointer; font-weight: 700; }
+.admin-gift-items { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.admin-gift-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #f8fafc; border: 1px solid var(--admin-line); border-radius: 10px; }
+.admin-gift-item img { width: 40px; height: 40px; object-fit: contain; }
+.admin-gift-label { font-weight: 600; min-width: 90px; }
 .admin-games-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .admin-game-link { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #fff; border: 1px solid var(--admin-line); border-radius: 10px; color: var(--admin-ink); text-decoration: none; font-size: 17px; font-weight: 700; }
 .admin-game-link:hover { border-color: var(--admin-blue); background: #f3f8ff; }

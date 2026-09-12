@@ -6,6 +6,7 @@ import { MINIGAMES } from '../../src/minigameRegistry.js';
 import { getAvailablePokemon } from '../../src/pokemonPool.js';
 import { INVENTORY_ITEMS } from '../../src/admin/sections/inventory.js';
 import { ADMIN_TABS } from '../../src/admin/index.js';
+import { queueGift } from '../../src/spawnQueue.js';
 
 // The page is rendered as one HTML string before any DOM exists, so the
 // markup can be checked in Node.
@@ -83,6 +84,21 @@ describe('admin page markup', () => {
         expect(page).toMatch(/data-spawn-slot="2" data-spawn-id="86"/);
         expect(page).toContain('id="queue-search"');
         expect(page).toContain('id="queue-reshuffle"');
+        // The present form: one input per thing a gift can hold
+        for (const id of ['coins', 'pokeball', 'greatball', 'ultraball', 'legendaryball']) {
+            expect(page).toContain(`data-gift-item="${id}"`);
+        }
+        expect(page).toContain('id="queue-gift-add"');
+    });
+
+    it('shows a queued present as a gift slot with its contents', () => {
+        queueGift({ coins: 10, greatball: 2 });
+        const withGift = renderAdminPage(readDefaultConfig(), { accounts, selected: 'Olle', tab: 'pokedex' });
+        expect(withGift).toMatch(/data-spawn-slot="0" data-spawn-gift="1"/);
+        expect(withGift).toContain('10 Coins · 2 Great Ball');
+        // The present counts as one of the ten look-ahead slots
+        expect((withGift.match(/data-spawn-slot="/g) || []).length).toBe(10);
+        expect(withGift).toMatch(/data-spawn-slot="1" data-spawn-id="95"/);
     });
 
     it('links every minigame, the main game, the wheel and the store from the Try-a-game tab', () => {

@@ -4,7 +4,7 @@ import { saveCaughtPokemonList } from '../src/caughtPokemon.js';
 import { setMaxPokemonId, resetPokemonPool, getAvailablePokemon } from '../src/pokemonPool.js';
 import {
     SPAWN_QUEUE_KEY, SPAWN_QUEUE_LENGTH, TUTORIAL_POKEMON_IDS, getSpawnQueue, fillSpawnQueue, peekSpawnQueue,
-    takeNextSpawn, queueSpawn, removeFromSpawnQueue, reshuffleSpawnQueue, clearSpawnQueue
+    takeNextSpawn, queueSpawn, queueGift, nextSpawnIsGift, removeFromSpawnQueue, reshuffleSpawnQueue, clearSpawnQueue
 } from '../src/spawnQueue.js';
 
 const ids = (queue) => queue.map(entry => entry.id);
@@ -130,6 +130,38 @@ describe('spawn queue', () => {
         expect(ids(reshuffled)[0]).toBe(150);
         expect(reshuffled[0].pinned).toBe(true);
         expect(reshuffled.slice(1).every(entry => !entry.pinned)).toBe(true);
+    });
+
+    it('a present goes to the front, pinned, survives fills and reshuffles, and is popped as { gift }', () => {
+        fillSpawnQueue();
+        queueGift({ coins: 10, pokeball: 2, junk: 5, ultraball: 0 });
+        expect(getSpawnQueue()[0]).toEqual({ gift: { coins: 10, pokeball: 2 }, pinned: true });
+        expect(getSpawnQueue()).toHaveLength(SPAWN_QUEUE_LENGTH + 1);
+        expect(nextSpawnIsGift()).toBe(true);
+        expect(peekSpawnQueue()[0]).toEqual({ gift: { coins: 10, pokeball: 2 }, pinned: true });
+        expect(peekSpawnQueue()[1]).toMatchObject({ id: 95, name: 'Onix' });
+
+        saveCaughtPokemonList(caughtList([1, 2, 3]));
+        expect(ids(reshuffleSpawnQueue({ random: first }))[0]).toBeUndefined();
+        expect(getSpawnQueue()[0].gift).toEqual({ coins: 10, pokeball: 2 });
+        expect(getSpawnQueue()).toHaveLength(SPAWN_QUEUE_LENGTH);
+
+        expect(takeNextSpawn()).toEqual({ gift: { coins: 10, pokeball: 2 } });
+        expect(nextSpawnIsGift()).toBe(false);
+        expect(getSpawnQueue()).toHaveLength(SPAWN_QUEUE_LENGTH);
+        expect(getSpawnQueue().some(entry => entry.gift)).toBe(false);
+    });
+
+    it('ignores an empty present and cleans a broken stored one', () => {
+        fillSpawnQueue();
+        const before = getSpawnQueue();
+        queueGift({ coins: 0 });
+        queueGift(null);
+        expect(getSpawnQueue()).toEqual(before);
+        setJSON(SPAWN_QUEUE_KEY, [{ gift: { coins: 'x' } }, { gift: { greatball: 3 }, pinned: false }, { id: 4 }]);
+        expect(getSpawnQueue()).toEqual([{ gift: { greatball: 3 }, pinned: true }, { id: 4, pinned: false }]);
+        queueGift({ coins: 5 }, { atFront: false });
+        expect(getSpawnQueue().at(-1)).toEqual({ gift: { coins: 5 }, pinned: true });
     });
 
     it('peekSpawnQueue returns the Pokemon data in order with the pinned flag', () => {

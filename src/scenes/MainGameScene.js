@@ -10,7 +10,9 @@ import { POKEMON_DATA } from '../pokemonData.js';
 import { saveCaughtPokemonList, caughtIdSet } from '../caughtPokemon.js';
 import { ensureAssets } from '../lazyLoad.js';
 import { pokemonImageAsset, pokemonAudioAsset } from '../assetManifest.js';
-import { takeNextSpawn, TUTORIAL_POKEMON_IDS } from '../spawnQueue.js';
+import { takeNextSpawn, nextSpawnIsGift, TUTORIAL_POKEMON_IDS, SPAWN_QUEUE_KEY } from '../spawnQueue.js';
+import { grantGift, giftContents } from '../gifts.js';
+import { playChime } from '../sfx.js';
 import { pullChanges, onRemoteChange } from '../account.js';
 import { COIN_KEY } from '../currency.js';
 import { INVENTORY_KEY } from '../inventory.js';
@@ -181,8 +183,12 @@ export class MainGameScene extends Phaser.Scene {
             }
         });
 
-        // Check if player has pokeballs before starting encounter
-        if (!hasPokeballs()) {
+        const restoreGift = !forceNewPokemon && this.registry.get('currentGift');
+        const restore = !forceNewPokemon && !restoreGift && this.registry.get('currentPokemon');
+
+        // Check if player has pokeballs before starting encounter. A present
+        // (which may well hold Poké Balls) can always be opened.
+        if (!hasPokeballs() && !restoreGift && !nextSpawnIsGift()) {
             // No pokeballs! Show message immediately
             this.showNoPokeballsPopup();
             return;
@@ -190,13 +196,19 @@ export class MainGameScene extends Phaser.Scene {
 
         const encounter = ++this.encounterSeq;
         const stale = () => encounter !== this.encounterSeq || (this.scene.isActive && !this.scene.isActive());
-        const restore = !forceNewPokemon && this.registry.get('currentPokemon');
 
         // Before drawing a new Pokemon, pick up what the parent may have queued
         // in /admin meanwhile (throttled; instant when nothing changed).
-        const prepare = restore ? Promise.resolve() : pullChanges();
+        const prepare = (restore || restoreGift) ? Promise.resolve() : pullChanges();
         prepare.then(() => {
             if (stale()) return;
+            this.currentGift = null;
+            if (restoreGift) {
+                this.currentGift = restoreGift;
+                this.currentPokemon = null;
+                this.showGift();
+                return;
+            }
             if (restore) {
                 // Restore previous Pokemon from registry
                 this.currentPokemon = this.registry.get('currentPokemon');
@@ -208,8 +220,14 @@ export class MainGameScene extends Phaser.Scene {
                     TUTORIAL_POKEMON_IDS.includes(this.currentPokemon.id);
                 console.log('Restoring previous Pokemon:', this.currentPokemon.name);
             } else {
-                // Spawn the next Pokemon from the queue
+                // Spawn the next Pokemon (or present) from the queue
                 this.spawnPokemon();
+                if (this.currentGift) {
+                    this.registry.set('currentGift', this.currentGift);
+                    this.registry.remove('currentPokemon');
+                    this.showGift();
+                    return;
+                }
                 // Save to registry
                 this.registry.set('currentPokemon', this.currentPokemon);
             }
@@ -245,9 +263,10 @@ export class MainGameScene extends Phaser.Scene {
     // Keys the live sync just changed on this device.
     onRemoteChange(keys) {
         if (this.scene.isActive && !this.scene.isActive()) return;
-        if (keys.includes(COIN_KEY) || keys.includes(INVENTORY_KEY)) {
+        if (keys.includes(COIN_KEY) || keys.includes(INVENTORY_KEY) || keys.includes(SPAWN_QUEUE_KEY)) {
             if (this.inventoryHUD) updateInventoryHUD(this.inventoryHUD);
-            // A parent restocking the bag lifts the "no pokeballs" popup.
+            // A parent restocking the bag, or queueing a present, lifts the
+            // "no pokeballs" popup.
             this.dismissNoPokeballsPopupIfStocked();
         }
         if (keys.includes(CONFIG_OVERRIDE_KEY) && this.answerMode) {
@@ -262,15 +281,126 @@ export class MainGameScene extends Phaser.Scene {
         // a parent pushed to the front from /admin. The first three catches are
         // guaranteed as long as the Pokemon is one of the tutorial trio.
         const caughtList = this.registry.get('caughtPokemon') || [];
-        const selectedPokemon = takeNextSpawn({ caught: caughtIdSet(caughtList) });
+        const next = takeNextSpawn({ caught: caughtIdSet(caughtList) });
+        if (next && next.gift) {
+            // A present from the parent (gifts.js) instead of a Pokemon.
+            this.currentGift = next.gift;
+            this.currentPokemon = null;
+            this.isTutorialCatch = false;
+            console.log('Spawning a present:', next.gift);
+            return;
+        }
+        this.currentGift = null;
         this.isTutorialCatch = caughtList.length < TUTORIAL_POKEMON_IDS.length &&
-            TUTORIAL_POKEMON_IDS.includes(selectedPokemon.id);
-        console.log(`Spawning ${selectedPokemon.name}${this.isTutorialCatch ? ' (tutorial, guaranteed catch)' : ''}`);
+            TUTORIAL_POKEMON_IDS.includes(next.id);
+        console.log(`Spawning ${next.name}${this.isTutorialCatch ? ' (tutorial, guaranteed catch)' : ''}`);
 
         this.currentPokemon = {
-            id: selectedPokemon.id,
-            name: selectedPokemon.name
+            id: next.id,
+            name: next.name
         };
+    }
+
+    // A present: a gift box where the Pokemon would be. Tapping it shakes the
+    // box, bursts it open and shows what was inside while it goes into the bag;
+    // then the next encounter starts. No text: the pictures say it all.
+    showGift() {
+        const width = this.cameras.main.width;
+        const gift = this.currentGift;
+        const x = width / 2;
+        const y = 300;
+
+        const box = this.add.text(x, y, '🎁', { fontSize: '160px', padding: { y: 40 } }).setOrigin(0.5);
+        box.setData('clearOnNewEncounter', true);
+        box.setData('giftBox', true);
+        box.setInteractive({ useHandCursor: true });
+        this.currentGiftBox = box;
+
+        const pulse = this.tweens.add({
+            targets: box, scale: 1.08, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+        });
+
+        box.once('pointerdown', () => {
+            if (this.isAnimating) return;
+            this.isAnimating = true;
+            pulse.stop();
+            box.setScale(1);
+            playChime(this, 'fanfare');
+
+            // Jiggle, then burst
+            this.tweens.add({
+                targets: box, angle: 12, duration: 90, yoyo: true, repeat: 5,
+                onComplete: () => {
+                    if (this.currentGiftBox !== box) return;
+                    box.setAngle(0);
+                    this.burstGift(box, gift);
+                }
+            });
+        });
+    }
+
+    burstGift(box, gift) {
+        const x = box.x;
+        const y = box.y;
+        const colors = [0xFFD700, 0xFF6B6B, 0x4ECDC4, 0xA78BFA, 0xFFE66D];
+        for (let i = 0; i < 18; i++) {
+            const angle = (Math.PI * 2 * i) / 18;
+            const piece = this.add.rectangle(x, y, 14, 14, colors[i % colors.length]);
+            piece.setData('clearOnNewEncounter', true);
+            this.tweens.add({
+                targets: piece,
+                x: x + Math.cos(angle) * (120 + Math.random() * 60),
+                y: y + Math.sin(angle) * (120 + Math.random() * 60),
+                alpha: 0, angle: 180, duration: 700, ease: 'Cubic.easeOut',
+                onComplete: () => piece.destroy()
+            });
+        }
+        this.tweens.add({
+            targets: box, alpha: 0, scale: 0.4, duration: 250,
+            onComplete: () => {
+                box.destroy();
+                if (this.currentGiftBox === box) this.currentGiftBox = null;
+                this.revealGift(x, y, gift);
+            }
+        });
+    }
+
+    revealGift(x, y, gift) {
+        // Grant first, so a reload mid-animation can never lose the present.
+        const granted = grantGift(gift) || {};
+        this.currentGift = null;
+        this.registry.remove('currentGift');
+        updateInventoryHUD(this.inventoryHUD);
+
+        // One row: icon + count per item, popping in one after another.
+        const items = giftContents(granted);
+        const spacing = 170;
+        const startX = x - ((items.length - 1) * spacing) / 2;
+        const shown = [];
+        items.forEach((item, index) => {
+            const ix = startX + index * spacing;
+            const icon = this.add.image(ix, y - 20, item.sprite).setOrigin(0.5).setScale(0);
+            const count = this.add.text(ix, y + 60, `+${item.count}`, {
+                fontSize: '44px', fontFamily: 'Arial', fill: '#FFD700', stroke: '#000000', strokeThickness: 5
+            }).setOrigin(0.5).setScale(0);
+            icon.setData('clearOnNewEncounter', true);
+            count.setData('clearOnNewEncounter', true);
+            shown.push(icon, count);
+            this.tweens.add({
+                targets: [icon, count], scale: 1.4 * item.spriteScale, duration: 350, delay: index * 200, ease: 'Back.easeOut'
+            });
+        });
+
+        this.time.delayedCall(1800 + items.length * 200, () => {
+            this.tweens.add({
+                targets: shown, alpha: 0, duration: 400,
+                onComplete: () => {
+                    shown.forEach(obj => obj.destroy());
+                    this.isAnimating = false;
+                    this.startNewEncounter();
+                }
+            });
+        });
     }
 
     displayPokemon() {
@@ -702,7 +832,8 @@ export class MainGameScene extends Phaser.Scene {
 
     dismissNoPokeballsPopupIfStocked() {
         if (!this.noPokeballsPopupElements || this.noPokeballsPopupElements.length === 0) return;
-        if (!hasPokeballs()) return;
+        // Balls arrived, or a present (which can be opened without any) is next.
+        if (!hasPokeballs() && !nextSpawnIsGift()) return;
         this.noPokeballsPopupElements.forEach(el => {
             if (el && el.destroy) el.destroy();
         });

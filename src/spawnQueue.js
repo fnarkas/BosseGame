@@ -8,6 +8,10 @@
 // Pokemon to the front (queueSpawn). Entries a parent placed are "pinned":
 // they stay even if the Pokemon is already caught.
 //
+// A parent can also put a present in the queue (queueGift, gifts.js): an
+// entry { gift: { coins, pokeball, ... }, pinned: true } that the catching
+// scene shows as a gift box instead of a Pokemon. Gifts are always pinned.
+//
 // Filling rules (fillSpawnQueue):
 //   - the tutorial trio (Onix, Zubat, Seel) first while fewer than three
 //     Pokemon are caught, so the first catches are the guaranteed ones;
@@ -19,21 +23,33 @@
 import { getJSON, setJSON } from './storage.js';
 import { caughtIdSet } from './caughtPokemon.js';
 import { getAvailablePokemon, getPokemonById, isPokemonAvailable } from './pokemonPool.js';
+import { normalizeGift } from './gifts.js';
 
 export const SPAWN_QUEUE_KEY = 'pokemonSpawnQueue';
 export const SPAWN_QUEUE_LENGTH = 10;
 export const TUTORIAL_POKEMON_IDS = [95, 41, 86]; // Onix, Zubat, Seel: 100% catch rate
 
-const isEntry = (entry) => !!entry && typeof entry === 'object' && Number.isInteger(entry.id) && entry.id > 0;
+export const isGiftEntry = (entry) => !!entry && typeof entry === 'object' && !!entry.gift;
+const isPokemonEntry = (entry) => !!entry && typeof entry === 'object' && Number.isInteger(entry.id) && entry.id > 0;
 
-// The stored queue, with anything that is not a { id, pinned } entry removed.
+// One stored entry in canonical form, or null for junk.
+function cleanEntry(entry) {
+    if (isGiftEntry(entry)) {
+        const gift = normalizeGift(entry.gift);
+        return gift ? { gift, pinned: true } : null;
+    }
+    if (isPokemonEntry(entry)) return { id: entry.id, pinned: !!entry.pinned };
+    return null;
+}
+
+// The stored queue, with anything that is not a Pokemon or gift entry removed.
 export function getSpawnQueue() {
     const stored = getJSON(SPAWN_QUEUE_KEY, [], Array.isArray);
-    return stored.filter(isEntry).map(entry => ({ id: entry.id, pinned: !!entry.pinned }));
+    return stored.map(cleanEntry).filter(Boolean);
 }
 
 export function saveSpawnQueue(queue) {
-    setJSON(SPAWN_QUEUE_KEY, queue.map(entry => ({ id: entry.id, pinned: !!entry.pinned })));
+    setJSON(SPAWN_QUEUE_KEY, queue.map(cleanEntry).filter(Boolean));
     return queue;
 }
 
@@ -48,9 +64,9 @@ export function fillSpawnQueue({ length = SPAWN_QUEUE_LENGTH, random = Math.rand
     const available = getAvailablePokemon();
     const allCaught = available.every(pokemon => caught.has(pokemon.id));
     const queue = getSpawnQueue().filter(entry =>
-        isPokemonAvailable(entry.id) && (entry.pinned || allCaught || !caught.has(entry.id))
+        isGiftEntry(entry) || (isPokemonAvailable(entry.id) && (entry.pinned || allCaught || !caught.has(entry.id)))
     );
-    const queued = new Set(queue.map(entry => entry.id));
+    const queued = new Set(queue.filter(entry => !isGiftEntry(entry)).map(entry => entry.id));
 
     if (caught.size < TUTORIAL_POKEMON_IDS.length) {
         for (const id of TUTORIAL_POKEMON_IDS) {
@@ -75,21 +91,30 @@ export function fillSpawnQueue({ length = SPAWN_QUEUE_LENGTH, random = Math.rand
     return queue;
 }
 
-// The queued Pokemon as data objects (for display), in encounter order.
+// The queue for display, in encounter order: Pokemon entries as the data
+// object plus `pinned`, gift entries as { gift, pinned: true }.
 export function peekSpawnQueue(options = {}) {
-    return fillSpawnQueue(options).map(entry => ({ ...getPokemonById(entry.id), pinned: entry.pinned }));
+    return fillSpawnQueue(options).map(entry =>
+        isGiftEntry(entry) ? { gift: entry.gift, pinned: true } : { ...getPokemonById(entry.id), pinned: entry.pinned }
+    );
+}
+
+// Whether the next encounter is a present (without consuming it).
+export function nextSpawnIsGift(options = {}) {
+    const queue = fillSpawnQueue(options);
+    return queue.length > 0 && isGiftEntry(queue[0]);
 }
 
 // Pop the next encounter and top the queue up again, so the saved state always
-// holds the full look-ahead. Returns the Pokemon data object, or null when the
-// pool is empty.
+// holds the full look-ahead. Returns the Pokemon data object, `{ gift }` for a
+// present, or null when the pool is empty.
 export function takeNextSpawn(options = {}) {
     const queue = fillSpawnQueue(options);
     const next = queue.shift();
     if (!next) return null;
     saveSpawnQueue(queue);
     fillSpawnQueue(options);
-    return getPokemonById(next.id);
+    return isGiftEntry(next) ? { gift: next.gift } : getPokemonById(next.id);
 }
 
 // A parent's choice: put `id` at the front (default) or the back, pinned. A
@@ -101,6 +126,16 @@ export function queueSpawn(id, { atFront = true } = {}) {
     return saveSpawnQueue(atFront ? [entry, ...rest] : [...rest, entry]);
 }
 
+// A present from the parent: { coins, pokeball, greatball, ... } (gifts.js).
+// An empty box is ignored.
+export function queueGift(gift, { atFront = true } = {}) {
+    const clean = normalizeGift(gift);
+    if (!clean) return getSpawnQueue();
+    const rest = getSpawnQueue();
+    const entry = { gift: clean, pinned: true };
+    return saveSpawnQueue(atFront ? [entry, ...rest] : [...rest, entry]);
+}
+
 export function removeFromSpawnQueue(index) {
     const queue = getSpawnQueue();
     if (index < 0 || index >= queue.length) return queue;
@@ -108,7 +143,7 @@ export function removeFromSpawnQueue(index) {
     return saveSpawnQueue(queue);
 }
 
-// Throw away the random picks (pinned ones stay) and draw again.
+// Throw away the random picks (pinned ones and gifts stay) and draw again.
 export function reshuffleSpawnQueue(options = {}) {
     saveSpawnQueue(getSpawnQueue().filter(entry => entry.pinned));
     return fillSpawnQueue(options);
