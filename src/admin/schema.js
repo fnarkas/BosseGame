@@ -378,6 +378,42 @@ export const MINIGAME_CONFIG_SCHEMA = [
         }
     },
     {
+        id: 'vowelsort',
+        key: 'vowelSort',
+        option: '🧺 Vowel Sort (kort / lång)',
+        title: 'Vowel Sort Configuration',
+        saveLabel: '💾 Save Vowel Sort Config',
+        fields: [
+            {
+                id: 'vowelSortStage', key: 'stage', label: 'Stage:', type: 'select', default: 'drag',
+                options: [
+                    { value: 'drag', label: '1. Drag the letters into the LÅNG / KORT buckets' },
+                    { value: 'buttons', label: '2. One sound alone → LÅNG or KORT button' },
+                    { value: 'mixed', label: 'Mixed: alternate 1 and 2' }
+                ],
+                help: 'Start on stage 1, where the long and short sound of the same vowel can be compared. ' +
+                    'Move to stage 2 once the child sorts reliably: there each sound comes alone, with nothing to compare against.'
+            },
+            number('vowelSortLetters', 'Letters per Board (stage 1):', 2, 2, 6,
+                'Even number: every vowel comes once long and once short. 2 = one vowel, 4 = two vowels, 6 = three.',
+                { key: 'letters', step: 2 }),
+            number('vowelSortRequired', 'Tasks per Round:', 3, 1, 9,
+                'Boards (stage 1) or questions (stage 2) needed for the reward. A miss does not reset progress.',
+                { key: 'required' })
+        ],
+        about: {
+            title: 'ℹ️ About Vowel Sort:',
+            body: 'Only the link between a vowel sound and the words <strong>lång</strong> / <strong>kort</strong>, ' +
+                'written out instead of stretched letters, for a child who can read a little.<br><br>' +
+                'Stage 1: letter cards, the same vowel once long and once short. Tapping a card plays its sound; ' +
+                'the child drags each card into the LÅNG or KORT bucket. A wrong drop shakes the card back and lights ' +
+                'the right bucket while the sound plays again; the board stays so the card can be sorted again.<br><br>' +
+                'Stage 2: one sound on its own, then two buttons. No other sound to compare with: this shows the ' +
+                'length is heard by itself.<br><br>' +
+                'A missed sound comes back in the next task and once more a little later.'
+        }
+    },
+    {
         id: 'vowelsounds',
         key: 'vowelSounds',
         option: '🔊 Vowel Sounds (long or short?)',

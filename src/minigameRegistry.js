@@ -40,6 +40,7 @@ import { AdditionMode } from './pokeballGameModes/AdditionMode.js';
 import { MultiplicationMode } from './pokeballGameModes/MultiplicationMode.js';
 import { VowelLengthMode } from './pokeballGameModes/VowelLengthMode.js';
 import { VowelSoundsMode } from './pokeballGameModes/VowelSoundsMode.js';
+import { VowelSortMode } from './pokeballGameModes/VowelSortMode.js';
 import { NumberBondsMode } from './pokeballGameModes/NumberBondsMode.js';
 import { ShapeDirectionsMode } from './pokeballGameModes/ShapeDirectionsMode.js';
 import { ClockListeningMode } from './pokeballGameModes/ClockListeningMode.js';
@@ -65,6 +66,7 @@ export const MINIGAMES = [
     { key: 'multiplication',    Mode: MultiplicationMode,         path: '/multiplication',   forced: 'multiplication-only',     name: '✖️ Multiplikation',         icon: 'game-mode-multiplication',    iconFile: 'minigame_icons/multiplication.png',     color: 0x5C6BC0, defaultWeight: 10 },
     { key: 'vowelLength',       Mode: VowelLengthMode,            path: '/vowellength',      forced: 'vowellength-only',        name: '🔤 Lång och kort vokal',    icon: 'game-mode-vowellength',       iconFile: 'minigame_icons/vowel_length.png',       color: 0x00ACC1, defaultWeight: 10, audio: ['words', 'vowels'] },
     { key: 'vowelSounds',       Mode: VowelSoundsMode,            path: '/vowelsounds',      forced: 'vowelsounds-only',        name: '🔊 Lång eller kort?',       icon: 'game-mode-vowelsounds',       iconFile: 'minigame_icons/vowel_sounds.png',       color: 0x8D6E63, defaultWeight: 10, audio: ['words', 'vowels'] },
+    { key: 'vowelSort',         Mode: VowelSortMode,              path: '/vowelsort',        forced: 'vowelsort-only',          name: '🧺 Kort eller lång? (sortera)', icon: 'game-mode-vowelsort',     iconFile: 'minigame_icons/vowel_sort.png',         color: 0x00897B, defaultWeight: 10, audio: ['vowels'] },
     { key: 'numberBonds',       Mode: NumberBondsMode,            path: '/numberbonds',      forced: 'numberbonds-only',        name: '🤝 Tiokompisar',            icon: 'game-mode-numberbonds',       iconFile: 'minigame_icons/number_bonds.png',       color: 0x7CB342, defaultWeight: 10 },
     { key: 'shapeDirections',   Mode: ShapeDirectionsMode,        path: '/shapedirections',  forced: 'shapedirections-only',    name: '🔷➡️ Shape Directions',     icon: 'game-mode-shapedirections',   iconFile: 'minigame_icons/shape_directions.png',   color: 0xFF5722, defaultWeight: 10, audio: ['shapedir'] },
     { key: 'clockListening',    Mode: ClockListeningMode,         path: '/clocklistening',   forced: 'clocklistening-only',     name: '🕐🔊 Clock Listening',      icon: 'game-mode-clock',             iconFile: 'minigame_icons/clock.png',              color: 0x9C27B0, defaultWeight: 10, audio: ['clock'], slice: 'clock' },

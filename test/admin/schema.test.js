@@ -9,11 +9,11 @@ import {
 const config = readDefaultConfig();
 const EXPECTED_SECTIONS = [
     'letters', 'numbers', 'pokemonCatching', 'legendary', 'legendaryNumbers', 'wordSpelling', 'dayMatch',
-    'addition', 'multiplication', 'numberBonds', 'vowelLength', 'vowelSounds', 'pianoLearning', 'speedReading'
+    'addition', 'multiplication', 'numberBonds', 'vowelLength', 'vowelSort', 'vowelSounds', 'pianoLearning', 'speedReading'
 ];
 
 describe('admin schema', () => {
-    it('describes the 14 minigame panels', () => {
+    it('describes the 15 minigame panels', () => {
         expect(MINIGAME_CONFIG_SCHEMA.map(s => s.key)).toEqual(EXPECTED_SECTIONS);
     });
 
