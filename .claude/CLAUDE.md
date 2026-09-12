@@ -59,7 +59,7 @@
 ## Adding New Minigames to Pokeball Game Scene
 
 All minigame wiring lives in **one place**: `src/minigameRegistry.js`. The debug
-route, the `/games` menu, the forced-mode value, the weighted random pick, the
+route, the admin panel's "Try a game" tab, the forced-mode value, the weighted random pick, the
 reload-restore map, the wheel slice/colour/icon, the default weight and the admin
 probability form are all derived from that list. Do NOT add if/else chains or
 hand-written maps anywhere else.
@@ -365,6 +365,17 @@ exercised against `test/helpers/fakeScene.js` — see `test/README.md`.
 | Which item to ask next | `pickAdaptive(modeName, pool, { seedList })`, `pickDistractors(...)`, `this.takeRetry()` / `queueRetry()` from `src/adaptive.js` + base | uniform `GetRandom` for letters/numbers |
 | Number list from admin ("12-20,30") | `parseNumberRange(str, fallback)` in `src/utils/parseNumberRange.js` | a local parser |
 | Colours / text styles / layout | `COLORS`, `TEXT`, `LAYOUT` in `src/pokeballGameModes/uiKit.js` | new hex literals |
+
+### Live sync (admin changes reach a running game)
+- `src/account.js` polls `GET /api/state?since=<revision>` every few seconds and on tab focus, and
+  applies whatever another device (usually `/admin`) wrote via `applyRemoteState` (unsent local
+  changes win). The `minigameConfig` key also drops the config cache.
+- **Views re-read at their entry points, never mid-view**: `selectRandomGameMode()` pulls before
+  rolling and `refreshWheel()` redraws the wheel if the enabled slices changed; the catching scene
+  pulls before drawing the next Pokemon from the spawn queue; modes get a fresh instance per spin.
+- Something that must redraw immediately (a coin counter, the pokeball HUD) subscribes with
+  `onRemoteChange(keys => ...)` and unsubscribes on scene shutdown. `src/liveUpdates.js` holds the
+  game-wide reactions (registry copy of the caught list, the Pokemon pool size).
 
 ### Learning rules every mode follows
 - A wrong answer is always followed by the correct answer being **spoken** while it is highlighted (`revealAnswer` with `audioKey`/`audioKeys`).

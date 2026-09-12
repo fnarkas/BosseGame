@@ -85,6 +85,15 @@ describe('admin page markup', () => {
         expect(page).toContain('id="queue-reshuffle"');
     });
 
+    it('links every minigame, the main game, the wheel and the store from the Try-a-game tab', () => {
+        for (const game of MINIGAMES) {
+            expect(page).toContain(`data-game-link="${game.path}"`);
+            expect(page).toContain(`src="${game.iconFile}"`);
+        }
+        for (const path of ['/', '/pokeballs', '/store']) expect(page).toContain(`data-game-link="${path}"`);
+        expect(page).toMatch(/class="admin-game-link" href="\/addition" target="_blank" rel="noopener"/);
+    });
+
     it('reflects config values in the inputs', () => {
         const config = readDefaultConfig();
         expect(page).toContain(`value="${config.numbers.numbers}"`);

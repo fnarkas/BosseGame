@@ -196,6 +196,10 @@ export const ADMIN_CSS = `
 .admin-queue-slot img { width: 56px; height: 56px; object-fit: contain; flex: none; }
 .admin-queue-slot .admin-pokemon-text { flex: 1; }
 .admin-queue-pos { flex: none; width: 24px; text-align: center; font-weight: 800; color: var(--admin-muted); }
+.admin-games-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.admin-game-link { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #fff; border: 1px solid var(--admin-line); border-radius: 10px; color: var(--admin-ink); text-decoration: none; font-size: 17px; font-weight: 700; }
+.admin-game-link:hover { border-color: var(--admin-blue); background: #f3f8ff; }
+.admin-game-link img { width: 48px; height: 48px; object-fit: contain; flex: none; }
 
 /* Dictionary */
 .admin-word-form { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; margin-bottom: 10px; }

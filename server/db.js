@@ -46,6 +46,13 @@ export function openDatabase(file = defaultDatabasePath()) {
             PRIMARY KEY (account_id, key)
         );
     `);
+    // `revision` counts every write batch to an account, so a device can ask
+    // "anything new since N?" cheaply (see GET /api/state). Added after the
+    // first release; existing databases get the column on open.
+    const columns = db.prepare('PRAGMA table_info(accounts)').all().map(row => row.name);
+    if (!columns.includes('revision')) {
+        db.exec('ALTER TABLE accounts ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');
+    }
     return new GameDatabase(db);
 }
 
@@ -57,10 +64,12 @@ export class GameDatabase {
     constructor(db) {
         this.db = db;
         this.stmts = {
-            list: db.prepare('SELECT id, name, created_at, last_seen FROM accounts ORDER BY last_seen DESC, name COLLATE NOCASE'),
-            find: db.prepare('SELECT id, name, created_at, last_seen FROM accounts WHERE name = ? COLLATE NOCASE'),
-            insert: db.prepare('INSERT INTO accounts (name, created_at, last_seen) VALUES (?, ?, ?)'),
+            list: db.prepare('SELECT id, name, created_at, last_seen, revision FROM accounts ORDER BY last_seen DESC, name COLLATE NOCASE'),
+            find: db.prepare('SELECT id, name, created_at, last_seen, revision FROM accounts WHERE name = ? COLLATE NOCASE'),
+            insert: db.prepare('INSERT INTO accounts (name, created_at, last_seen, revision) VALUES (?, ?, ?, 0)'),
             touch: db.prepare('UPDATE accounts SET last_seen = ? WHERE id = ?'),
+            bump: db.prepare('UPDATE accounts SET last_seen = ?, revision = revision + 1 WHERE id = ?'),
+            revision: db.prepare('SELECT revision FROM accounts WHERE id = ?'),
             state: db.prepare('SELECT key, value FROM state WHERE account_id = ?'),
             one: db.prepare('SELECT value FROM state WHERE account_id = ? AND key = ?'),
             upsert: db.prepare(`INSERT INTO state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)
@@ -120,28 +129,38 @@ export class GameDatabase {
         return state;
     }
 
+    // How many write batches the account has received. Grows by one per
+    // applyChanges() / clearState(), never shrinks.
+    getRevision(accountId) {
+        const row = this.stmts.revision.get(accountId);
+        return row ? Number(row.revision) : 0;
+    }
+
     // Apply a batch of writes in one transaction. A null value deletes the
-    // key; anything else must be a string. Returns the number of keys touched.
+    // key; anything else must be a string. Returns the number of keys touched
+    // and the account revision before and after the batch.
     applyChanges(accountId, changes) {
         const entries = Object.entries(changes || {});
         const stamp = now();
         this.db.exec('BEGIN');
         try {
+            const revisionBefore = this.getRevision(accountId);
             for (const [key, value] of entries) {
                 if (value === null) this.stmts.delete.run(accountId, key);
                 else this.stmts.upsert.run(accountId, key, String(value), stamp);
             }
-            this.stmts.touch.run(stamp, accountId);
+            this.stmts.bump.run(stamp, accountId);
             this.db.exec('COMMIT');
+            return { saved: entries.length, revisionBefore, revision: revisionBefore + 1 };
         } catch (error) {
             this.db.exec('ROLLBACK');
             throw error;
         }
-        return entries.length;
     }
 
     clearState(accountId) {
         this.stmts.clear.run(accountId);
+        this.stmts.bump.run(now(), accountId);
     }
 
     close() {

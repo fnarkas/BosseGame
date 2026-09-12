@@ -32,17 +32,46 @@ export function getAllValues() {
     return Object.fromEntries(cache);
 }
 
+// Bring the in-memory state in line with a copy fetched from the server
+// while the game is running (account.js live sync). Keys in `skip` (changes
+// this device has not sent yet) are left alone; everything else that differs
+// is written or removed. Listeners are told with `{ remote: true }` so the
+// sync does not queue the server's own values straight back to it. Returns
+// the keys that changed.
+export function applyRemoteState(values, skip = new Set()) {
+    const remote = new Map();
+    for (const [key, value] of Object.entries(values || {})) {
+        if (typeof value === 'string' && !DEVICE_KEYS.has(key)) remote.set(key, value);
+    }
+    const changed = [];
+    for (const [key, value] of remote) {
+        if (skip.has(key) || cache.get(key) === value) continue;
+        cache.set(key, value);
+        changed.push(key);
+        notify(key, value, { remote: true });
+    }
+    for (const key of [...cache.keys()]) {
+        if (skip.has(key) || remote.has(key)) continue;
+        cache.delete(key);
+        changed.push(key);
+        notify(key, null, { remote: true });
+    }
+    return changed;
+}
+
 // Called with (key, value) on every write and (key, null) on every removal of
-// account state. Returns an unsubscribe function.
+// account state, plus a third argument `{ remote: true }` when the change came
+// from the server rather than this device. Returns an unsubscribe function.
 export function onStorageChange(listener) {
     listeners.add(listener);
     return () => listeners.delete(listener);
 }
 
-function notify(key, value) {
+function notify(key, value, meta) {
     for (const listener of listeners) {
         try {
-            listener(key, value);
+            if (meta) listener(key, value, meta);
+            else listener(key, value);
         } catch (error) {
             console.warn('storage: change listener failed', error);
         }

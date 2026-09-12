@@ -13,7 +13,8 @@ import { MINIGAMES } from './minigameRegistry.js';
 import { showAdminPage } from './admin/index.js';
 import { clearAllStorage } from './utils/clearStorage.js';
 import { ensureLoggedIn } from './login.js';
-import { getCurrentAccount, resetAccount } from './account.js';
+import { getCurrentAccount, resetAccount, startLiveSync } from './account.js';
+import { bindLiveUpdates } from './liveUpdates.js';
 
 // Make POKEMON_DATA globally available
 window.POKEMON_DATA = POKEMON_DATA;
@@ -27,8 +28,8 @@ window.showPokemonCaughtPopup = showPokemonCaughtPopup;
 // Make openStore globally available for scenes
 window.openStore = openStore;
 
-// Routes for the /games menu and the debug URLs. Every minigame comes from the
-// registry; the last entry is the normal random mix.
+// Debug URLs (also linked from the admin panel's "Try a game" tab). Every
+// minigame comes from the registry; the last entry is the normal random mix.
 const GAMES_REGISTRY = [
     ...MINIGAMES.map(game => ({ path: game.path, name: game.name, mode: game.forced, scene: 'PokeballGameScene' })),
     { path: '/pokeballs', name: '🎲 Random Mix', mode: null, scene: 'PokeballGameScene' }
@@ -40,7 +41,6 @@ let answerMode;
 let startScene = 'MainGameScene';
 let pokeballGameMode = null;
 let showStoreOnLoad = false;
-let showGamesMenu = false;
 let showAdmin = false;
 let showReset = false;
 
@@ -61,9 +61,6 @@ if (gameConfig) {
     startScene = 'MainGameScene';
     showStoreOnLoad = true;
     console.log('Opening STORE');
-} else if (path === '/games' || path === '/games/') {
-    showGamesMenu = true;
-    console.log('Showing GAMES MENU');
 } else if (path === '/admin' || path === '/admin/') {
     showAdmin = true;
     console.log('Showing ADMIN PANEL');
@@ -74,10 +71,7 @@ if (gameConfig) {
     console.log('Running in LETTER MATCH mode');
 }
 
-// Show games menu if /games route
-if (showGamesMenu) {
-    showGamesMenuPage();
-} else if (showAdmin) {
+if (showAdmin) {
     showAdminPage();
 } else if (showReset) {
     // Only the reset page: never boot Phaser into the replaced DOM.
@@ -143,6 +137,11 @@ async function bootGame() {
     // Make game globally accessible for debug methods
     window.phaserGame = game;
 
+    // Keep playing with what the parent changes in /admin meanwhile: poll the
+    // server for a newer account state and let the views re-read it.
+    bindLiveUpdates(game);
+    startLiveSync();
+
     // Initialize Pokedex with game instance for audio access
     initPokedex(game);
 
@@ -195,33 +194,3 @@ async function resetAllProgress() {
     document.body.innerHTML = resetHTML;
 }
 
-function showGamesMenuPage() {
-    const gameContainer = document.getElementById('game-container');
-    if (gameContainer) {
-        gameContainer.style.display = 'none';
-    }
-
-    // Auto-generate game links from registry
-    const gamesHTML = GAMES_REGISTRY.map(game => `
-        <a href="${game.path}" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px; text-align: center;">
-            ${game.name}
-        </a>
-    `).join('');
-
-    const menuHTML = `
-        <div style="font-family: Arial; max-width: 1200px; margin: 20px auto; padding: 20px;">
-            <h1 style="text-align: center; margin-bottom: 40px; font-size: 36px;">🎮 Games</h1>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
-                <a href="/" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px; text-align: center;">🎯 Main Game</a>
-                ${gamesHTML}
-                <a href="/store" style="display: block; padding: 20px; background: #f0f0f0; border-radius: 10px; text-decoration: none; color: #333; font-size: 20px; text-align: center;">🛒 Store</a>
-            </div>
-        </div>
-    `;
-
-    document.body.innerHTML = menuHTML;
-
-    // Reset body style to allow scrolling
-    document.body.style.overflow = 'auto';
-    document.body.style.height = 'auto';
-}

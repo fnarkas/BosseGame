@@ -6,21 +6,41 @@
 // so a flaky Wi-Fi moment loses nothing. When the page is hidden or closed the
 // queue is sent with sendBeacon, which the browser delivers even after the
 // tab is gone.
+//
+// Reads go the other way too (live sync): while the game runs it asks the
+// server every few seconds, and whenever the tab becomes visible, whether the
+// account has a newer revision than the one it holds. If so the whole state
+// is fetched and every key that differs (and is not waiting to be sent from
+// here) is applied silently. That is how a change a parent makes in /admin on
+// another device (probabilities, the next Pokemon, coins) reaches a game that
+// is already open: each view re-reads the state at its natural entry point,
+// e.g. the wheel before a spin and the catching scene before an encounter.
+// Views that want to redraw right away subscribe with onRemoteChange().
 
-import { loadState, onStorageChange, getString, setString, remove } from './storage.js';
-import { invalidateMinigameConfig } from './minigameConfig.js';
+import { loadState, applyRemoteState, onStorageChange, getString, setString, remove } from './storage.js';
+import { invalidateMinigameConfig, CONFIG_OVERRIDE_KEY } from './minigameConfig.js';
 
 export const ACCOUNT_NAME_KEY = 'accountName';
 export const FLUSH_DELAY_MS = 300;
 export const RETRY_DELAY_MS = 3000;
+export const LIVE_SYNC_INTERVAL_MS = 10000;
+export const PULL_THROTTLE_MS = 2000;
+export const PULL_TIMEOUT_MS = 2500;
 
 let currentName = null;
+let revision = 0;             // server revision this device last saw in full
 let pending = new Map();      // key -> value | null, not yet sent
+let inflightKeys = new Set(); // keys in the batch currently being posted
 let flushTimer = null;
 let inflight = null;          // promise of the batch currently being posted
+let pullInflight = null;      // promise of the pull currently running
+let lastPullAt = 0;
+let liveSyncTimer = null;
+let liveSyncBound = false;
 let unsubscribe = null;
 let lifecycleBound = false;
 const syncListeners = new Set();
+const remoteListeners = new Set();
 let syncStatus = 'saved';       // 'saved' | 'pending' | 'saving' | 'error'
 
 function api(path, body) {
@@ -80,6 +100,11 @@ export function isLoggedIn() {
     return currentName !== null;
 }
 
+// The server revision of the state this device holds (tests and debugging).
+export function getRevision() {
+    return revision;
+}
+
 export async function listAccounts() {
     const response = await fetch('/api/accounts', { cache: 'no-store' });
     const list = await parseResponse(response);
@@ -99,6 +124,7 @@ function activate(payload, remember) {
     flushNow();
     pending = new Map();
     currentName = payload.name;
+    revision = Number.isFinite(payload.revision) ? payload.revision : 0;
     if (remember) setString(ACCOUNT_NAME_KEY, payload.name);
     loadState(payload.state || {});
     invalidateMinigameConfig();
@@ -110,7 +136,9 @@ function activate(payload, remember) {
 // screen. Whatever is still queued is sent first.
 export function logout() {
     flushNow();
+    stopLiveSync();
     currentName = null;
+    revision = 0;
     remove(ACCOUNT_NAME_KEY);
     if (unsubscribe) {
         unsubscribe();
@@ -124,14 +152,15 @@ export function logout() {
 export async function resetAccount(name = getCurrentAccount()) {
     if (name) await parseResponse(await api('reset', { name }));
     pending = new Map();
+    revision = 0;
     loadState({});
     invalidateMinigameConfig();
 }
 
 // ---- change queue ----------------------------------------------------------
 
-function queueChange(key, value) {
-    if (!currentName) return;
+function queueChange(key, value, meta) {
+    if (!currentName || (meta && meta.remote)) return;
     pending.set(key, value);
     setSyncStatus('pending');
     scheduleFlush(FLUSH_DELAY_MS);
@@ -155,9 +184,15 @@ async function sendBatch() {
     const name = currentName;
     const batch = pending;
     pending = new Map();
+    inflightKeys = new Set(batch.keys());
     setSyncStatus('saving');
     try {
-        await parseResponse(await api('state', { name, changes: Object.fromEntries(batch) }));
+        const reply = await parseResponse(await api('state', { name, changes: Object.fromEntries(batch) }));
+        // Our batch went straight on top of the revision we already hold, so
+        // nothing else was written in between and there is nothing to pull.
+        if (currentName === name && reply && reply.revisionBefore === revision && Number.isFinite(reply.revision)) {
+            revision = reply.revision;
+        }
         setSyncStatus(pending.size > 0 ? 'pending' : 'saved');
         return true;
     } catch (error) {
@@ -170,6 +205,8 @@ async function sendBatch() {
             setSyncStatus('saved');
         }
         return false;
+    } finally {
+        inflightKeys = new Set();
     }
 }
 
@@ -221,16 +258,115 @@ function bindLifecycle() {
     });
 }
 
+// ---- live sync (server -> this device) --------------------------------------
+
+// Listeners get the list of keys a pull changed. Returns an unsubscribe.
+export function onRemoteChange(listener) {
+    remoteListeners.add(listener);
+    return () => remoteListeners.delete(listener);
+}
+
+function notifyRemote(keys) {
+    for (const listener of remoteListeners) {
+        try {
+            listener(keys);
+        } catch (error) {
+            console.warn('account: remote change listener failed', error);
+        }
+    }
+}
+
+function timeoutSignal(ms) {
+    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+        return AbortSignal.timeout(ms);
+    }
+    return undefined;
+}
+
+// Ask the server for anything newer than the revision we hold and apply it.
+// Resolves with the changed keys ([] when nothing changed, or when not logged
+// in, throttled, or offline). Never rejects: a failed pull only means the
+// game keeps playing with what it has until the next one.
+export function pullChanges({ force = false } = {}) {
+    if (!currentName) return Promise.resolve([]);
+    if (pullInflight) return pullInflight;
+    if (!force && Date.now() - lastPullAt < PULL_THROTTLE_MS) return Promise.resolve([]);
+    pullInflight = doPull().finally(() => { pullInflight = null; });
+    return pullInflight;
+}
+
+async function doPull() {
+    const name = currentName;
+    lastPullAt = Date.now();
+    try {
+        const query = `name=${encodeURIComponent(name)}&since=${revision}`;
+        const response = await fetch(`/api/state?${query}`, { cache: 'no-store', signal: timeoutSignal(PULL_TIMEOUT_MS) });
+        const reply = await parseResponse(response);
+        if (currentName !== name || !reply || !Number.isFinite(reply.revision)) return [];
+        if (!reply.changed) {
+            revision = reply.revision;
+            return [];
+        }
+        // Whatever this device wrote but has not delivered yet wins over the
+        // server's copy; it will be posted on top shortly.
+        const skip = new Set([...pending.keys(), ...inflightKeys]);
+        const changed = applyRemoteState(reply.state || {}, skip);
+        revision = reply.revision;
+        if (changed.includes(CONFIG_OVERRIDE_KEY)) invalidateMinigameConfig();
+        if (changed.length > 0) {
+            console.log(`account: applied ${changed.length} remote change(s): ${changed.join(', ')}`);
+            notifyRemote(changed);
+        }
+        return changed;
+    } catch (error) {
+        console.warn('account: could not check for remote changes', error);
+        return [];
+    }
+}
+
+// Poll while the page is visible, and right away when it becomes visible
+// again (the iPad coming back from the parent's lap). Idempotent.
+export function startLiveSync({ intervalMs = LIVE_SYNC_INTERVAL_MS } = {}) {
+    stopLiveSync();
+    const visible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
+    liveSyncTimer = setInterval(() => {
+        if (visible()) pullChanges();
+    }, intervalMs);
+    if (!liveSyncBound && typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+        liveSyncBound = true;
+        document.addEventListener('visibilitychange', () => {
+            if (liveSyncTimer !== null && document.visibilityState === 'visible') pullChanges({ force: true });
+        });
+    }
+    pullChanges({ force: true });
+}
+
+export function stopLiveSync() {
+    if (liveSyncTimer !== null) clearInterval(liveSyncTimer);
+    liveSyncTimer = null;
+}
+
+export function isLiveSyncRunning() {
+    return liveSyncTimer !== null;
+}
+
 // Tests only: drop all state without talking to the server.
 export function _resetForTests() {
     if (flushTimer !== null) clearTimeout(flushTimer);
     flushTimer = null;
+    stopLiveSync();
+    liveSyncBound = false;
     pending = new Map();
+    inflightKeys = new Set();
     inflight = null;
+    pullInflight = null;
+    lastPullAt = 0;
+    revision = 0;
     currentName = null;
     if (unsubscribe) unsubscribe();
     unsubscribe = null;
     lifecycleBound = false;
     syncListeners.clear();
+    remoteListeners.clear();
     syncStatus = 'saved';
 }

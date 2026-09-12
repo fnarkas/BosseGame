@@ -69,9 +69,9 @@ hoppar över steget.
 |---|---|
 | `/` | Huvudspelet (fånga Pokemon) |
 | `/pokeballs` | Lyckohjulet med slumpade minispel |
-| `/games` | Lista över alla minispel med direktlänkar (t.ex. `/letters`, `/addition`) |
+| `/letters`, `/addition`, … | Ett enskilt minispel på repeat (alla länkas från adminpanelens flik "Try a game") |
 | `/store` | Affären |
-| `/admin` | Adminpanel per konto: sannolikheter, inställningar per minispel, ordlista, Pokemon (`?user=Namn`) |
+| `/admin` | Adminpanel per konto: sannolikheter, inställningar per minispel, ordlista, Pokemon, nästa Pokemon i kö, prova minispel (`?user=Namn`). Ändringar når ett spel som redan är igång inom några sekunder |
 | `/reset` | Nollställ allt |
 
 ## Tester

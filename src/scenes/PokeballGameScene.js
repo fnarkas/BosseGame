@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
 import { getMinigameByForced, getMinigameForMode, isLegendaryMode, pickWeightedMinigame } from '../minigameRegistry.js';
-import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
+import { getCoinCount, addCoins, getRandomCoinReward, COIN_KEY } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier, milestoneBonus } from '../streak.js';
 import { playChime } from '../sfx.js';
 import { createBoosterBar, updateBoosterBar, destroyBoosterBar, hideBoosterBar, showBoosterBar } from '../boosterBar.js';
 import { loadModeWeights } from '../minigameWheel.js';
+import { refreshWheel } from '../wheelTexture.js';
+import { pullChanges, onRemoteChange } from '../account.js';
 import { saveActiveMinigame, loadActiveMinigame, clearActiveMinigame } from '../minigameSession.js';
 import { ensureAudioPacks } from '../lazyLoad.js';
 
@@ -126,6 +128,14 @@ export class PokeballGameScene extends Phaser.Scene {
         }).setOrigin(1, 0);
         this.coinCounterText.setDepth(1002); // Above overlay
 
+        // Coins the parent grants in /admin while the child plays show up
+        // without a reload (account.js live sync).
+        this.stopRemoteWatch = onRemoteChange((keys) => {
+            if (!keys.includes(COIN_KEY) || !this.coinCounterText || !this.coinCounterText.scene) return;
+            this.coinCount = getCoinCount();
+            this.coinCounterText.setText(`${this.coinCount}`);
+        });
+
         // Check if we're in forced/debug mode
         const forcedMode = this.registry.get('pokeballGameMode');
 
@@ -194,6 +204,9 @@ export class PokeballGameScene extends Phaser.Scene {
     }
 
     async selectRandomGameMode() {
+        // Pick up probabilities the parent may just have saved in /admin, so
+        // the very next spin uses them (the wheel is redrawn to match).
+        await pullChanges();
         // Weights (config merged over defaults) come from the shared wheel module,
         // so mode selection and the wheel graphic always agree. Higher weight =
         // higher probability of being selected; weight 0 = never selected.
@@ -201,7 +214,16 @@ export class PokeballGameScene extends Phaser.Scene {
         return pickWeightedMinigame(weights);
     }
 
-    showDiceRollAnimation() {
+    async showDiceRollAnimation() {
+        // The wheel must show the slices the mode was rolled from: redraw it
+        // if the probabilities changed since it was last drawn.
+        try {
+            await refreshWheel(this);
+        } catch (error) {
+            console.warn('Could not refresh the wheel, using the current one:', error);
+        }
+        if (this.scene.isActive && !this.scene.isActive()) return;
+
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
 
@@ -545,6 +567,10 @@ export class PokeballGameScene extends Phaser.Scene {
 
     // Scene shutdown: tear down the running mode and HUD.
     teardown() {
+        if (this.stopRemoteWatch) {
+            this.stopRemoteWatch();
+            this.stopRemoteWatch = null;
+        }
         if (this.gameMode) {
             try {
                 this.gameMode.cleanup(this);

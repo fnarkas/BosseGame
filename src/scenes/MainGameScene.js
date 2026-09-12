@@ -11,6 +11,10 @@ import { saveCaughtPokemonList, caughtIdSet } from '../caughtPokemon.js';
 import { ensureAssets } from '../lazyLoad.js';
 import { pokemonImageAsset, pokemonAudioAsset } from '../assetManifest.js';
 import { takeNextSpawn, TUTORIAL_POKEMON_IDS } from '../spawnQueue.js';
+import { pullChanges, onRemoteChange } from '../account.js';
+import { COIN_KEY } from '../currency.js';
+import { INVENTORY_KEY } from '../inventory.js';
+import { CONFIG_OVERRIDE_KEY } from '../minigameConfig.js';
 
 export class MainGameScene extends Phaser.Scene {
     constructor() {
@@ -74,6 +78,15 @@ export class MainGameScene extends Phaser.Scene {
 
         // Create inventory HUD (top left)
         this.inventoryHUD = createInventoryHUD(this, 150, 20);
+
+        // What the parent changes in /admin while the child plays (coins,
+        // pokeballs, the name-case settings) lands here through the live sync
+        // in account.js; the next encounter and the Pokedex read the rest.
+        this.stopRemoteWatch = onRemoteChange((keys) => this.onRemoteChange(keys));
+        this.events.once('shutdown', () => {
+            if (this.stopRemoteWatch) this.stopRemoteWatch();
+            this.stopRemoteWatch = null;
+        });
 
         // Store button (icon sprite)
         const storeBtn = this.add.image(width - 160, 52, 'store-icon');
@@ -175,51 +188,72 @@ export class MainGameScene extends Phaser.Scene {
             return;
         }
 
-        // Check if we should use existing Pokemon or spawn new one
-        if (!forceNewPokemon && this.registry.get('currentPokemon')) {
-            // Restore previous Pokemon from registry
-            this.currentPokemon = this.registry.get('currentPokemon');
-            // Re-derive the tutorial flag: it is per-scene state and would
-            // otherwise be lost after a trip to the minigame scene, turning a
-            // guaranteed tutorial catch into a random one.
-            const caughtList = this.registry.get('caughtPokemon') || [];
-            this.isTutorialCatch = caughtList.length < TUTORIAL_POKEMON_IDS.length &&
-                TUTORIAL_POKEMON_IDS.includes(this.currentPokemon.id);
-            console.log('Restoring previous Pokemon:', this.currentPokemon.name);
-        } else {
-            // Spawn new random Pokemon
-            this.spawnPokemon();
-            // Save to registry
-            this.registry.set('currentPokemon', this.currentPokemon);
-        }
-
-        // Fetch this Pokemon's artwork and name audio (instant when cached),
-        // load the answer-mode config if needed, then show the encounter.
         const encounter = ++this.encounterSeq;
-        const pokemon = this.currentPokemon;
-        const loadAssets = ensureAssets(this, {
-            images: [pokemonImageAsset(pokemon.id)],
-            audio: [pokemonAudioAsset(pokemon.id)]
-        });
-        const loadConfig = (this.answerMode.loadConfig && !this.answerMode.configLoaded)
-            ? this.answerMode.loadConfig().catch((error) => {
-                console.warn('Config failed to load, starting with defaults:', error);
-                this.answerMode.configLoaded = true;
-            })
-            : Promise.resolve();
+        const stale = () => encounter !== this.encounterSeq || (this.scene.isActive && !this.scene.isActive());
+        const restore = !forceNewPokemon && this.registry.get('currentPokemon');
 
-        const show = () => {
-            // A newer encounter started, or the scene stopped, while loading.
-            if (encounter !== this.encounterSeq) return;
-            if (this.scene.isActive && !this.scene.isActive()) return;
-            this.displayPokemon();
-            this.answerMode.generateChallenge(this.currentPokemon);
-            this.answerMode.createChallengeUI(this, this.attemptsLeft);
-        };
-        Promise.all([loadAssets, loadConfig]).then(show, (error) => {
-            console.warn('Encounter assets failed to load, showing anyway:', error);
-            show();
+        // Before drawing a new Pokemon, pick up what the parent may have queued
+        // in /admin meanwhile (throttled; instant when nothing changed).
+        const prepare = restore ? Promise.resolve() : pullChanges();
+        prepare.then(() => {
+            if (stale()) return;
+            if (restore) {
+                // Restore previous Pokemon from registry
+                this.currentPokemon = this.registry.get('currentPokemon');
+                // Re-derive the tutorial flag: it is per-scene state and would
+                // otherwise be lost after a trip to the minigame scene, turning a
+                // guaranteed tutorial catch into a random one.
+                const caughtList = this.registry.get('caughtPokemon') || [];
+                this.isTutorialCatch = caughtList.length < TUTORIAL_POKEMON_IDS.length &&
+                    TUTORIAL_POKEMON_IDS.includes(this.currentPokemon.id);
+                console.log('Restoring previous Pokemon:', this.currentPokemon.name);
+            } else {
+                // Spawn the next Pokemon from the queue
+                this.spawnPokemon();
+                // Save to registry
+                this.registry.set('currentPokemon', this.currentPokemon);
+            }
+
+            // Fetch this Pokemon's artwork and name audio (instant when cached),
+            // load the answer-mode config if needed, then show the encounter.
+            const pokemon = this.currentPokemon;
+            const loadAssets = ensureAssets(this, {
+                images: [pokemonImageAsset(pokemon.id)],
+                audio: [pokemonAudioAsset(pokemon.id)]
+            });
+            const loadConfig = (this.answerMode.loadConfig && !this.answerMode.configLoaded)
+                ? this.answerMode.loadConfig().catch((error) => {
+                    console.warn('Config failed to load, starting with defaults:', error);
+                    this.answerMode.configLoaded = true;
+                })
+                : Promise.resolve();
+
+            const show = () => {
+                // A newer encounter started, or the scene stopped, while loading.
+                if (stale()) return;
+                this.displayPokemon();
+                this.answerMode.generateChallenge(this.currentPokemon);
+                this.answerMode.createChallengeUI(this, this.attemptsLeft);
+            };
+            Promise.all([loadAssets, loadConfig]).then(show, (error) => {
+                console.warn('Encounter assets failed to load, showing anyway:', error);
+                show();
+            });
         });
+    }
+
+    // Keys the live sync just changed on this device.
+    onRemoteChange(keys) {
+        if (this.scene.isActive && !this.scene.isActive()) return;
+        if (keys.includes(COIN_KEY) || keys.includes(INVENTORY_KEY)) {
+            if (this.inventoryHUD) updateInventoryHUD(this.inventoryHUD);
+            // A parent restocking the bag lifts the "no pokeballs" popup.
+            this.dismissNoPokeballsPopupIfStocked();
+        }
+        if (keys.includes(CONFIG_OVERRIDE_KEY) && this.answerMode) {
+            // Name/keyboard case settings: re-read on the next encounter.
+            this.answerMode.configLoaded = false;
+        }
     }
 
     spawnPokemon() {

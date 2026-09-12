@@ -3,11 +3,16 @@
 // the standalone server (server/index.js).
 //
 //   GET  /api/accounts          -> [{ name, pokemonCount, lastSeen, createdAt }]
-//   POST /api/login   { name }  -> { name, created, state }   (creates the account if new)
-//   POST /api/state   { name, changes: { key: string | null } }  -> { ok, saved }
+//   POST /api/login   { name }  -> { name, created, state, revision }   (creates the account if new)
+//   POST /api/state   { name, changes: { key: string | null } }  -> { ok, saved, revisionBefore, revision }
+//   GET  /api/state?name=X&since=N  -> { revision, changed: false } when nothing was written
+//                                     after revision N, else { revision, changed: true, state }
 //   POST /api/reset   { name }  -> { ok }
 //
-// Values are opaque strings; a null in `changes` removes the key.
+// Values are opaque strings; a null in `changes` removes the key. `revision`
+// grows by one per write batch, so a device that is already playing can poll
+// GET /api/state cheaply and pick up what the admin panel (or another device)
+// changed in the meantime.
 
 import { normalizeName, MAX_KEY_LENGTH } from './db.js';
 
@@ -93,7 +98,7 @@ function routeOf(req) {
 
 export function createApiHandler(db) {
     async function handle(req, res, next) {
-        const { pathname } = routeOf(req);
+        const { pathname, url } = routeOf(req);
         const method = req.method || 'GET';
 
         if (method === 'GET' && pathname === '/accounts') {
@@ -103,7 +108,18 @@ export function createApiHandler(db) {
             const body = await readJson(req);
             const name = requireName(body);
             const { account, created } = db.getOrCreateAccount(name);
-            return send(res, 200, { name: account.name, created, state: db.getState(account.id) });
+            return send(res, 200, {
+                name: account.name, created, state: db.getState(account.id), revision: db.getRevision(account.id)
+            });
+        }
+        if (method === 'GET' && pathname === '/state') {
+            const name = requireName({ name: url.searchParams.get('name') });
+            const account = db.findAccount(name);
+            if (!account) throw new HttpError(404, `No account named '${name}'`);
+            const since = parseInt(url.searchParams.get('since'), 10);
+            const revision = db.getRevision(account.id);
+            if (Number.isFinite(since) && since >= revision) return send(res, 200, { revision, changed: false });
+            return send(res, 200, { revision, changed: true, state: db.getState(account.id) });
         }
         if (method === 'POST' && pathname === '/state') {
             const body = await readJson(req);
@@ -111,8 +127,8 @@ export function createApiHandler(db) {
             const changes = requireChanges(body.changes);
             const account = db.findAccount(name);
             if (!account) throw new HttpError(404, `No account named '${name}'`);
-            const saved = db.applyChanges(account.id, changes);
-            return send(res, 200, { ok: true, saved });
+            const result = db.applyChanges(account.id, changes);
+            return send(res, 200, { ok: true, ...result });
         }
         if (method === 'POST' && pathname === '/reset') {
             const body = await readJson(req);

@@ -5,7 +5,7 @@ import { getJSON, setJSON, getInt, setInt, has, remove } from './storage.js';
  * Handles pokeball storage and operations
  */
 
-const INVENTORY_KEY = 'inventory';
+export const INVENTORY_KEY = 'inventory';
 const OLD_POKEBALL_KEY = 'pokeballCount';
 
 /**
