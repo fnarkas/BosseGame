@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speech test</title>
+<style>
+  body { font-family: -apple-system, Arial, sans-serif; margin: 20px; max-width: 720px; }
+  button { font-size: 18px; padding: 12px 16px; margin: 6px 6px 6px 0; }
+  pre { background: #f2f4f7; padding: 12px; white-space: pre-wrap; font-size: 13px; min-height: 120px; }
+  .ok { color: #2e7d32; } .bad { color: #c62828; }
+</style>
+</head>
+<body>
+<h1>🎤 Speech recognition test</h1>
+<p>A diagnostic for the parent, not part of the game. Press one test at a time, allow the microphone if asked, and say a word (e.g. <strong>"hund"</strong>) as soon as the status says <em>listening</em>. Everything below is also sent to the server log.</p>
+<div>
+  <button id="t1">1. sv-SE plain</button>
+  <button id="t2">2. en-US plain</button>
+  <button id="t3">3. getUserMedia first, then sv-SE</button>
+  <button id="t4">4. sv-SE continuous + interim</button>
+  <button id="t5">5. Info only</button>
+</div>
+<pre id="out"></pre>
+<script>
+const out = document.getElementById('out');
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const queue = [];
+function log(event, data) {
+  const line = `${new Date().toISOString().slice(11, 23)} ${event} ${data === undefined ? '' : JSON.stringify(data)}`;
+  out.textContent += line + '\n';
+  queue.push({ t: Date.now(), source: 'speechtest', event, data: data === undefined ? null : data });
+  clearTimeout(log.timer);
+  log.timer = setTimeout(flush, 800);
+}
+function flush() {
+  if (!queue.length) return;
+  const events = queue.splice(0);
+  fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'speechtest', ua: navigator.userAgent, events }) }).catch(() => {});
+}
+
+async function info() {
+  const data = {
+    ua: navigator.userAgent, host: location.host, secure: window.isSecureContext, online: navigator.onLine,
+    hasSR: !!SR, hasMediaDevices: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+  };
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      const p = await navigator.permissions.query({ name: 'microphone' });
+      data.micPermission = p.state;
+    }
+  } catch (e) { data.micPermission = 'query failed: ' + e.message; }
+  try {
+    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      data.audioInputs = devs.filter(d => d.kind === 'audioinput').map(d => d.label || '(no label yet)');
+    }
+  } catch (e) { data.audioInputs = 'enumerate failed: ' + e.message; }
+  try {
+    if (SR && typeof SR.available === 'function') {
+      data.availableSv = await SR.available({ langs: ['sv-SE'] });
+      data.availableSvLocal = await SR.available({ langs: ['sv-SE'], processLocally: true });
+    }
+  } catch (e) { data.available = 'available() failed: ' + e.message; }
+  log('info', data);
+}
+
+function run(label, { lang = 'sv-SE', continuous = false, interim = false, stream = null } = {}) {
+  return new Promise(resolve => {
+    if (!SR) { log(label + ' unsupported'); resolve(); return; }
+    const r = new SR();
+    r.lang = lang; r.continuous = continuous; r.interimResults = interim; r.maxAlternatives = 3;
+    const t0 = Date.now();
+    const ms = () => Date.now() - t0;
+    let done = false;
+    const finish = (why) => {
+      if (done) return; done = true;
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      log(label + ' finished', { why, afterMs: ms() });
+      resolve();
+    };
+    r.onstart = () => log(label + ' onstart (listening: say a word now)', { afterMs: ms() });
+    r.onaudiostart = () => log(label + ' onaudiostart', { afterMs: ms() });
+    r.onsoundstart = () => log(label + ' onsoundstart', { afterMs: ms() });
+    r.onspeechstart = () => log(label + ' onspeechstart', { afterMs: ms() });
+    r.onresult = (e) => {
+      const res = e.results[e.results.length - 1];
+      log(label + ' onresult', { afterMs: ms(), isFinal: res.isFinal, alternatives: Array.from(res).map(a => a.transcript + ' (' + (a.confidence || 0).toFixed(2) + ')') });
+    };
+    r.onerror = (e) => log(label + ' onerror', { afterMs: ms(), error: e.error, message: e.message || '' });
+    r.onend = () => { log(label + ' onend', { afterMs: ms() }); finish('onend'); };
+    setTimeout(() => { if (!done) { try { r.stop(); } catch (e) {} setTimeout(() => finish('timeout'), 1500); } }, 8000);
+    try {
+      r.start();
+      log(label + ' start() called');
+    } catch (e) {
+      log(label + ' start() threw', { message: e.message });
+      finish('threw');
+    }
+  });
+}
+
+document.getElementById('t1').onclick = () => run('T1 sv-SE');
+document.getElementById('t2').onclick = () => run('T2 en-US', { lang: 'en-US' });
+document.getElementById('t3').onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    log('T3 getUserMedia ok', { tracks: stream.getAudioTracks().map(t => t.label + ' ' + t.readyState) });
+    await run('T3 sv-SE after getUserMedia', { stream });
+  } catch (e) {
+    log('T3 getUserMedia failed', { name: e.name, message: e.message });
+  }
+};
+document.getElementById('t4').onclick = () => run('T4 sv-SE continuous', { continuous: true, interim: true });
+document.getElementById('t5').onclick = info;
+info();
+</script>
+</body>
+</html>
