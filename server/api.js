@@ -14,9 +14,24 @@
 // GET /api/state cheaply and pick up what the admin panel (or another device)
 // changed in the meantime.
 
-import { normalizeName, MAX_KEY_LENGTH } from './db.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { normalizeName, MAX_KEY_LENGTH, defaultDatabasePath } from './db.js';
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
+
+// Client diagnostics (src/remoteLog.js): the last few hundred events are kept
+// in memory and, when a file is configured, appended as JSON lines.
+//   POST /api/log  { name, ua, events: [{ t, source, event, data }] } -> { ok, stored }
+//   GET  /api/log?n=100                                               -> [entries, newest last]
+const LOG_RING_SIZE = 500;
+const MAX_LOG_EVENTS_PER_POST = 100;
+const MAX_LOG_LINE = 4000;
+
+export function defaultClientLogPath() {
+    if (process.env.POKEMON_CLIENT_LOG) return process.env.POKEMON_CLIENT_LOG;
+    return path.join(path.dirname(defaultDatabasePath()), 'logs', 'client.log');
+}
 
 class HttpError extends Error {
     constructor(status, message) {
@@ -96,13 +111,63 @@ function routeOf(req) {
     return { pathname, url };
 }
 
-export function createApiHandler(db) {
+// `clientLog`: file to append client diagnostics to (null: memory only).
+export function createApiHandler(db, { clientLog = defaultClientLogPath() } = {}) {
+    const ring = [];
+    let logDirReady = false;
+
+    function storeEvents(body) {
+        const events = Array.isArray(body.events) ? body.events.slice(0, MAX_LOG_EVENTS_PER_POST) : [];
+        const name = typeof body.name === 'string' ? body.name.slice(0, 40) : null;
+        const ua = typeof body.ua === 'string' ? body.ua.slice(0, 300) : undefined;
+        const received = new Date().toISOString();
+        const lines = [];
+        for (const event of events) {
+            if (!event || typeof event !== 'object') continue;
+            const entry = {
+                received, name, ua,
+                t: Number.isFinite(event.t) ? new Date(event.t).toISOString() : null,
+                source: String(event.source || '').slice(0, 60),
+                event: String(event.event || '').slice(0, 60),
+                data: event.data === undefined ? null : event.data
+            };
+            let line = JSON.stringify(entry);
+            if (line.length > MAX_LOG_LINE) {
+                entry.data = String(JSON.stringify(entry.data)).slice(0, MAX_LOG_LINE / 2) + '…';
+                line = JSON.stringify(entry);
+            }
+            ring.push(entry);
+            if (ring.length > LOG_RING_SIZE) ring.shift();
+            lines.push(line);
+        }
+        if (clientLog && lines.length > 0) {
+            try {
+                if (!logDirReady) {
+                    fs.mkdirSync(path.dirname(clientLog), { recursive: true });
+                    logDirReady = true;
+                }
+                fs.appendFileSync(clientLog, lines.join('\n') + '\n');
+            } catch (error) {
+                console.warn('api: could not write client log', error);
+            }
+        }
+        return lines.length;
+    }
+
     async function handle(req, res, next) {
         const { pathname, url } = routeOf(req);
         const method = req.method || 'GET';
 
         if (method === 'GET' && pathname === '/accounts') {
             return send(res, 200, db.listAccounts());
+        }
+        if (method === 'POST' && pathname === '/log') {
+            const body = await readJson(req);
+            return send(res, 200, { ok: true, stored: storeEvents(body) });
+        }
+        if (method === 'GET' && pathname === '/log') {
+            const n = Math.min(LOG_RING_SIZE, Math.max(1, parseInt(url.searchParams.get('n'), 10) || 100));
+            return send(res, 200, ring.slice(-n));
         }
         if (method === 'POST' && pathname === '/login') {
             const body = await readJson(req);

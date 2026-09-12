@@ -4,6 +4,7 @@ import { trackWrongAnswer } from '../wrongAnswers.js';
 import { getWordAudioKey } from '../wordAudioData.js';
 import { SpeechRecognitionHelper } from '../utils/speechRecognitionHelper.js';
 import { createMicButton } from '../components/MicButton.js';
+import { remoteLog } from '../remoteLog.js';
 
 // ⚙️ CONFIGURATION: How many words must be read correctly to win
 const REQUIRED_CORRECT_WORDS = 1; // Change this number: 1 = easy, 3 = medium, 5 = hard
@@ -146,6 +147,10 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
     }
 
     onMicTap(scene) {
+        remoteLog('speech', 'micTap', {
+            micState: this.micState, blocked: this.isInputBlocked(), listening: this.speechHelper.isListening,
+            word: this.challengeData && this.challengeData.word
+        });
         // Ignore taps while a correct answer's feedback is running.
         if (this.isInputBlocked() || this.speechHelper.isListening) return;
         if (this.speechHelper.startListening(scene)) {
@@ -168,6 +173,7 @@ export class SpeechRecognitionMode extends BasePokeballGameMode {
             }
         }
 
+        remoteLog('speech', 'judged', { expected: expectedWord, transcript, isCorrect });
         if (isCorrect) {
             this.handleCorrectAnswer(scene);
         } else {

@@ -99,6 +99,25 @@ describe('server/api', () => {
         expect(second.json).toEqual({ name: 'Olle', created: false, state: { coinCount: '3' }, revision: 1 });
     });
 
+    it('stores client diagnostics in memory and hands back the newest ones', async () => {
+        const handler = createApiHandler(db, { clientLog: null });
+        const posted = await request(handler, 'POST', '/api/log', {
+            name: 'Olle', ua: 'iPad', events: [
+                { t: 1700000000000, source: 'speech', event: 'start' },
+                { t: 1700000001000, source: 'speech', event: 'error', data: { error: 'network' } },
+                'junk'
+            ]
+        });
+        expect(posted.json).toEqual({ ok: true, stored: 2 });
+        const all = await request(handler, 'GET', '/api/log');
+        expect(all.json).toHaveLength(2);
+        expect(all.json[1]).toMatchObject({ name: 'Olle', ua: 'iPad', source: 'speech', event: 'error', data: { error: 'network' } });
+        expect(all.json[0].t).toBe('2023-11-14T22:13:20.000Z');
+        const last = await request(handler, 'GET', '/log?n=1');
+        expect(last.json.map(e => e.event)).toEqual(['error']);
+        expect((await request(handler, 'POST', '/api/log', { events: 'nope' })).json).toEqual({ ok: true, stored: 0 });
+    });
+
     it('lists accounts, most recent first', async () => {
         await request(handler, 'POST', '/api/login', { name: 'Anna' });
         await request(handler, 'POST', '/api/login', { name: 'Bo' });

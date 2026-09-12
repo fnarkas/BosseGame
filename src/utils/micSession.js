@@ -30,6 +30,8 @@ export const isIOS = (() => {
     return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
 })();
 
+import { remoteLog } from '../remoteLog.js';
+
 let activeRecognition = null;
 let restoreTimer = null;
 
@@ -72,6 +74,7 @@ export function releaseRecognition(recognition) {
 export function abortActiveRecognition() {
     if (activeRecognition) {
         console.log('🎤 Page hidden - aborting live recognition session');
+        remoteLog('mic', 'abortOnHide');
         abortQuietly(activeRecognition);
         activeRecognition = null;
     }
@@ -106,6 +109,7 @@ export function restoreAudioAfterMic(scene) {
         // again when that one ends.
         if (activeRecognition) return;
 
+        remoteLog('mic', 'audioCycle', { state: context.state });
         context.suspend()
             .then(() => context.resume())
             .then(() => console.log('🔊 Audio context cycled after microphone use'))
