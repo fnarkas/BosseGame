@@ -13,7 +13,9 @@ piano med mera.
 
 ### Funktioner
 
-- **151 Pokemon** (Gen 1) med bilder, typer och uttal
+- **Alla 1025 Pokemon** (Gen 1–9) med bilder, typer och uttal – hur många som finns i spelet
+  (151 som standard) ställs in per barn i adminpanelen, som också visar och styr vilka
+  Pokemon som dyker upp härnäst
 - **Svenska alfabetet** (A–Ö) med inspelat ljud för varje bokstav
 - **23 minispel**, valda med ett lyckohjul vars sannolikheter styrs från adminpanelen
 - **Adaptiv svårighet** – bokstäver och tal som barnet blandar ihop kommer oftare,

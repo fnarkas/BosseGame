@@ -116,9 +116,16 @@ See `AdditionMode.js` for a compact mode and `SpeechRecognitionMode.js` for one 
 **IMPORTANT: The game uses a flexible architecture that dynamically adapts to the number of Pokemon in `POKEMON_DATA`.**
 
 ### Current State
-- **151 Generation 1 Pokemon** (#1 Bulbasaur → #151 Mew)
-- All views use `POKEMON_DATA.length` instead of hardcoded counts
-- Legendary Pokemon: #144-151 (Articuno, Zapdos, Moltres, Dratini, Dragonair, Dragonite, Mewtwo, Mew)
+- **All 1025 Pokemon (Generations 1-9)** are in `POKEMON_DATA`, with artwork and name audio
+- **How many are in the game is a per-account setting**: `pokedex.maxPokemonId` in
+  `public/config/minigames.json` (default 151), edited on the Pokédex tab of `/admin` (generation
+  presets). `src/pokemonPool.js` owns it: `getAvailablePokemon()` / `isPokemonAvailable(id)` are the
+  only way to list catchable/visible Pokemon, and `applyPokedexConfig()` is awaited in BootScene and
+  when the admin opens an account. Never filter `POKEMON_DATA` by id anywhere else.
+- **Encounter order is a saved queue** (`src/spawnQueue.js`, key `pokemonSpawnQueue`): the tutorial
+  trio first, then random uncaught Pokemon. `MainGameScene.spawnPokemon()` calls `takeNextSpawn()`;
+  the admin Pokédex tab shows the next 10 and can push a chosen Pokemon to the front (`queueSpawn`).
+- Legendary/mythical Pokemon carry `legendary: true` in the data (from PokeAPI species data)
 
 ### Core Data Structure
 
@@ -150,23 +157,22 @@ See `AdditionMode.js` for a compact mode and `SpeechRecognitionMode.js` for one 
 
 #### 1. Update Python Scripts
 
+**`download_pokemon_images.py`:**
+- Update the `num_pokemon` in the main call to the new total
+- Run: `python3 download_pokemon_images.py`, then `python3 optimize_pokemon_images.py` (256 px, idempotent)
+
 **`fetch_pokemon_data.py`:**
-- Update `FILENAME_MAP` dictionary with new Pokemon IDs and filenames
-- Change range: `for pokemon_id in range(1, NEW_MAX + 1):`
-- Update comments to reflect new total
+- Needs no edits: it scans `public/pokemon_images/` for the ids and fetches data + the
+  legendary/mythical flag for each
 - Run: `python3 fetch_pokemon_data.py`
 
-**`download_pokemon_images.py`:**
-- Update default parameter: `num_pokemon=NEW_MAX`
-- Update docstring
-- Update main call if hardcoded
-- Run: `python3 download_pokemon_images.py`
-
 **`generate_pokemon_audio.py`:**
-- Add new Pokemon names to `POKEMON_NAMES` list
-- Maintain order matching Pokemon IDs
-- Update comments
+- Needs no edits: it reads the names from `src/pokemonData.js`, generates the missing files
+  and trims the Edge-TTS silence from all of them
 - Run: `python3 generate_pokemon_audio.py`
+
+**`src/pokemonPool.js`:** add the new generation's last dex number to `GENERATIONS` so the
+admin panel gets a preset for it.
 
 #### 2. Verify Flexible Code (Should NOT need changes)
 
@@ -189,13 +195,15 @@ If you find any hardcoded Pokemon counts (like "100" or "151"), replace with:
 
 **File**: `src/pokemonRarity.js`
 
-If adding legendary Pokemon beyond #151:
+Legendary and mythical Pokemon are flagged `legendary: true` in `src/pokemonData.js` by
+`fetch_pokemon_data.py` (PokeAPI species data), so new generations need no code change. To
+hand-pick extra ones:
 ```javascript
-const LEGENDARY_IDS = [144, 145, 146, 150, 151, NEW_LEGENDARY_IDS];
+const LEGENDARY_IDS = [144, 145, 146, 150, 151, EXTRA_IDS];
 ```
 
 The rarity system uses total stats:
-- **Legendary**: Manually specified IDs
+- **Legendary**: `legendary` flag in the data, or manually specified IDs
 - **Rare**: Total stats ≥ 500
 - **Uncommon**: Total stats ≥ 400
 - **Common**: Total stats < 400

@@ -6,14 +6,11 @@ import { hasPokeballs, removePokeball, POKEBALL_TYPES } from '../inventory.js';
 import { showPokeballSelector } from '../pokeballSelector.js';
 import { getRarityInfo, attemptCatch } from '../pokemonRarity.js';
 import { getCoinCount, deductCoins } from '../currency.js';
-import { POKEMON_DATA, getAvailablePokemon } from '../pokemonData.js';
+import { POKEMON_DATA } from '../pokemonData.js';
 import { saveCaughtPokemonList, caughtIdSet } from '../caughtPokemon.js';
 import { ensureAssets } from '../lazyLoad.js';
 import { pokemonImageAsset, pokemonAudioAsset } from '../assetManifest.js';
-
-// First three catches are guaranteed tutorial Pokemon (Onix, Zubat, Seel):
-// names with letters whose upper/lowercase shapes look alike.
-const TUTORIAL_POKEMON_IDS = [95, 41, 86];
+import { takeNextSpawn, TUTORIAL_POKEMON_IDS } from '../spawnQueue.js';
 
 export class MainGameScene extends Phaser.Scene {
     constructor() {
@@ -226,38 +223,15 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     spawnPokemon() {
-        // Tutorial system: First 3 encounters are always Onix, Zubat, Seel (100% catch rate)
+        // The next encounter comes from the saved spawn queue (spawnQueue.js):
+        // the tutorial trio first, then random uncaught Pokemon, and whatever
+        // a parent pushed to the front from /admin. The first three catches are
+        // guaranteed as long as the Pokemon is one of the tutorial trio.
         const caughtList = this.registry.get('caughtPokemon') || [];
-        const tutorialPokemonIds = TUTORIAL_POKEMON_IDS;
-
-        // Get available Pokemon (Gen 1 only)
-        const availablePokemon = getAvailablePokemon();
-
-        let selectedPokemon;
-        if (caughtList.length < TUTORIAL_POKEMON_IDS.length) {
-            // Tutorial mode: spawn specific Pokemon in order
-            const tutorialIndex = caughtList.length;
-            const tutorialId = tutorialPokemonIds[tutorialIndex];
-            selectedPokemon = availablePokemon.find(p => p.id === tutorialId)
-                || Phaser.Utils.Array.GetRandom(availablePokemon);
-            this.isTutorialCatch = true;
-            console.log(`Tutorial mode: Spawning ${selectedPokemon.name} (${tutorialIndex + 1}/3)`);
-        } else {
-            // Normal mode: random Pokemon from UNCAUGHT ones only
-            const caughtIds = new Set(caughtList.map(p => p.id || p));
-            const uncaughtPokemon = availablePokemon.filter(p => !caughtIds.has(p.id));
-
-            if (uncaughtPokemon.length > 0) {
-                // Select from uncaught Pokemon
-                selectedPokemon = Phaser.Utils.Array.GetRandom(uncaughtPokemon);
-                console.log(`Spawning uncaught Pokemon: ${selectedPokemon.name} (${uncaughtPokemon.length} uncaught remaining)`);
-            } else {
-                // All Pokemon caught! Allow any Pokemon to spawn
-                selectedPokemon = Phaser.Utils.Array.GetRandom(availablePokemon);
-                console.log(`All Pokemon caught! Spawning ${selectedPokemon.name} (repeat)`);
-            }
-            this.isTutorialCatch = false;
-        }
+        const selectedPokemon = takeNextSpawn({ caught: caughtIdSet(caughtList) });
+        this.isTutorialCatch = caughtList.length < TUTORIAL_POKEMON_IDS.length &&
+            TUTORIAL_POKEMON_IDS.includes(selectedPokemon.id);
+        console.log(`Spawning ${selectedPokemon.name}${this.isTutorialCatch ? ' (tutorial, guaranteed catch)' : ''}`);
 
         this.currentPokemon = {
             id: selectedPokemon.id,

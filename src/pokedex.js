@@ -1,4 +1,4 @@
-import { getAvailablePokemon } from './pokemonData.js';
+import { getAvailablePokemon } from './pokemonPool.js';
 import { getRarityInfo } from './pokemonRarity.js';
 import { getCaughtPokemonList, caughtIdSet } from './caughtPokemon.js';
 import { playAudio, audioDuration, numberAudioKeys } from './audio.js';
@@ -117,6 +117,9 @@ function renderPokedexGrid() {
         img.className = `pokemon-card-image ${!isCaught ? 'uncaught' : ''}`;
         img.src = `pokemon_images/${pokemon.filename}`;
         img.alt = isCaught ? pokemon.name : '???';
+        // Up to 1025 cards: only fetch the artwork that scrolls into view.
+        img.loading = 'lazy';
+        img.decoding = 'async';
         card.appendChild(img);
 
         // Pokemon name

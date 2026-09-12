@@ -6,7 +6,8 @@
 // keeps the iPad from holding 151 decoded textures and ~900 decoded sound
 // buffers in memory for a session that will use a handful of them.
 
-import { getAvailablePokemon, POKEMON_DATA } from './pokemonData.js';
+import { POKEMON_DATA } from './pokemonData.js';
+import { getAvailablePokemon } from './pokemonPool.js';
 import { getAllWords, getAllSentences } from './speechVocabulary.js';
 import { SPELLING_WORDS } from './spellingWords.js';
 import { getAllVowelWords } from './vowelLengthPairs.js';

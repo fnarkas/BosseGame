@@ -3,6 +3,7 @@ import { loadModeWeights, getEnabledSlices } from '../minigameWheel.js';
 import { bootImages, audioPacks, BOOT_AUDIO_PACKS } from '../assetManifest.js';
 import { getFloat } from '../storage.js';
 import { getCaughtPokemonList } from '../caughtPokemon.js';
+import { applyPokedexConfig } from '../pokemonPool.js';
 
 export class BootScene extends Phaser.Scene {
     constructor() {
@@ -58,6 +59,10 @@ export class BootScene extends Phaser.Scene {
         const enabledSlices = getEnabledSlices(weights);
         this.registry.set('wheelSlices', enabledSlices);
         this.generateWheelTexture(enabledSlices);
+
+        // How many Pokemon this account plays with (the Pokedex size and the
+        // catchable pool) comes from the same config.
+        await applyPokedexConfig();
 
         // Store game data globally
         this.registry.set('caughtPokemon', this.loadCaughtPokemon());

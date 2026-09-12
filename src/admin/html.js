@@ -187,6 +187,15 @@ export const ADMIN_CSS = `
 .admin-pokemon-text { min-width: 0; }
 .admin-pokemon-name { display: block; font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-pokemon-status { display: block; color: var(--admin-muted); font-size: 12px; }
+.admin-chip-btn.active { border-color: var(--admin-green); background: #e8f5e9; color: #2e7d32; }
+.admin-chip-btn img { width: 24px; height: 24px; object-fit: contain; vertical-align: middle; }
+.admin-queue-results { margin: -4px 0 12px; }
+.admin-queue { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.admin-queue-slot { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #fff; border-radius: 10px; border: 1px solid var(--admin-line); }
+.admin-queue-slot.pinned { background: #fff8e1; border-color: #ffb300; }
+.admin-queue-slot img { width: 56px; height: 56px; object-fit: contain; flex: none; }
+.admin-queue-slot .admin-pokemon-text { flex: 1; }
+.admin-queue-pos { flex: none; width: 24px; text-align: center; font-weight: 800; color: var(--admin-muted); }
 
 /* Dictionary */
 .admin-word-form { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; margin-bottom: 10px; }

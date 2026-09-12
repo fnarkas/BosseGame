@@ -15,6 +15,7 @@ import { renderMinigamesSection, mountMinigamesSection } from './sections/miniga
 import { renderEmojiWordsSection, mountEmojiWordsSection } from './sections/emojiWords.js';
 import { renderWeightsSection, mountWeightsSection } from './sections/weights.js';
 import { renderPokemonSection, mountPokemonSection } from './sections/pokemon.js';
+import { applyPokedexConfig } from '../pokemonPool.js';
 
 export const USER_PARAM = 'user';
 
@@ -146,6 +147,8 @@ async function renderFor(name, accounts, banner) {
             await login(name, { remember: false });
             resetConfigCache();
             config = await getConfig();
+            // The Pokédex tab lists this account's pool, not the previous one's.
+            await applyPokedexConfig();
             selected = name;
             const url = new URL(window.location.href);
             url.searchParams.set(USER_PARAM, name);

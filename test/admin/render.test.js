@@ -3,7 +3,7 @@ import { readDefaultConfig } from '../helpers/setup.js';
 import { renderAdminPage } from '../../src/admin/index.js';
 import { MINIGAME_CONFIG_SCHEMA } from '../../src/admin/schema.js';
 import { MINIGAMES } from '../../src/minigameRegistry.js';
-import { getAvailablePokemon } from '../../src/pokemonData.js';
+import { getAvailablePokemon } from '../../src/pokemonPool.js';
 import { INVENTORY_ITEMS } from '../../src/admin/sections/inventory.js';
 import { ADMIN_TABS } from '../../src/admin/index.js';
 
@@ -68,6 +68,21 @@ describe('admin page markup', () => {
         const cards = page.match(/data-pokemon-card="/g) || [];
         expect(cards).toHaveLength(getAvailablePokemon().length);
         expect(page).toContain('loading="lazy"');
+    });
+
+    it('has the pool size control with one preset per generation, and the next ten encounters', () => {
+        expect(page).toMatch(/id="pokedex-max"[^>]*max="1025"[^>]*value="151"/);
+        expect(page).toContain('data-gen-last="151"');
+        expect(page).toContain('data-gen-last="1025"');
+        expect(page).toContain('id="pokedex-max-save"');
+        const slots = page.match(/data-spawn-slot="/g) || [];
+        expect(slots).toHaveLength(10);
+        // Nothing caught: the tutorial trio leads the queue.
+        expect(page).toMatch(/data-spawn-slot="0" data-spawn-id="95"/);
+        expect(page).toMatch(/data-spawn-slot="1" data-spawn-id="41"/);
+        expect(page).toMatch(/data-spawn-slot="2" data-spawn-id="86"/);
+        expect(page).toContain('id="queue-search"');
+        expect(page).toContain('id="queue-reshuffle"');
     });
 
     it('reflects config values in the inputs', () => {

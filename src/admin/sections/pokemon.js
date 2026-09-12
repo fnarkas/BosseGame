@@ -1,17 +1,37 @@
-// "Pokédex": the selected account's caught list as a grid of cards that
-// toggle on click, with a search box, caught / not-caught filters, a progress
-// bar and catch all / release all. Changes go into the account state and are
-// synced to the server like a catch in the game.
+// "Pokédex": the selected account's Pokemon, in three cards.
+//
+//   1. How many Pokemon are in the game (the `pokedex.maxPokemonId` config):
+//      a number with one preset per generation. Saved like the other config
+//      sections, so each child can have their own pool.
+//   2. "Next up": the account's spawn queue (src/spawnQueue.js), the same
+//      list the game draws its encounters from. A search box pushes any
+//      Pokemon in the pool to the front of the line; slots can be removed and
+//      the random part reshuffled.
+//   3. The caught list as a grid of cards that toggle on click, with a search
+//      box, caught / not-caught filters, a progress bar and catch all /
+//      release all.
+//
+// Everything goes into the account state and is synced to the server like a
+// catch in the game; the child's device picks it up on its next load.
 
-import { POKEMON_DATA, getAvailablePokemon, MAX_POKEMON_ID } from '../../pokemonData.js';
 import { getCaughtPokemonList, saveCaughtPokemonList, caughtIdSet } from '../../caughtPokemon.js';
 import { getPokemonRarity, RARITY_TIERS } from '../../pokemonRarity.js';
-import { html, toHtml } from '../html.js';
+import {
+    getAvailablePokemon, getMaxPokemonId, setMaxPokemonId, clampMaxPokemonId, isPokemonAvailable,
+    getPokemonById, TOTAL_POKEMON, GENERATIONS
+} from '../../pokemonPool.js';
+import {
+    peekSpawnQueue, queueSpawn, removeFromSpawnQueue, reshuffleSpawnQueue, SPAWN_QUEUE_LENGTH
+} from '../../spawnQueue.js';
+import { saveConfig } from '../configApi.js';
+import { html, raw, toHtml, flash, MESSAGE_COLORS } from '../html.js';
+
+export const QUEUE_SEARCH_LIMIT = 12;
 
 // Data ------------------------------------------------------------------------
 
 function pokemonName(id) {
-    const pokemon = POKEMON_DATA.find(p => p.id === id);
+    const pokemon = getPokemonById(id);
     return pokemon ? pokemon.name : 'Unknown';
 }
 
@@ -27,7 +47,7 @@ export function normalizeCaughtEntry(entry, now = () => new Date().toISOString()
 export function countCaughtAvailable(list = getCaughtPokemonList()) {
     let count = 0;
     for (const id of caughtIdSet(list)) {
-        if (typeof id === 'number' && id <= MAX_POKEMON_ID) count += 1;
+        if (isPokemonAvailable(id)) count += 1;
     }
     return count;
 }
@@ -48,7 +68,94 @@ export function matchesPokedexQuery(pokemon, isCaught, query, filter) {
     return pokemon.name.toLowerCase().includes(q);
 }
 
+// Pokemon in the pool matching the queue search, exact number first.
+export function searchPokemon(query, limit = QUEUE_SEARCH_LIMIT) {
+    const q = String(query || '').trim();
+    if (!q) return [];
+    const matches = getAvailablePokemon().filter(pokemon => matchesPokedexQuery(pokemon, false, q, 'all'));
+    const exact = matches.filter(p => String(p.id) === q.replace(/^#/, '') || p.name.toLowerCase() === q.toLowerCase());
+    const rest = matches.filter(p => !exact.includes(p));
+    return [...exact, ...rest].slice(0, limit);
+}
+
+// The generation whose last Pokemon is exactly `maxId`, if any.
+export function generationFor(maxId) {
+    return GENERATIONS.find(g => g.lastId === maxId) || null;
+}
+
+const dexNumber = (id) => `#${String(id).padStart(3, '0')}`;
+
 // Markup ---------------------------------------------------------------------
+
+function renderPoolCard() {
+    const max = getMaxPokemonId();
+    return html`
+        <div class="admin-card" id="pokedex-pool">
+            <div class="admin-card-head">
+                <h3>🌍 Pokémon in the game</h3>
+                <span class="admin-help-inline"><strong id="pokedex-pool-count">${max}</strong> of ${TOTAL_POKEMON}</span>
+            </div>
+            <div class="admin-row" style="margin: 0 0 10px;">
+                <label class="admin-label" for="pokedex-max" style="margin: 0;">Show and catch Pokémon #1 to</label>
+                <input type="number" id="pokedex-max" class="admin-input admin-input-number" min="1" max="${TOTAL_POKEMON}" step="1" value="${max}">
+                <button type="button" id="pokedex-max-save" class="admin-btn admin-btn-green">💾 Save</button>
+            </div>
+            <div class="admin-chips" id="pokedex-gen-presets">
+                ${GENERATIONS.map(g => html`
+                    <button type="button" class="admin-chip-btn ${g.lastId === max ? 'active' : ''}" data-gen-last="${g.lastId}">Gen ${g.gen} · ${g.region} · ${g.lastId}</button>`)}
+            </div>
+            <div class="admin-help">The child's Pokédex shows exactly these Pokémon and only they can appear in the game.
+                Pokémon caught above the limit are kept and come back when the limit is raised again.</div>
+            <div id="pokedex-max-message" class="admin-message"></div>
+        </div>`;
+}
+
+function renderQueueSlot(pokemon, index, caught) {
+    const stars = RARITY_TIERS[getPokemonRarity(pokemon)].icon;
+    const notes = [dexNumber(pokemon.id)];
+    if (stars) notes.push(stars);
+    if (pokemon.pinned) notes.push('📌 chosen');
+    if (caught.has(pokemon.id)) notes.push('✓ caught');
+    return html`
+        <li class="admin-queue-slot ${pokemon.pinned ? 'pinned' : ''}" data-spawn-slot="${index}" data-spawn-id="${pokemon.id}">
+            <span class="admin-queue-pos">${index + 1}</span>
+            <img src="pokemon_images/${pokemon.filename}" alt="" width="56" height="56" loading="lazy" decoding="async">
+            <span class="admin-pokemon-text">
+                <span class="admin-pokemon-name">${pokemon.name}</span>
+                <span class="admin-pokemon-status">${notes.join(' · ')}</span>
+            </span>
+            <button type="button" class="admin-chip-btn admin-chip-btn-muted" data-queue-remove="${index}" title="Remove from the queue" aria-label="Remove ${pokemon.name} from the queue">✕</button>
+        </li>`;
+}
+
+function renderQueueSlots() {
+    const caught = caughtIdSet();
+    return peekSpawnQueue().map((pokemon, index) => renderQueueSlot(pokemon, index, caught));
+}
+
+function renderQueueResults(query) {
+    return searchPokemon(query).map(pokemon => html`
+        <button type="button" class="admin-chip-btn" data-queue-add="${pokemon.id}">
+            <img src="pokemon_images/${pokemon.filename}" alt="" width="24" height="24" loading="lazy"> ${pokemon.name} <span class="admin-help-inline">${dexNumber(pokemon.id)}</span>
+        </button>`);
+}
+
+function renderQueueCard() {
+    return html`
+        <div class="admin-card" id="pokedex-queue">
+            <div class="admin-card-head">
+                <h3>⏭️ Next up</h3>
+                <button type="button" id="queue-reshuffle" class="admin-btn admin-btn-sm admin-btn-blue">🎲 Reshuffle</button>
+            </div>
+            <p class="admin-lead">The next ${SPAWN_QUEUE_LENGTH} Pokémon the child will meet, in order. Search for a Pokémon to put it first in line.
+                Pokémon you chose (📌) stay in the queue until they are met; the others are drawn at random from the ones not yet caught.</p>
+            <div class="admin-toolbar">
+                <input type="search" id="queue-search" class="admin-input admin-search" placeholder="🔍 Put a Pokémon next in line…" autocomplete="off">
+            </div>
+            <div class="admin-chips admin-queue-results" id="queue-results" hidden></div>
+            <ol class="admin-queue" id="spawn-queue">${renderQueueSlots()}</ol>
+        </div>`;
+}
 
 function renderPokemonCard(pokemon, isCaught) {
     const stars = RARITY_TIERS[getPokemonRarity(pokemon)].icon;
@@ -58,7 +165,7 @@ function renderPokemonCard(pokemon, isCaught) {
             <img src="pokemon_images/${pokemon.filename}" alt="" width="56" height="56" loading="lazy" decoding="async">
             <span class="admin-pokemon-text">
                 <span class="admin-pokemon-name">${pokemon.name}</span>
-                <span class="admin-pokemon-status">#${String(pokemon.id).padStart(3, '0')} ${stars ? html` · ${stars}` : ''}</span>
+                <span class="admin-pokemon-status">${dexNumber(pokemon.id)} ${stars ? html` · ${stars}` : ''}</span>
             </span>
         </label>`;
 }
@@ -77,6 +184,8 @@ export function renderPokemonSection() {
                     <button type="button" id="release-all" class="admin-btn admin-btn-sm admin-btn-red">✗ Release all</button>
                 </div>
             </div>
+            ${renderPoolCard()}
+            ${renderQueueCard()}
             <div class="admin-progress">
                 <div class="admin-progress-bar"><div class="admin-progress-fill" id="caught-bar" style="width: ${percent}%;"></div></div>
                 <div class="admin-progress-text"><strong id="caught-count">${count}</strong> / ${available.length} caught</div>
@@ -97,6 +206,84 @@ export function renderPokemonSection() {
 
 // Behaviour --------------------------------------------------------------------
 
+// Replace the whole section (after the pool size changed) and wire it again.
+function rerenderSection(root, message) {
+    const section = root.querySelector('#admin-pokedex');
+    if (!section) return;
+    section.outerHTML = renderPokemonSection();
+    mountPokemonSection(root);
+    if (message) flash(root.querySelector('#pokedex-max-message'), message.text, message.color);
+}
+
+function mountPoolCard(root) {
+    const input = root.querySelector('#pokedex-max');
+    const presets = root.querySelector('#pokedex-gen-presets');
+    const message = root.querySelector('#pokedex-max-message');
+
+    const markPreset = () => {
+        const value = clampMaxPokemonId(input.value);
+        for (const button of presets.querySelectorAll('[data-gen-last]')) {
+            button.classList.toggle('active', parseInt(button.dataset.genLast, 10) === value);
+        }
+    };
+    input.addEventListener('input', markPreset);
+    presets.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-gen-last]');
+        if (!button) return;
+        input.value = button.dataset.genLast;
+        markPreset();
+    });
+
+    root.querySelector('#pokedex-max-save').addEventListener('click', async () => {
+        const maxPokemonId = clampMaxPokemonId(input.value);
+        input.value = maxPokemonId;
+        flash(message, '⏳ Saving…', MESSAGE_COLORS.busy, 0);
+        try {
+            await saveConfig({ pokedex: { maxPokemonId } });
+            setMaxPokemonId(maxPokemonId);
+            rerenderSection(root, { text: `✓ Saved: ${maxPokemonId} Pokémon in the game`, color: MESSAGE_COLORS.ok });
+        } catch (error) {
+            flash(message, `❌ ${error.message}`, MESSAGE_COLORS.error);
+        }
+    });
+}
+
+function mountQueueCard(root) {
+    const list = root.querySelector('#spawn-queue');
+    const search = root.querySelector('#queue-search');
+    const results = root.querySelector('#queue-results');
+
+    const refreshQueue = () => {
+        list.innerHTML = toHtml(html`${renderQueueSlots()}`);
+    };
+    const showResults = () => {
+        const matches = renderQueueResults(search.value);
+        results.innerHTML = toHtml(html`${matches}`);
+        results.hidden = matches.length === 0;
+    };
+
+    search.addEventListener('input', showResults);
+    results.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-queue-add]');
+        if (!button) return;
+        queueSpawn(parseInt(button.dataset.queueAdd, 10));
+        search.value = '';
+        showResults();
+        refreshQueue();
+    });
+    list.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-queue-remove]');
+        if (!button) return;
+        removeFromSpawnQueue(parseInt(button.dataset.queueRemove, 10));
+        refreshQueue();
+    });
+    root.querySelector('#queue-reshuffle').addEventListener('click', () => {
+        reshuffleSpawnQueue();
+        refreshQueue();
+    });
+    return refreshQueue;
+}
+
 export function mountPokemonSection(root) {
     const grid = root.querySelector('#pokemon-grid');
     const countEl = root.querySelector('#caught-count');
@@ -106,6 +293,9 @@ export function mountPokemonSection(root) {
     const empty = root.querySelector('#pokedex-empty');
     const total = getAvailablePokemon().length;
     let filter = 'all';
+
+    mountPoolCard(root);
+    const refreshQueue = mountQueueCard(root);
 
     const applyFilter = () => {
         const caught = caughtIdSet();
@@ -131,6 +321,8 @@ export function mountPokemonSection(root) {
             card.classList.toggle('caught', isCaught);
             card.querySelector('input').checked = isCaught;
         }
+        // A newly caught Pokemon leaves the random part of the queue.
+        refreshQueue();
         // Keep a just-toggled card in view under the caught / missing filters
         // so the click does not make it vanish; re-filter on the next search.
     };

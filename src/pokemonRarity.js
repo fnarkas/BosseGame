@@ -28,7 +28,10 @@ export const RARITY_TIERS = {
   }
 };
 
-// Legendary Pokemon IDs (Gen 1)
+// Legendary Pokemon IDs. Every generation's legendary and mythical Pokemon
+// carry `legendary: true` in src/pokemonData.js (from PokeAPI's species data,
+// see fetch_pokemon_data.py); this list is a safety net for Gen 1 and a place
+// to hand-pick extra ones.
 const LEGENDARY_IDS = [144, 145, 146, 150, 151]; // Articuno, Zapdos, Moltres, Mewtwo, Mew
 
 /**
@@ -38,7 +41,7 @@ const LEGENDARY_IDS = [144, 145, 146, 150, 151]; // Articuno, Zapdos, Moltres, M
  */
 export function getPokemonRarity(pokemon) {
   // Check if legendary
-  if (LEGENDARY_IDS.includes(pokemon.id)) {
+  if (pokemon.legendary || LEGENDARY_IDS.includes(pokemon.id)) {
     return 'legendary';
   }
 

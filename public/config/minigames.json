@@ -30,6 +30,9 @@
   "letters": {
     "letters": "a-z"
   },
+  "pokedex": {
+    "maxPokemonId": 151
+  },
   "pokemonCatching": {
     "nameCase": "uppercase",
     "alphabetCase": "lowercase"
