@@ -3,6 +3,21 @@
  * Visual display of streak multiplier (1x-5x)
  */
 
+// Fill colour per streak level: every lit segment takes the current level's
+// colour so the bar reads as one ramp (blue → green → orange → red → purple).
+const LEVEL_COLORS = [
+  0x95A5A6, // Gray (streak 0: nothing lit)
+  0x3498DB, // Blue x1
+  0x2ECC71, // Green x2
+  0xF39C12, // Orange x3
+  0xE74C3C, // Red x4
+  0x9B59B6  // Purple x5
+];
+
+function levelColor(streak) {
+  return LEVEL_COLORS[Math.min(Math.max(streak, 0), LEVEL_COLORS.length - 1)];
+}
+
 /**
  * Create booster bar at specified position
  * @param {Phaser.Scene} scene - The Phaser scene
@@ -106,20 +121,10 @@ export function updateBoosterBar(elements, streak, scene) {
         ease: 'Back.easeOut'
       });
 
-      // Change color based on level
-      const colors = [
-        0x95A5A6, // Gray (not used, starts at 1)
-        0x3498DB, // Blue x1
-        0x2ECC71, // Green x2
-        0xF39C12, // Orange x3
-        0xE74C3C, // Red x4
-        0x9B59B6  // Purple x5
-      ];
-      fill.setFillStyle(colors[streak]);
+      fill.setFillStyle(levelColor(streak));
     } else if (shouldBeFilled) {
-      // Already lit: keep every lit segment on the current level's colour so
-      // the whole bar reads as one ramp (blue → green → orange → red → purple)
-      fill.setFillStyle(colors[streak]);
+      // Already lit: recolour to the current level
+      fill.setFillStyle(levelColor(streak));
     } else if (!shouldBeFilled && fill.alpha === 1) {
       // Animate fill disappearing
       scene.tweens.add({

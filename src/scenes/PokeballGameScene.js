@@ -374,8 +374,14 @@ export class PokeballGameScene extends Phaser.Scene {
                 multiplier = getMultiplier();
                 bonus = milestoneBonus(previousStreak, newStreak);
 
-                // Update booster bar
-                updateBoosterBar(this.boosterBarElements, newStreak, this);
+                // Update booster bar. A HUD failure must never swallow the
+                // reward: this runs after the answer is locked, and an
+                // exception here would leave the minigame frozen.
+                try {
+                    updateBoosterBar(this.boosterBarElements, newStreak, this);
+                } catch (error) {
+                    console.warn('Booster bar update failed:', error);
+                }
 
                 // Generate random coin reward (1-3)
                 baseCoinReward = getRandomCoinReward();
