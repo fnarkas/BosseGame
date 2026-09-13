@@ -1,82 +1,71 @@
 #!/usr/bin/env python3
 """
-Generate English TTS audio for all 151 Gen 1 Pokemon names using edge-tts
-Output: public/pokemon_audio/{id:03d}_{name}.mp3
+Generate English TTS audio for every Pokemon name in src/pokemonData.js using
+edge-tts, then trim the leading/trailing silence edge-tts adds.
+Output: public/pokemon_audio/{id:03d}_{name}.mp3 (existing files are kept)
 """
 
 import asyncio
-import edge_tts
 import os
+import re
+import subprocess
 
-# Pokemon names (extracted from pokemonData.js)
-POKEMON_NAMES = [
-    "Bulbasaur", "Ivysaur", "Venusaur", "Charmander", "Charmeleon", "Charizard",
-    "Squirtle", "Wartortle", "Blastoise", "Caterpie", "Metapod", "Butterfree",
-    "Weedle", "Kakuna", "Beedrill", "Pidgey", "Pidgeotto", "Pidgeot",
-    "Rattata", "Raticate", "Spearow", "Fearow", "Ekans", "Arbok",
-    "Pikachu", "Raichu", "Sandshrew", "Sandslash", "Nidoran-f", "Nidorina",
-    "Nidoqueen", "Nidoran-m", "Nidorino", "Nidoking", "Clefairy", "Clefable",
-    "Vulpix", "Ninetales", "Jigglypuff", "Wigglytuff", "Zubat", "Golbat",
-    "Oddish", "Gloom", "Vileplume", "Paras", "Parasect", "Venonat",
-    "Venomoth", "Diglett", "Dugtrio", "Meowth", "Persian", "Psyduck",
-    "Golduck", "Mankey", "Primeape", "Growlithe", "Arcanine", "Poliwag",
-    "Poliwhirl", "Poliwrath", "Abra", "Kadabra", "Alakazam", "Machop",
-    "Machoke", "Machamp", "Bellsprout", "Weepinbell", "Victreebel", "Tentacool",
-    "Tentacruel", "Geodude", "Graveler", "Golem", "Ponyta", "Rapidash",
-    "Slowpoke", "Slowbro", "Magnemite", "Magneton", "Farfetchd", "Doduo",
-    "Dodrio", "Seel", "Dewgong", "Grimer", "Muk", "Shellder",
-    "Cloyster", "Gastly", "Haunter", "Gengar", "Onix", "Drowzee",
-    "Hypno", "Krabby", "Kingler", "Voltorb",
-    "Electrode", "Exeggcute", "Exeggutor", "Cubone", "Marowak", "Hitmonlee",
-    "Hitmonchan", "Lickitung", "Koffing", "Weezing", "Rhyhorn", "Rhydon",
-    "Chansey", "Tangela", "Kangaskhan", "Horsea", "Seadra", "Goldeen",
-    "Seaking", "Staryu", "Starmie", "Mr. Mime", "Scyther", "Jynx",
-    "Electabuzz", "Magmar", "Pinsir", "Tauros", "Magikarp", "Gyarados",
-    "Lapras", "Ditto", "Eevee", "Vaporeon", "Jolteon", "Flareon",
-    "Porygon", "Omanyte", "Omastar", "Kabuto", "Kabutops", "Aerodactyl",
-    "Snorlax", "Articuno", "Zapdos", "Moltres", "Dratini", "Dragonair",
-    "Dragonite", "Mewtwo", "Mew"
-]
+import edge_tts
 
-# English voice for pronunciation
+DATA_FILE = 'src/pokemonData.js'
+OUT_DIR = 'public/pokemon_audio'
 VOICE = "en-US-GuyNeural"  # Clear, neutral American English
+CONCURRENCY = 12
 
-async def generate_pokemon_audio(pokemon_id, name):
-    """Generate TTS audio for a single Pokemon"""
-    filename = f"public/pokemon_audio/{pokemon_id:03d}_{name.lower().replace('-', '')}.mp3"
 
-    try:
-        print(f"Generating #{pokemon_id:03d}: {name}...", end=" ")
+def pokemon_names():
+    src = open(DATA_FILE, encoding='utf-8').read()
+    return [(int(pid), name) for pid, name in re.findall(r'id: (\d+),\n\s+name: "([^"]+)"', src)]
 
-        # Create TTS
-        tts = edge_tts.Communicate(name, VOICE)
-        await tts.save(filename)
 
-        print(f"✓ Saved {filename}")
+def audio_filename(pokemon_id, name):
+    # Must match pokemonAudioAsset() in src/assetManifest.js
+    return f"{OUT_DIR}/{pokemon_id:03d}_{name.lower().replace('-', '')}.mp3"
+
+
+def trim_silence(path):
+    temp = path + '.tmp.mp3'
+    subprocess.run([
+        'ffmpeg', '-i', path,
+        '-af', 'silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.05:stop_periods=-1:stop_threshold=-50dB:stop_silence=0.05',
+        '-y', temp
+    ], capture_output=True, check=True)
+    os.replace(temp, path)
+
+
+async def generate_one(semaphore, pokemon_id, name):
+    filename = audio_filename(pokemon_id, name)
+    if os.path.exists(filename):
         return True
-    except Exception as e:
-        print(f"✗ Error: {e}")
-        return False
+    spoken = name.replace('-', ' ')
+    async with semaphore:
+        for attempt in range(3):
+            try:
+                await edge_tts.Communicate(spoken, VOICE).save(filename)
+                trim_silence(filename)
+                print(f"✓ #{pokemon_id:03d} {name}", flush=True)
+                return True
+            except Exception as e:
+                print(f"✗ #{pokemon_id:03d} {name} (attempt {attempt + 1}): {e}", flush=True)
+                if os.path.exists(filename):
+                    os.remove(filename)
+                await asyncio.sleep(2 * (attempt + 1))
+    return False
+
 
 async def main():
-    # Create output directory if it doesn't exist
-    os.makedirs("public/pokemon_audio", exist_ok=True)
+    os.makedirs(OUT_DIR, exist_ok=True)
+    names = pokemon_names()
+    print(f"Generating English TTS audio for {len(names)} Pokemon (voice {VOICE})...")
+    semaphore = asyncio.Semaphore(CONCURRENCY)
+    results = await asyncio.gather(*(generate_one(semaphore, pid, name) for pid, name in names))
+    print(f"\n✓ {sum(results)}/{len(names)} audio files present")
 
-    print(f"Generating English TTS audio for all {len(POKEMON_NAMES)} Pokemon...")
-    print(f"Voice: {VOICE}")
-    print(f"Output: public/pokemon_audio/\n")
-
-    # Generate all audio files in parallel
-    tasks = [
-        generate_pokemon_audio(i + 1, name)
-        for i, name in enumerate(POKEMON_NAMES)
-    ]
-
-    results = await asyncio.gather(*tasks)
-
-    successful = sum(results)
-    print(f"\n✓ Successfully generated {successful}/{len(POKEMON_NAMES)} audio files")
-    print("Done! Audio files are ready to use in the game.")
 
 if __name__ == "__main__":
     asyncio.run(main())

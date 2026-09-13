@@ -28,8 +28,19 @@ export const RARITY_TIERS = {
   }
 };
 
-// Legendary Pokemon IDs (Gen 1)
-const LEGENDARY_IDS = [144, 145, 146, 150, 151]; // Articuno, Zapdos, Moltres, Mewtwo, Mew
+// Legendary and mythical Pokemon IDs, all generations (the pool grows as the
+// player completes the Pokedex, see pokemonPool.js)
+const LEGENDARY_IDS = [
+    144, 145, 146, 150, 151, // Gen 1: Articuno, Zapdos, Moltres, Mewtwo, Mew
+    243, 244, 245, 249, 250, 251, // Gen 2: Raikou, Entei, Suicune, Lugia, Ho-oh, Celebi
+    377, 378, 379, 380, 381, 382, 383, 384, 385, 386, // Gen 3: Regis, Latias/Latios, weather trio, Jirachi, Deoxys
+    480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493, // Gen 4
+    494, 638, 639, 640, 641, 642, 643, 644, 645, 646, 647, 648, 649, // Gen 5
+    716, 717, 718, 719, 720, 721, // Gen 6
+    772, 773, 785, 786, 787, 788, 789, 790, 791, 792, 800, 801, 802, 807, 808, 809, // Gen 7
+    888, 889, 890, 891, 892, 893, 894, 895, 896, 897, 898, 905, // Gen 8
+    1001, 1002, 1003, 1004, 1007, 1008, 1014, 1015, 1016, 1017, 1020, 1021, 1022, 1023, 1024, 1025 // Gen 9
+];
 
 /**
  * Get Pokemon rarity based on stats and special overrides

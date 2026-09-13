@@ -6,7 +6,12 @@ import { hasPokeballs, removePokeball, POKEBALL_TYPES } from '../inventory.js';
 import { showPokeballSelector } from '../pokeballSelector.js';
 import { getRarityInfo, attemptCatch } from '../pokemonRarity.js';
 import { getCoinCount, deductCoins } from '../currency.js';
-import { POKEMON_DATA, getAvailablePokemon } from '../pokemonData.js';
+import { POKEMON_DATA } from '../pokemonData.js';
+import {
+    getAvailablePokemon, isPokedexComplete, canUnlockMore, unlockNextBatch, unlockOne, countCaughtAvailable,
+    markCelebrationDue, isCelebrationDue, clearCelebrationDue
+} from '../pokemonPool.js';
+import { showPokedexCelebration } from '../pokedexCelebration.js';
 import { saveCaughtPokemonList, caughtIdSet } from '../caughtPokemon.js';
 import { ensureAssets } from '../lazyLoad.js';
 import { pokemonImageAsset, pokemonAudioAsset } from '../assetManifest.js';
@@ -171,6 +176,20 @@ export class MainGameScene extends Phaser.Scene {
             }
         });
 
+        // Every unlocked Pokemon caught? Big celebration, then the next batch
+        // opens up. Comes before the pokeball check: the party needs no balls.
+        if (this.pokedexJustCompleted()) {
+            if (isCelebrationDue()) {
+                this.celebratePokedexComplete();
+                return;
+            }
+            // Complete without a catch to celebrate (admin "catch all", a save
+            // that was full before unlocking existed): slip one more Pokemon
+            // in quietly, and the party comes when that one is caught.
+            const extra = unlockOne();
+            console.log(`Pokedex already complete; unlocked #${extra.to} to catch first`);
+        }
+
         // Check if player has pokeballs before starting encounter
         if (!hasPokeballs()) {
             // No pokeballs! Show message immediately
@@ -230,7 +249,7 @@ export class MainGameScene extends Phaser.Scene {
         const caughtList = this.registry.get('caughtPokemon') || [];
         const tutorialPokemonIds = TUTORIAL_POKEMON_IDS;
 
-        // Get available Pokemon (Gen 1 only)
+        // Get the unlocked Pokemon (Gen 1 until the Pokedex is completed, then more)
         const availablePokemon = getAvailablePokemon();
 
         let selectedPokemon;
@@ -958,6 +977,31 @@ export class MainGameScene extends Phaser.Scene {
         });
     }
 
+    // True when the caught list covers every unlocked Pokemon and there are
+    // more to unlock. Once all of POKEMON_DATA is unlocked and caught the game
+    // simply keeps spawning repeats (see spawnPokemon).
+    pokedexJustCompleted() {
+        const caughtList = this.registry.get('caughtPokemon') || [];
+        return isPokedexComplete(caughtList) && canUnlockMore();
+    }
+
+    celebratePokedexComplete() {
+        const caughtList = this.registry.get('caughtPokemon') || [];
+        const completedCount = countCaughtAvailable(caughtList);
+        // Unlock before the show so the new batch is saved even if the tab is
+        // closed mid-celebration.
+        const batch = unlockNextBatch();
+        clearCelebrationDue();
+        console.log(`Pokedex complete (${completedCount})! Unlocked #${batch.from + 1}-${batch.to}`);
+        this.isAnimating = true;
+        this.registry.remove('currentPokemon');
+        showPokedexCelebration(this, { completedCount, batch }, () => {
+            this.isAnimating = false;
+            this.attemptsLeft = this.MAX_ATTEMPTS;
+            this.startNewEncounter(true);
+        });
+    }
+
     saveCaughtPokemon() {
         const caughtList = this.registry.get('caughtPokemon') || [];
 
@@ -972,6 +1016,8 @@ export class MainGameScene extends Phaser.Scene {
 
             this.registry.set('caughtPokemon', caughtList);
             saveCaughtPokemonList(caughtList);
+            // This catch filled the Pokedex: the next encounter is the party.
+            if (isPokedexComplete(caughtList) && canUnlockMore()) markCelebrationDue();
         }
 
         // Clear current Pokemon from registry so next encounter generates a new one

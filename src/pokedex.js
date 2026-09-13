@@ -1,4 +1,4 @@
-import { getAvailablePokemon } from './pokemonData.js';
+import { getAvailablePokemon } from './pokemonPool.js';
 import { getRarityInfo } from './pokemonRarity.js';
 import { getCaughtPokemonList, caughtIdSet } from './caughtPokemon.js';
 import { playAudio, audioDuration, numberAudioKeys } from './audio.js';
@@ -55,7 +55,7 @@ function renderPokedexGrid() {
     const grid = document.getElementById('pokedex-grid');
     const statsDiv = document.getElementById('pokedex-stats');
 
-    // Get available Pokemon (Gen 1 only)
+    // Get the unlocked Pokemon (Gen 1 until the Pokedex is completed, then more)
     const availablePokemon = getAvailablePokemon();
 
     // Load caught Pokemon from localStorage
@@ -81,7 +81,7 @@ function renderPokedexGrid() {
     placeholderCard.appendChild(placeholderNumber);
     grid.appendChild(placeholderCard);
 
-    // Generate Pokemon cards (Gen 1 only)
+    // Generate Pokemon cards for every unlocked Pokemon
     availablePokemon.forEach((pokemon) => {
         const isCaught = caughtIds.has(pokemon.id);
         const rarityInfo = getRarityInfo(pokemon);
@@ -102,7 +102,7 @@ function renderPokedexGrid() {
         }
 
         // Pokemon number: the most prominent element (the child is learning
-        // 1-151), shown for every card and spoken when tapped.
+        // to read numbers), shown for every card and spoken when tapped.
         const number = document.createElement('div');
         number.className = `pokemon-card-number ${!isCaught ? 'uncaught' : ''}`;
         number.textContent = String(pokemon.id);
@@ -173,7 +173,7 @@ function playPokemonAudio(pokemonId) {
     }
 }
 
-// Say a number 0-999 by stitching the hundreds clip and the remainder
+// Say a number 0-1099 by stitching the hundreds clip and the remainder
 // ("hundra" + "femtioett"), with the 50 ms gap that reads as natural speech.
 function playNumberAudio(n) {
     if (!gameInstance || !gameInstance.sound) return;

@@ -6,7 +6,7 @@
 // keeps the iPad from holding 151 decoded textures and ~900 decoded sound
 // buffers in memory for a session that will use a handful of them.
 
-import { getAvailablePokemon, POKEMON_DATA } from './pokemonData.js';
+import { POKEMON_DATA } from './pokemonData.js';
 import { getAllWords, getAllSentences } from './speechVocabulary.js';
 import { SPELLING_WORDS } from './spellingWords.js';
 import { getAllVowelWords } from './vowelLengthPairs.js';
@@ -60,14 +60,16 @@ export function pokemonImageAsset(pokemonOrId) {
 export function pokemonAudioAsset(pokemonOrId) {
     const pokemon = typeof pokemonOrId === 'object' ? pokemonOrId : POKEMON_DATA.find(p => p.id === pokemonOrId);
     if (!pokemon) return null;
-    const file = `${pokemon.id.toString().padStart(3, '0')}_${pokemon.name.toLowerCase().replace('-', '')}.mp3`;
+    const file = `${pokemon.id.toString().padStart(3, '0')}_${pokemon.name.toLowerCase().replace(/-/g, '')}.mp3`;
     return asset(`pokemon_audio_${pokemon.id}`, `pokemon_audio/${file}`);
 }
 
+// Every Pokemon in the data, not just the unlocked ones: the pool grows as the
+// player completes it (see pokemonPool.js), so all of it must exist on disk.
 export function allPokemonAssets() {
     const images = [];
     const audio = [];
-    for (const pokemon of getAvailablePokemon()) {
+    for (const pokemon of POKEMON_DATA) {
         images.push(pokemonImageAsset(pokemon));
         audio.push(pokemonAudioAsset(pokemon));
     }
@@ -93,6 +95,9 @@ export const AUDIO_PACKS = {
     directions: () => ['hoger', 'vanster'].map(d => asset(`direction_audio_${d}`, `direction_audio/${d}.mp3`)),
 
     math: () => [asset('math_audio_ganger', 'math_audio/ganger.mp3')],
+
+    // Spoken when the whole Pokedex is caught and the next batch unlocks
+    celebration: () => [asset('celebration_audio_all_caught', 'celebration_audio/all_caught.mp3')],
 
     // Isolated long/short vowel sounds
     vowels: () => {

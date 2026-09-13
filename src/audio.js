@@ -61,13 +61,14 @@ export function stopAudio(sound) {
 // Audio key builders (shared by the number/clock modes and the Pokedex)
 // ---------------------------------------------------------------------------
 
-// Keys that say `number` (0-1000): one clip for 0-99, hundreds + remainder
-// above that (245 -> "tvåhundra" + "fyrtiofem"). Unknown values yield [].
+// Keys that say `number` (0-1099): one clip for 0-99, hundreds + remainder
+// above that (245 -> "tvåhundra" + "fyrtiofem", 1025 -> "tusen" + "tjugofem").
+// Unknown values yield [].
 export function numberAudioKeys(number) {
     const n = Number(number);
     if (!Number.isInteger(n)) return [];
     if (n >= 0 && n <= 99) return [`number_audio_${n}`];
-    if (n >= 100 && n <= 1000) {
+    if (n >= 100 && n <= 1099) {
         const hundreds = Math.floor(n / 100) * 100;
         const remainder = n % 100;
         return remainder > 0

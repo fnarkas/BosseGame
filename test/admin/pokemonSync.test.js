@@ -15,7 +15,7 @@ describe('admin pokemon sync', () => {
         expect(normalizeCaughtEntry(null)).toBeNull();
     });
 
-    it('counts only available (Gen 1) Pokemon', () => {
+    it('counts only unlocked Pokemon (Gen 1 for a new account)', () => {
         expect(countCaughtAvailable([1, { id: 151 }, { id: 152 }, 9999])).toBe(2);
     });
 

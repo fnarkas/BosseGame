@@ -3,7 +3,8 @@
 // bar and catch all / release all. Changes go into the account state and are
 // synced to the server like a catch in the game.
 
-import { POKEMON_DATA, getAvailablePokemon, MAX_POKEMON_ID } from '../../pokemonData.js';
+import { POKEMON_DATA } from '../../pokemonData.js';
+import { getAvailablePokemon, countCaughtAvailable } from '../../pokemonPool.js';
 import { getCaughtPokemonList, saveCaughtPokemonList, caughtIdSet } from '../../caughtPokemon.js';
 import { getPokemonRarity, RARITY_TIERS } from '../../pokemonRarity.js';
 import { html, toHtml } from '../html.js';
@@ -24,13 +25,7 @@ export function normalizeCaughtEntry(entry, now = () => new Date().toISOString()
     return null;
 }
 
-export function countCaughtAvailable(list = getCaughtPokemonList()) {
-    let count = 0;
-    for (const id of caughtIdSet(list)) {
-        if (typeof id === 'number' && id <= MAX_POKEMON_ID) count += 1;
-    }
-    return count;
-}
+export { countCaughtAvailable };
 
 export const POKEDEX_FILTERS = [
     { id: 'all', label: 'All' },

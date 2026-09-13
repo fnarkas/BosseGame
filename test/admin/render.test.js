@@ -3,7 +3,7 @@ import { readDefaultConfig } from '../helpers/setup.js';
 import { renderAdminPage } from '../../src/admin/index.js';
 import { MINIGAME_CONFIG_SCHEMA } from '../../src/admin/schema.js';
 import { MINIGAMES } from '../../src/minigameRegistry.js';
-import { getAvailablePokemon } from '../../src/pokemonData.js';
+import { getAvailablePokemon } from '../../src/pokemonPool.js';
 import { INVENTORY_ITEMS } from '../../src/admin/sections/inventory.js';
 import { ADMIN_TABS } from '../../src/admin/index.js';
 

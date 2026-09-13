@@ -67,7 +67,8 @@ for pokemon_id in range(1, max_pokemon + 1):
         # Create Pokemon entry
         pokemon_entry = {
             'id': pokemon_id,
-            'name': data['name'].capitalize(),
+            # Species name, not form name ("deoxys", not "deoxys-normal"): the child spells it
+            'name': data['species']['name'].capitalize(),
             'filename': FILENAME_MAP[pokemon_id],
             'types': types,
             'height': data['height'],
