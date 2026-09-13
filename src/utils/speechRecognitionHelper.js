@@ -5,6 +5,7 @@
  */
 
 import { registerRecognition, releaseRecognition, restoreAudioAfterMic } from './micSession.js';
+import { remoteLog } from '../remoteLog.js';
 
 export class SpeechRecognitionHelper {
     constructor(lang = 'sv-SE') {
@@ -34,6 +35,7 @@ export class SpeechRecognitionHelper {
 
         if (!SpeechRecognition) {
             console.error('Web Speech API not supported in this browser');
+            remoteLog('speech', 'unsupported');
             if (this.onStatusChange) {
                 this.onStatusChange('Mikrofon stöds ej i denna webbläsare', '#E74C3C');
             }
@@ -50,6 +52,13 @@ export class SpeechRecognitionHelper {
             hostname: location.hostname,
             browser: navigator.userAgent.split(' ').pop(),
             lang: this.lang
+        });
+        remoteLog('speech', 'init', {
+            protocol: location.protocol,
+            host: location.host,
+            secureContext: typeof window !== 'undefined' ? window.isSecureContext : null,
+            lang: this.lang,
+            online: navigator.onLine
         });
 
         // Create recognition instance
@@ -72,6 +81,11 @@ export class SpeechRecognitionHelper {
 
             console.log('Speech heard:', transcript);
             console.log('All alternatives:', Array.from(results).map(r => r.transcript));
+            remoteLog('speech', 'result', {
+                transcript,
+                alternatives: Array.from(results).map(r => ({ text: r.transcript, confidence: r.confidence })),
+                isFinal: results.isFinal
+            });
 
             if (this.onResult) {
                 this.onResult(transcript, results);
@@ -91,6 +105,7 @@ export class SpeechRecognitionHelper {
                 type: event.type,
                 timestamp: new Date().toISOString()
             });
+            remoteLog('speech', 'error', { error: event.error, message: event.message, wasListening: this.isListening });
 
             this.isListening = false;
 
@@ -135,6 +150,7 @@ export class SpeechRecognitionHelper {
 
         this.recognition.onstart = () => {
             console.log('🎤 Recognition session started');
+            remoteLog('speech', 'start');
             if (this.onStart) {
                 this.onStart();
             }
@@ -142,6 +158,7 @@ export class SpeechRecognitionHelper {
 
         this.recognition.onend = () => {
             console.log('🎤 Recognition session ended');
+            remoteLog('speech', 'end', { wasListening: this.isListening });
             this.isListening = false;
             // The microphone is released now - cycle the audio context so iOS
             // drops out of play-and-record mode (see micSession.js).
@@ -192,6 +209,7 @@ export class SpeechRecognitionHelper {
             }
 
             console.log('✅ Network connection test: SUCCESS');
+            remoteLog('speech', 'networkTest', { ok: true });
 
         } catch (error) {
             // No connection
@@ -203,6 +221,7 @@ export class SpeechRecognitionHelper {
             }
 
             console.log('❌ Network connection test: FAILED', error.message);
+            remoteLog('speech', 'networkTest', { ok: false, message: error && error.message });
 
             // Retry after 5 seconds (unless the helper was cleaned up meanwhile)
             scene.time.delayedCall(5000, () => {
@@ -240,11 +259,13 @@ export class SpeechRecognitionHelper {
         try {
             this.recognition.start();
             console.log('✅ Recognition started successfully');
+            remoteLog('speech', 'startListening');
 
             // Safari/iOS workaround: Set timeout to stop recognition after 5 seconds
             // This prevents infinite listening state
             this.recognitionTimeout = scene.time.delayedCall(5000, () => {
                 console.log('⏱️ Recognition timeout - stopping');
+                remoteLog('speech', 'timeoutStop', { wasListening: this.isListening });
                 if (this.recognition && this.isListening) {
                     try {
                         this.recognition.stop();
@@ -262,6 +283,7 @@ export class SpeechRecognitionHelper {
 
         } catch (e) {
             console.error('❌ Failed to start recognition:', e);
+            remoteLog('speech', 'startFailed', { message: e && e.message });
             this.isListening = false;
 
             if (this.onStatusChange) {

@@ -1,85 +1,79 @@
-// Which Pokemon the player can meet right now.
+// Which Pokemon are in the game right now.
 //
-// The game starts with the first generation (#1-151). When every available
-// Pokemon has been caught the game celebrates and unlocks the next hundred
-// (#152-251, then #252-351, ...) until all of POKEMON_DATA is in play. The
-// unlocked ceiling is part of the account state, so it follows the child
-// between devices like the caught list does.
+// src/pokemonData.js holds every Pokemon (all generations). The game only uses
+// the first `maxPokemonId` of them: that is how many the child can catch and
+// how many the Pokedex shows. The limit comes from the `pokedex` section of
+// the minigame config, so a parent can raise it per account from /admin as
+// the child grows out of the 151 Kanto Pokemon. applyPokedexConfig() is
+// awaited once at boot (BootScene) and again when the admin panel opens an
+// account, so every synchronous reader below sees the right pool. The game
+// itself raises the limit when the pool is completed (src/pokedexUnlock.js).
 
 import { POKEMON_DATA } from './pokemonData.js';
-import { getInt, setInt, getBool, setBool, remove } from './storage.js';
-import { getCaughtPokemonList, caughtIdSet } from './caughtPokemon.js';
+import { loadModeConfig } from './minigameConfig.js';
 
-export const UNLOCKED_MAX_KEY = 'pokemonUnlockedMax';
-// Set by the catch that completes the Pokedex, cleared when the celebration
-// starts. A Pokedex that is complete without it (admin "catch all", a save
-// from before unlocking existed) gets one more Pokemon slipped in instead, so
-// the party always follows a catch.
-export const CELEBRATION_DUE_KEY = 'pokedexCelebrationDue';
-export const BASE_POKEMON_COUNT = 151;
-export const UNLOCK_BATCH_SIZE = 100;
-export const TOTAL_POKEMON = POKEMON_DATA.length;
+export const DEFAULT_MAX_POKEMON_ID = 151;
+export const TOTAL_POKEMON = POKEMON_DATA.length ? POKEMON_DATA[POKEMON_DATA.length - 1].id : 0;
 
-// Highest Pokemon id that can currently be encountered (151 for a new player).
-export function getUnlockedMax() {
-    const stored = getInt(UNLOCKED_MAX_KEY, BASE_POKEMON_COUNT);
-    return Math.min(Math.max(stored, BASE_POKEMON_COUNT), TOTAL_POKEMON);
+// Last national dex number of each generation, for the admin presets.
+export const GENERATIONS = [
+    { gen: 1, lastId: 151, region: 'Kanto' },
+    { gen: 2, lastId: 251, region: 'Johto' },
+    { gen: 3, lastId: 386, region: 'Hoenn' },
+    { gen: 4, lastId: 493, region: 'Sinnoh' },
+    { gen: 5, lastId: 649, region: 'Unova' },
+    { gen: 6, lastId: 721, region: 'Kalos' },
+    { gen: 7, lastId: 809, region: 'Alola' },
+    { gen: 8, lastId: 905, region: 'Galar' },
+    { gen: 9, lastId: 1025, region: 'Paldea' }
+].filter(g => g.lastId <= TOTAL_POKEMON);
+
+export const POKEDEX_CONFIG_DEFAULTS = { maxPokemonId: DEFAULT_MAX_POKEMON_ID };
+
+let maxPokemonId = DEFAULT_MAX_POKEMON_ID;
+let cachedPool = null;
+
+// Clamp any input (number, numeric string, garbage) to a valid dex number.
+export function clampMaxPokemonId(value) {
+    const n = typeof value === 'number' ? value : parseInt(value, 10);
+    if (!Number.isFinite(n)) return DEFAULT_MAX_POKEMON_ID;
+    return Math.min(TOTAL_POKEMON, Math.max(1, Math.round(n)));
 }
 
+export function getMaxPokemonId() {
+    return maxPokemonId;
+}
+
+export function setMaxPokemonId(value) {
+    const next = clampMaxPokemonId(value);
+    if (next !== maxPokemonId) cachedPool = null;
+    maxPokemonId = next;
+    return maxPokemonId;
+}
+
+// The Pokemon the child can meet and see, in dex order.
 export function getAvailablePokemon() {
-    const max = getUnlockedMax();
-    return POKEMON_DATA.filter(pokemon => pokemon.id <= max);
+    if (!cachedPool) cachedPool = POKEMON_DATA.filter(pokemon => pokemon.id <= maxPokemonId);
+    return cachedPool;
 }
 
-// How many of the currently available Pokemon are in the caught list.
-export function countCaughtAvailable(list = getCaughtPokemonList()) {
-    const max = getUnlockedMax();
-    let count = 0;
-    for (const id of caughtIdSet(list)) {
-        if (Number.isInteger(id) && id >= 1 && id <= max) count += 1;
-    }
-    return count;
+export function isPokemonAvailable(id) {
+    return Number.isInteger(id) && id >= 1 && id <= maxPokemonId;
 }
 
-export function isPokedexComplete(list = getCaughtPokemonList()) {
-    return countCaughtAvailable(list) >= getUnlockedMax();
+export function getPokemonById(id) {
+    return POKEMON_DATA.find(pokemon => pokemon.id === id) || null;
 }
 
-export function canUnlockMore() {
-    return getUnlockedMax() < TOTAL_POKEMON;
+// Read the account's limit from the config and apply it. Resolves with the
+// section so callers can show it.
+export async function applyPokedexConfig() {
+    const config = await loadModeConfig('pokedex', POKEDEX_CONFIG_DEFAULTS);
+    config.maxPokemonId = setMaxPokemonId(config.maxPokemonId);
+    return config;
 }
 
-function unlockTo(to) {
-    const from = getUnlockedMax();
-    if (from >= TOTAL_POKEMON) return null;
-    const capped = Math.min(to, TOTAL_POKEMON);
-    setInt(UNLOCKED_MAX_KEY, capped);
-    return { from, to: capped, pokemon: POKEMON_DATA.filter(p => p.id > from && p.id <= capped) };
-}
-
-// Unlock up to the next batch boundary (151 -> 251 -> 351 ...) and return it:
-// { from, to, pokemon } where `pokemon` are the newly available entries
-// (from < id <= to). A pool that was nudged past a boundary by unlockOne()
-// still lands on the next boundary. Returns null when everything is unlocked.
-export function unlockNextBatch() {
-    const from = getUnlockedMax();
-    const batches = Math.floor((from - BASE_POKEMON_COUNT) / UNLOCK_BATCH_SIZE) + 1;
-    return unlockTo(BASE_POKEMON_COUNT + batches * UNLOCK_BATCH_SIZE);
-}
-
-// Quietly add a single Pokemon to the pool. Same return shape as unlockNextBatch.
-export function unlockOne() {
-    return unlockTo(getUnlockedMax() + 1);
-}
-
-export function markCelebrationDue() {
-    setBool(CELEBRATION_DUE_KEY, true);
-}
-
-export function isCelebrationDue() {
-    return getBool(CELEBRATION_DUE_KEY, false);
-}
-
-export function clearCelebrationDue() {
-    remove(CELEBRATION_DUE_KEY);
+// Tests and the admin panel reset to the built-in default.
+export function resetPokemonPool() {
+    setMaxPokemonId(DEFAULT_MAX_POKEMON_ID);
 }

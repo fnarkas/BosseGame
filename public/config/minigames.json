@@ -13,6 +13,7 @@
     "multiplication": 10,
     "vowelLength": 40,
     "vowelSounds": 40,
+    "vowelSort": 10,
     "numberBonds": 720,
     "shapeDirections": 0,
     "clockListening": 0,
@@ -29,6 +30,9 @@
   },
   "letters": {
     "letters": "a-z"
+  },
+  "pokedex": {
+    "maxPokemonId": 151
   },
   "pokemonCatching": {
     "nameCase": "uppercase",
@@ -79,6 +83,11 @@
   "vowelLength": {
     "required": 3,
     "showListenHelp": true
+  },
+  "vowelSort": {
+    "stage": "drag",
+    "letters": 2,
+    "required": 3
   },
   "vowelSounds": {
     "required": 4,

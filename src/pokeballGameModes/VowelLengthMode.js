@@ -8,12 +8,15 @@ import { loadModeConfig } from '../minigameConfig.js';
  * Swedish has complementary quantity: in a stressed syllable either the vowel is
  * long and the following consonant short (tak = [ta:k]) or the vowel is short and
  * the consonant long (tack = [tak:]). The doubled consonant in writing is what
- * marks which one it is. This mode drills that with minimal pairs, from three
+ * marks which one it is. This mode drills that with minimal pairs, from two
  * angles on the SAME pair within one round:
  *
  *   0. Hear the word, pick the written form.       glas / glass
- *   1. See the word, hear one reading, judge it.   ✅ / ❌
- *   2. Hear the word, pick one or two consonants.  s / ss
+ *   1. Hear the word, pick one or two consonants.  s / ss
+ *
+ * (A third "see the word, hear one reading, judge it ✅/❌" task used to sit
+ * between them; it asked the child to compare two things at once and confused
+ * more than it taught, so it was dropped.)
  *
  * On every answer the word is spelled out and the vowel visibly stretches (long)
  * or snaps together (short), so the rule is shown rather than told. A missed
@@ -21,9 +24,8 @@ import { loadModeConfig } from '../minigameConfig.js';
  */
 
 const ROUND_PICK_SPELLING = 0;
-const ROUND_JUDGE_READING = 1;
-const ROUND_PICK_CONSONANTS = 2;
-const ROUND_COUNT = 3;
+const ROUND_PICK_CONSONANTS = 1;
+const ROUND_COUNT = 2;
 
 // Split a minimal pair at the vowel, into the parts it is built from:
 //   vila / villa -> { stem: 'vi',  longCluster: 'l', shortCluster: 'll', tail: 'a' }
@@ -75,7 +77,7 @@ export class VowelLengthMode extends VowelModeBase {
         // A missed question comes back exactly as it was asked.
         const retry = this.takeRetry();
 
-        // One pair carries the whole round, seen from all three angles.
+        // One pair carries the whole round, seen from both angles in turn.
         if (retry) {
             this.currentPair = retry.pair;
         } else if (this.correctCount === 0 || !this.currentPair) {
@@ -88,14 +90,7 @@ export class VowelLengthMode extends VowelModeBase {
         const target = targetIsLong ? pair.long : pair.short;
         const parts = splitPair(pair.long, pair.short);
 
-        this.challengeData = {
-            pair,
-            parts,
-            target,
-            targetIsLong,
-            // Round 1 plays one reading at random; the answer is whether it matched.
-            playedIsLong: retry ? retry.playedIsLong : Phaser.Math.Between(0, 1) === 0
-        };
+        this.challengeData = { pair, parts, target, targetIsLong };
 
         return this.challengeData;
     }
@@ -103,27 +98,16 @@ export class VowelLengthMode extends VowelModeBase {
     createChallengeUI(scene) {
         this.inputLocked = false;
         this.isRevealing = false;
-        const { target, parts, playedIsLong } = this.challengeData;
+        const { target, parts } = this.challengeData;
 
+        this.createSpeaker(scene, () => this.playWord(scene, target));
         if (this.roundType === ROUND_PICK_SPELLING) {
-            this.createSpeaker(scene, () => this.playWord(scene, target));
             this.createWordOptions(scene);
-            this.delayedCall(scene, 300, () => this.playWord(scene, target));
-
-        } else if (this.roundType === ROUND_JUDGE_READING) {
-            // The written word is the stimulus; one reading of it is played.
-            const played = playedIsLong ? this.challengeData.pair.long : this.challengeData.pair.short;
-            this.createSpeaker(scene, () => this.playWord(scene, played));
-            this.renderWord(scene, target);
-            this.createJudgeOptions(scene);
-            this.delayedCall(scene, 300, () => this.playWord(scene, played));
-
         } else {
-            this.createSpeaker(scene, () => this.playWord(scene, target));
             this.renderWord(scene, `${parts.stem}${parts.tail}`, { gapAfter: parts.stem.length - 1 });
             this.createConsonantOptions(scene);
-            this.delayedCall(scene, 300, () => this.playWord(scene, target));
         }
+        this.delayedCall(scene, 300, () => this.playWord(scene, target));
 
         this.createBallIndicators(scene);
     }
@@ -140,18 +124,6 @@ export class VowelLengthMode extends VowelModeBase {
                 fontSize: '58px',
                 onSelect: () => this.handleAnswer(scene, word === target, word, index),
                 onListen: () => this.playVowel(scene, vowel, isLongForm)
-            });
-        });
-    }
-
-    createJudgeOptions(scene) {
-        const { targetIsLong, playedIsLong } = this.challengeData;
-        const matched = targetIsLong === playedIsLong;
-        ['✅', '❌'].forEach((label, index) => {
-            const saysMatched = index === 0;
-            this.createTextCard(scene, index, label, {
-                fontSize: '72px',
-                onSelect: () => this.handleAnswer(scene, saysMatched === matched, label, index)
             });
         });
     }
@@ -176,8 +148,8 @@ export class VowelLengthMode extends VowelModeBase {
     }
 
     retryItem() {
-        const { pair, targetIsLong, playedIsLong } = this.challengeData;
-        return { pair, targetIsLong, playedIsLong };
+        const { pair, targetIsLong } = this.challengeData;
+        return { pair, targetIsLong };
     }
 
     // Spell out the correct word and show what the vowel does. After a miss the

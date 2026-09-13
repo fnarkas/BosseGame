@@ -59,7 +59,7 @@
 ## Adding New Minigames to Pokeball Game Scene
 
 All minigame wiring lives in **one place**: `src/minigameRegistry.js`. The debug
-route, the `/games` menu, the forced-mode value, the weighted random pick, the
+route, the admin panel's "Try a game" tab, the forced-mode value, the weighted random pick, the
 reload-restore map, the wheel slice/colour/icon, the default weight and the admin
 probability form are all derived from that list. Do NOT add if/else chains or
 hand-written maps anywhere else.
@@ -116,17 +116,26 @@ See `AdditionMode.js` for a compact mode and `SpeechRecognitionMode.js` for one 
 **IMPORTANT: The game uses a flexible architecture that dynamically adapts to the number of Pokemon in `POKEMON_DATA`.**
 
 ### Current State
-- **All 1025 Pokemon (Gen 1-9)** in `POKEMON_DATA`, with artwork and name audio for every one
-- **Unlocking**: a new account can meet #1-151. When every unlocked Pokemon is caught,
-  `MainGameScene` plays the big celebration (`src/pokedexCelebration.js`) and unlocks the next
-  100 (`unlockNextBatch()` in `src/pokemonPool.js`, always up to the next 151+n*100 boundary).
-  The ceiling is account state (`pokemonUnlockedMax`). The party only follows a catch
-  (`pokedexCelebrationDue`): a Pokedex that is already full at encounter time (admin "Catch all",
-  a save that was full before unlocking existed) quietly gets ONE more Pokemon, and the
-  celebration comes when that one is caught.
-- **Always use `getAvailablePokemon()` from `src/pokemonPool.js`** for anything the player can
-  see or meet; `POKEMON_DATA` directly only for lookups by id and asset checks
-- Legendary/mythical ids for all generations are listed in `src/pokemonRarity.js`
+- **All 1025 Pokemon (Generations 1-9)** are in `POKEMON_DATA`, with artwork and name audio
+- **How many are in the game is a per-account setting**: `pokedex.maxPokemonId` in
+  `public/config/minigames.json` (default 151), edited on the Pokédex tab of `/admin` (generation
+  presets). `src/pokemonPool.js` owns it: `getAvailablePokemon()` / `isPokemonAvailable(id)` are the
+  only way to list catchable/visible Pokemon, and `applyPokedexConfig()` is awaited in BootScene and
+  when the admin opens an account. Never filter `POKEMON_DATA` by id anywhere else.
+- **Completing the pool unlocks more**: when every Pokemon in the pool is caught, `MainGameScene`
+  plays the big celebration (`src/pokedexCelebration.js`) and `src/pokedexUnlock.js` raises
+  `pokedex.maxPokemonId` in the account's config override to the next 151+n*100 boundary. The party
+  only follows a catch (`pokedexCelebrationDue`): a pool that is already full at encounter time
+  (admin "Catch all", a save that was full before unlocking existed) quietly gets ONE more Pokemon,
+  and the celebration comes when that one is caught. This is the one place the game writes config.
+- **Encounter order is a saved queue** (`src/spawnQueue.js`, key `pokemonSpawnQueue`): the tutorial
+  trio first, then random uncaught Pokemon. `MainGameScene.spawnPokemon()` calls `takeNextSpawn()`;
+  the admin Pokédex tab shows the next 10 and can push a chosen Pokemon to the front (`queueSpawn`).
+- **Presents**: the admin can also queue a gift (`queueGift`, `src/gifts.js`), an entry
+  `{ gift: { coins, pokeball, greatball, ultraball, legendaryball }, pinned: true }`. The catching
+  scene shows a tappable gift box instead of a Pokemon (`showGift`) and grants the contents; a present
+  can be opened with an empty bag. Only the admin panel creates gifts.
+- Legendary/mythical Pokemon carry `legendary: true` in the data (from PokeAPI species data)
 
 ### Core Data Structure
 
@@ -158,20 +167,23 @@ See `AdditionMode.js` for a compact mode and `SpeechRecognitionMode.js` for one 
 
 #### 1. Update Python Scripts
 
+**`download_pokemon_images.py`:**
+- Update the `num_pokemon` in the main call to the new total
+- Run: `python3 download_pokemon_images.py`, then `python3 optimize_pokemon_images.py` (256 px, idempotent)
+
 **`fetch_pokemon_data.py`:**
-- Update `FILENAME_MAP` dictionary with new Pokemon IDs and filenames
-- Change range: `for pokemon_id in range(1, NEW_MAX + 1):`
+- Needs no edits: it scans `public/pokemon_images/` for the ids and fetches data + the
+  legendary/mythical flag for each
 - It stores the *species* name ("Deoxys", not "deoxys-normal") because the child spells it
 - Run: `python3 fetch_pokemon_data.py`
 
-**`download_pokemon_images.py`:**
-- Update default parameter: `num_pokemon=NEW_MAX`
-- Run: `python3 download_pokemon_images.py`
-
 **`generate_pokemon_audio.py`:**
-- Reads the names from `src/pokemonData.js`, skips files that already exist and trims the
-  edge-tts silence itself
+- Needs no edits: it reads the names from `src/pokemonData.js`, generates the missing files
+  and trims the Edge-TTS silence from all of them
 - Run: `python3 generate_pokemon_audio.py`
+
+**`src/pokemonPool.js`:** add the new generation's last dex number to `GENERATIONS` so the
+admin panel gets a preset for it.
 
 #### 2. Verify Flexible Code (Should NOT need changes)
 
@@ -194,10 +206,15 @@ If you find any hardcoded Pokemon counts (like "100" or "151"), replace with:
 
 **File**: `src/pokemonRarity.js`
 
-If adding legendary Pokemon beyond #1025, extend `LEGENDARY_IDS` (one line per generation).
+Legendary and mythical Pokemon are flagged `legendary: true` in `src/pokemonData.js` by
+`fetch_pokemon_data.py` (PokeAPI species data), so new generations need no code change. To
+hand-pick extra ones:
+```javascript
+const LEGENDARY_IDS = [144, 145, 146, 150, 151, EXTRA_IDS];
+```
 
 The rarity system uses total stats:
-- **Legendary**: Manually specified IDs
+- **Legendary**: `legendary` flag in the data, or manually specified IDs
 - **Rare**: Total stats ≥ 500
 - **Uncommon**: Total stats ≥ 400
 - **Common**: Total stats < 400
@@ -363,6 +380,17 @@ exercised against `test/helpers/fakeScene.js` — see `test/README.md`.
 | Number list from admin ("12-20,30") | `parseNumberRange(str, fallback)` in `src/utils/parseNumberRange.js` | a local parser |
 | Colours / text styles / layout | `COLORS`, `TEXT`, `LAYOUT` in `src/pokeballGameModes/uiKit.js` | new hex literals |
 
+### Live sync (admin changes reach a running game)
+- `src/account.js` polls `GET /api/state?since=<revision>` every few seconds and on tab focus, and
+  applies whatever another device (usually `/admin`) wrote via `applyRemoteState` (unsent local
+  changes win). The `minigameConfig` key also drops the config cache.
+- **Views re-read at their entry points, never mid-view**: `selectRandomGameMode()` pulls before
+  rolling and `refreshWheel()` redraws the wheel if the enabled slices changed; the catching scene
+  pulls before drawing the next Pokemon from the spawn queue; modes get a fresh instance per spin.
+- Something that must redraw immediately (a coin counter, the pokeball HUD) subscribes with
+  `onRemoteChange(keys => ...)` and unsubscribes on scene shutdown. `src/liveUpdates.js` holds the
+  game-wide reactions (registry copy of the caught list, the Pokemon pool size).
+
 ### Learning rules every mode follows
 - A wrong answer is always followed by the correct answer being **spoken** while it is highlighted (`revealAnswer` with `audioKey`/`audioKeys`).
 - The missed item is asked again right away and once more a little later (`queueRetry(item)` and `queueRetry(item, 2)`).
@@ -380,6 +408,7 @@ exercised against `test/helpers/fakeScene.js` — see `test/README.md`.
 logs live in `~/srv/pokemon-data` on the server and are never uploaded or deleted.
 The server speaks HTTPS with a self-signed certificate on the LAN (`https://olofs-mac-mini.local/`);
 when Tailscale is running on the server, `install.sh` also sets up Tailscale Serve so the game is
-reachable on the tailnet at `https://olofs-mac-mini.<tailnet>.ts.net/` with a trusted certificate
-(`POKEMON_TAILSCALE=0` skips that).
+reachable on the tailnet at `https://olofs-mac-mini.<tailnet>.ts.net:8443/` with a trusted certificate
+(`POKEMON_TAILSCALE=0` skips that). Serve must not use 443: the Tailscale app binds its Serve port on
+every interface, which would take 443 from the Node server (EADDRINUSE, launchd gives up).
 `DEPLOY_HOST` / `DEPLOY_DIR` override the target. Never run `deploy/install.sh` on the dev machine.

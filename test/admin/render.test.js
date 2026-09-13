@@ -6,6 +6,7 @@ import { MINIGAMES } from '../../src/minigameRegistry.js';
 import { getAvailablePokemon } from '../../src/pokemonPool.js';
 import { INVENTORY_ITEMS } from '../../src/admin/sections/inventory.js';
 import { ADMIN_TABS } from '../../src/admin/index.js';
+import { queueGift } from '../../src/spawnQueue.js';
 
 // The page is rendered as one HTML string before any DOM exists, so the
 // markup can be checked in Node.
@@ -68,6 +69,45 @@ describe('admin page markup', () => {
         const cards = page.match(/data-pokemon-card="/g) || [];
         expect(cards).toHaveLength(getAvailablePokemon().length);
         expect(page).toContain('loading="lazy"');
+    });
+
+    it('has the pool size control with one preset per generation, and the next ten encounters', () => {
+        expect(page).toMatch(/id="pokedex-max"[^>]*max="1025"[^>]*value="151"/);
+        expect(page).toContain('data-gen-last="151"');
+        expect(page).toContain('data-gen-last="1025"');
+        expect(page).toContain('id="pokedex-max-save"');
+        const slots = page.match(/data-spawn-slot="/g) || [];
+        expect(slots).toHaveLength(10);
+        // Nothing caught: the tutorial trio leads the queue.
+        expect(page).toMatch(/data-spawn-slot="0" data-spawn-id="95"/);
+        expect(page).toMatch(/data-spawn-slot="1" data-spawn-id="41"/);
+        expect(page).toMatch(/data-spawn-slot="2" data-spawn-id="86"/);
+        expect(page).toContain('id="queue-search"');
+        expect(page).toContain('id="queue-reshuffle"');
+        // The present form: one input per thing a gift can hold
+        for (const id of ['coins', 'pokeball', 'greatball', 'ultraball', 'legendaryball']) {
+            expect(page).toContain(`data-gift-item="${id}"`);
+        }
+        expect(page).toContain('id="queue-gift-add"');
+    });
+
+    it('shows a queued present as a gift slot with its contents', () => {
+        queueGift({ coins: 10, greatball: 2 });
+        const withGift = renderAdminPage(readDefaultConfig(), { accounts, selected: 'Olle', tab: 'pokedex' });
+        expect(withGift).toMatch(/data-spawn-slot="0" data-spawn-gift="1"/);
+        expect(withGift).toContain('10 Coins · 2 Great Ball');
+        // The present counts as one of the ten look-ahead slots
+        expect((withGift.match(/data-spawn-slot="/g) || []).length).toBe(10);
+        expect(withGift).toMatch(/data-spawn-slot="1" data-spawn-id="95"/);
+    });
+
+    it('links every minigame, the main game, the wheel and the store from the Try-a-game tab', () => {
+        for (const game of MINIGAMES) {
+            expect(page).toContain(`data-game-link="${game.path}"`);
+            expect(page).toContain(`src="${game.iconFile}"`);
+        }
+        for (const path of ['/', '/pokeballs', '/store']) expect(page).toContain(`data-game-link="${path}"`);
+        expect(page).toMatch(/class="admin-game-link" href="\/addition" target="_blank" rel="noopener"/);
     });
 
     it('reflects config values in the inputs', () => {

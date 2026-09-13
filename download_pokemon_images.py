@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-Download images of the first 151 Gen 1 Pokémon from PokéAPI.
+Download the official artwork of every Pokémon (all generations) from PokéAPI
+into public/pokemon_images/. Already downloaded files are skipped, so the
+script can be re-run. Run optimize_pokemon_images.py afterwards to shrink the
+artwork to 256 px for the iPad.
 """
 import requests
 import os
@@ -20,7 +23,11 @@ def download_pokemon_images(num_pokemon=151, output_dir="public/pokemon_images")
 
     print(f"Downloading images for the first {num_pokemon} Pokémon...")
 
+    existing = {int(p.name.split('_')[0]) for p in Path(output_dir).glob('*.png') if p.name[:3].isdigit()}
+
     for pokemon_id in range(1, num_pokemon + 1):
+        if pokemon_id in existing:
+            continue
         try:
             # Fetch Pokémon data from PokéAPI
             url = f"https://pokeapi.co/api/v2/pokemon/{pokemon_id}"

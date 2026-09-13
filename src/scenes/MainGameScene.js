@@ -8,17 +8,20 @@ import { getRarityInfo, attemptCatch } from '../pokemonRarity.js';
 import { getCoinCount, deductCoins } from '../currency.js';
 import { POKEMON_DATA } from '../pokemonData.js';
 import {
-    getAvailablePokemon, isPokedexComplete, canUnlockMore, unlockNextBatch, unlockOne, countCaughtAvailable,
+    isPokedexComplete, canUnlockMore, unlockNextBatch, unlockOne, countCaughtAvailable,
     markCelebrationDue, isCelebrationDue, clearCelebrationDue
-} from '../pokemonPool.js';
+} from '../pokedexUnlock.js';
 import { showPokedexCelebration } from '../pokedexCelebration.js';
 import { saveCaughtPokemonList, caughtIdSet } from '../caughtPokemon.js';
 import { ensureAssets } from '../lazyLoad.js';
 import { pokemonImageAsset, pokemonAudioAsset } from '../assetManifest.js';
-
-// First three catches are guaranteed tutorial Pokemon (Onix, Zubat, Seel):
-// names with letters whose upper/lowercase shapes look alike.
-const TUTORIAL_POKEMON_IDS = [95, 41, 86];
+import { takeNextSpawn, nextSpawnIsGift, TUTORIAL_POKEMON_IDS, SPAWN_QUEUE_KEY } from '../spawnQueue.js';
+import { grantGift, giftContents } from '../gifts.js';
+import { playChime } from '../sfx.js';
+import { pullChanges, onRemoteChange } from '../account.js';
+import { COIN_KEY } from '../currency.js';
+import { INVENTORY_KEY } from '../inventory.js';
+import { CONFIG_OVERRIDE_KEY } from '../minigameConfig.js';
 
 export class MainGameScene extends Phaser.Scene {
     constructor() {
@@ -82,6 +85,15 @@ export class MainGameScene extends Phaser.Scene {
 
         // Create inventory HUD (top left)
         this.inventoryHUD = createInventoryHUD(this, 150, 20);
+
+        // What the parent changes in /admin while the child plays (coins,
+        // pokeballs, the name-case settings) lands here through the live sync
+        // in account.js; the next encounter and the Pokedex read the rest.
+        this.stopRemoteWatch = onRemoteChange((keys) => this.onRemoteChange(keys));
+        this.events.once('shutdown', () => {
+            if (this.stopRemoteWatch) this.stopRemoteWatch();
+            this.stopRemoteWatch = null;
+        });
 
         // Store button (icon sprite)
         const storeBtn = this.add.image(width - 160, 52, 'store-icon');
@@ -176,8 +188,9 @@ export class MainGameScene extends Phaser.Scene {
             }
         });
 
-        // Every unlocked Pokemon caught? Big celebration, then the next batch
-        // opens up. Comes before the pokeball check: the party needs no balls.
+        // Every Pokemon in the pool caught? Big celebration, then the next
+        // hundred open up. Comes before the pokeball check: the party needs
+        // no balls.
         if (this.pokedexJustCompleted()) {
             if (isCelebrationDue()) {
                 this.celebratePokedexComplete();
@@ -190,98 +203,231 @@ export class MainGameScene extends Phaser.Scene {
             console.log(`Pokedex already complete; unlocked #${extra.to} to catch first`);
         }
 
-        // Check if player has pokeballs before starting encounter
-        if (!hasPokeballs()) {
+        const restoreGift = !forceNewPokemon && this.registry.get('currentGift');
+        const restore = !forceNewPokemon && !restoreGift && this.registry.get('currentPokemon');
+
+        // Check if player has pokeballs before starting encounter. A present
+        // (which may well hold Poké Balls) can always be opened.
+        if (!hasPokeballs() && !restoreGift && !nextSpawnIsGift()) {
             // No pokeballs! Show message immediately
             this.showNoPokeballsPopup();
             return;
         }
 
-        // Check if we should use existing Pokemon or spawn new one
-        if (!forceNewPokemon && this.registry.get('currentPokemon')) {
-            // Restore previous Pokemon from registry
-            this.currentPokemon = this.registry.get('currentPokemon');
-            // Re-derive the tutorial flag: it is per-scene state and would
-            // otherwise be lost after a trip to the minigame scene, turning a
-            // guaranteed tutorial catch into a random one.
-            const caughtList = this.registry.get('caughtPokemon') || [];
-            this.isTutorialCatch = caughtList.length < TUTORIAL_POKEMON_IDS.length &&
-                TUTORIAL_POKEMON_IDS.includes(this.currentPokemon.id);
-            console.log('Restoring previous Pokemon:', this.currentPokemon.name);
-        } else {
-            // Spawn new random Pokemon
-            this.spawnPokemon();
-            // Save to registry
-            this.registry.set('currentPokemon', this.currentPokemon);
-        }
-
-        // Fetch this Pokemon's artwork and name audio (instant when cached),
-        // load the answer-mode config if needed, then show the encounter.
         const encounter = ++this.encounterSeq;
-        const pokemon = this.currentPokemon;
-        const loadAssets = ensureAssets(this, {
-            images: [pokemonImageAsset(pokemon.id)],
-            audio: [pokemonAudioAsset(pokemon.id)]
-        });
-        const loadConfig = (this.answerMode.loadConfig && !this.answerMode.configLoaded)
-            ? this.answerMode.loadConfig().catch((error) => {
-                console.warn('Config failed to load, starting with defaults:', error);
-                this.answerMode.configLoaded = true;
-            })
-            : Promise.resolve();
+        const stale = () => encounter !== this.encounterSeq || this.sceneGone();
 
-        const show = () => {
-            // A newer encounter started, or the scene stopped, while loading.
-            if (encounter !== this.encounterSeq) return;
-            if (this.scene.isActive && !this.scene.isActive()) return;
-            this.displayPokemon();
-            this.answerMode.generateChallenge(this.currentPokemon);
-            this.answerMode.createChallengeUI(this, this.attemptsLeft);
-        };
-        Promise.all([loadAssets, loadConfig]).then(show, (error) => {
-            console.warn('Encounter assets failed to load, showing anyway:', error);
-            show();
+        // Before drawing a new Pokemon, pick up what the parent may have queued
+        // in /admin meanwhile (throttled; instant when nothing changed).
+        const prepare = (restore || restoreGift) ? Promise.resolve() : pullChanges();
+        prepare.then(() => {
+            if (stale()) return;
+            this.currentGift = null;
+            if (restoreGift) {
+                this.currentGift = restoreGift;
+                this.currentPokemon = null;
+                this.showGift();
+                return;
+            }
+            if (restore) {
+                // Restore previous Pokemon from registry
+                this.currentPokemon = this.registry.get('currentPokemon');
+                // Re-derive the tutorial flag: it is per-scene state and would
+                // otherwise be lost after a trip to the minigame scene, turning a
+                // guaranteed tutorial catch into a random one.
+                const caughtList = this.registry.get('caughtPokemon') || [];
+                this.isTutorialCatch = caughtList.length < TUTORIAL_POKEMON_IDS.length &&
+                    TUTORIAL_POKEMON_IDS.includes(this.currentPokemon.id);
+                console.log('Restoring previous Pokemon:', this.currentPokemon.name);
+            } else {
+                // Spawn the next Pokemon (or present) from the queue
+                this.spawnPokemon();
+                if (this.currentGift) {
+                    this.registry.set('currentGift', this.currentGift);
+                    this.registry.remove('currentPokemon');
+                    this.showGift();
+                    return;
+                }
+                // Save to registry
+                this.registry.set('currentPokemon', this.currentPokemon);
+            }
+
+            // Fetch this Pokemon's artwork and name audio (instant when cached),
+            // load the answer-mode config if needed, then show the encounter.
+            const pokemon = this.currentPokemon;
+            const loadAssets = ensureAssets(this, {
+                images: [pokemonImageAsset(pokemon.id)],
+                audio: [pokemonAudioAsset(pokemon.id)]
+            });
+            const loadConfig = (this.answerMode.loadConfig && !this.answerMode.configLoaded)
+                ? this.answerMode.loadConfig().catch((error) => {
+                    console.warn('Config failed to load, starting with defaults:', error);
+                    this.answerMode.configLoaded = true;
+                })
+                : Promise.resolve();
+
+            const show = () => {
+                // A newer encounter started, or the scene stopped, while loading.
+                if (stale()) return;
+                this.displayPokemon();
+                this.answerMode.generateChallenge(this.currentPokemon);
+                this.answerMode.createChallengeUI(this, this.attemptsLeft);
+            };
+            Promise.all([loadAssets, loadConfig]).then(show, (error) => {
+                console.warn('Encounter assets failed to load, showing anyway:', error);
+                show();
+            });
         });
     }
 
-    spawnPokemon() {
-        // Tutorial system: First 3 encounters are always Onix, Zubat, Seel (100% catch rate)
-        const caughtList = this.registry.get('caughtPokemon') || [];
-        const tutorialPokemonIds = TUTORIAL_POKEMON_IDS;
+    // True once this scene has been stopped, so a late async step must not
+    // build UI into it. A paused scene (Pokedex or store open) is not gone.
+    sceneGone() {
+        if (!this.scene.isActive || this.scene.isActive()) return false;
+        return !(this.scene.isPaused && this.scene.isPaused());
+    }
 
-        // Get the unlocked Pokemon (Gen 1 until the Pokedex is completed, then more)
-        const availablePokemon = getAvailablePokemon();
-
-        let selectedPokemon;
-        if (caughtList.length < TUTORIAL_POKEMON_IDS.length) {
-            // Tutorial mode: spawn specific Pokemon in order
-            const tutorialIndex = caughtList.length;
-            const tutorialId = tutorialPokemonIds[tutorialIndex];
-            selectedPokemon = availablePokemon.find(p => p.id === tutorialId)
-                || Phaser.Utils.Array.GetRandom(availablePokemon);
-            this.isTutorialCatch = true;
-            console.log(`Tutorial mode: Spawning ${selectedPokemon.name} (${tutorialIndex + 1}/3)`);
-        } else {
-            // Normal mode: random Pokemon from UNCAUGHT ones only
-            const caughtIds = new Set(caughtList.map(p => p.id || p));
-            const uncaughtPokemon = availablePokemon.filter(p => !caughtIds.has(p.id));
-
-            if (uncaughtPokemon.length > 0) {
-                // Select from uncaught Pokemon
-                selectedPokemon = Phaser.Utils.Array.GetRandom(uncaughtPokemon);
-                console.log(`Spawning uncaught Pokemon: ${selectedPokemon.name} (${uncaughtPokemon.length} uncaught remaining)`);
-            } else {
-                // All Pokemon caught! Allow any Pokemon to spawn
-                selectedPokemon = Phaser.Utils.Array.GetRandom(availablePokemon);
-                console.log(`All Pokemon caught! Spawning ${selectedPokemon.name} (repeat)`);
-            }
-            this.isTutorialCatch = false;
+    // Keys the live sync just changed on this device.
+    onRemoteChange(keys) {
+        if (this.sceneGone()) return;
+        if (keys.includes(COIN_KEY) || keys.includes(INVENTORY_KEY) || keys.includes(SPAWN_QUEUE_KEY)) {
+            if (this.inventoryHUD) updateInventoryHUD(this.inventoryHUD);
+            // A parent restocking the bag, or queueing a present, lifts the
+            // "no pokeballs" popup.
+            this.dismissNoPokeballsPopupIfStocked();
         }
+        if (keys.includes(CONFIG_OVERRIDE_KEY) && this.answerMode) {
+            // Name/keyboard case settings: re-read on the next encounter.
+            this.answerMode.configLoaded = false;
+        }
+    }
+
+    spawnPokemon() {
+        // The next encounter comes from the saved spawn queue (spawnQueue.js):
+        // the tutorial trio first, then random uncaught Pokemon, and whatever
+        // a parent pushed to the front from /admin. The first three catches are
+        // guaranteed as long as the Pokemon is one of the tutorial trio.
+        const caughtList = this.registry.get('caughtPokemon') || [];
+        const next = takeNextSpawn({ caught: caughtIdSet(caughtList) });
+        if (next && next.gift) {
+            // A present from the parent (gifts.js) instead of a Pokemon.
+            this.currentGift = next.gift;
+            this.currentPokemon = null;
+            this.isTutorialCatch = false;
+            console.log('Spawning a present:', next.gift);
+            return;
+        }
+        this.currentGift = null;
+        this.isTutorialCatch = caughtList.length < TUTORIAL_POKEMON_IDS.length &&
+            TUTORIAL_POKEMON_IDS.includes(next.id);
+        console.log(`Spawning ${next.name}${this.isTutorialCatch ? ' (tutorial, guaranteed catch)' : ''}`);
 
         this.currentPokemon = {
-            id: selectedPokemon.id,
-            name: selectedPokemon.name
+            id: next.id,
+            name: next.name
         };
+    }
+
+    // A present: a gift box where the Pokemon would be. Tapping it shakes the
+    // box, bursts it open and shows what was inside while it goes into the bag;
+    // then the next encounter starts. No text: the pictures say it all.
+    showGift() {
+        const width = this.cameras.main.width;
+        const gift = this.currentGift;
+        const x = width / 2;
+        const y = 300;
+
+        const box = this.add.text(x, y, '🎁', { fontSize: '160px', padding: { y: 40 } }).setOrigin(0.5);
+        box.setData('clearOnNewEncounter', true);
+        box.setData('giftBox', true);
+        box.setInteractive({ useHandCursor: true });
+        this.currentGiftBox = box;
+
+        const pulse = this.tweens.add({
+            targets: box, scale: 1.08, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+        });
+
+        box.once('pointerdown', () => {
+            if (this.isAnimating) return;
+            this.isAnimating = true;
+            pulse.stop();
+            box.setScale(1);
+            playChime(this, 'fanfare');
+
+            // Jiggle, then burst
+            this.tweens.add({
+                targets: box, angle: 12, duration: 90, yoyo: true, repeat: 5,
+                onComplete: () => {
+                    if (this.currentGiftBox !== box) return;
+                    box.setAngle(0);
+                    this.burstGift(box, gift);
+                }
+            });
+        });
+    }
+
+    burstGift(box, gift) {
+        const x = box.x;
+        const y = box.y;
+        const colors = [0xFFD700, 0xFF6B6B, 0x4ECDC4, 0xA78BFA, 0xFFE66D];
+        for (let i = 0; i < 18; i++) {
+            const angle = (Math.PI * 2 * i) / 18;
+            const piece = this.add.rectangle(x, y, 14, 14, colors[i % colors.length]);
+            piece.setData('clearOnNewEncounter', true);
+            this.tweens.add({
+                targets: piece,
+                x: x + Math.cos(angle) * (120 + Math.random() * 60),
+                y: y + Math.sin(angle) * (120 + Math.random() * 60),
+                alpha: 0, angle: 180, duration: 700, ease: 'Cubic.easeOut',
+                onComplete: () => piece.destroy()
+            });
+        }
+        this.tweens.add({
+            targets: box, alpha: 0, scale: 0.4, duration: 250,
+            onComplete: () => {
+                box.destroy();
+                if (this.currentGiftBox === box) this.currentGiftBox = null;
+                this.revealGift(x, y, gift);
+            }
+        });
+    }
+
+    revealGift(x, y, gift) {
+        // Grant first, so a reload mid-animation can never lose the present.
+        const granted = grantGift(gift) || {};
+        this.currentGift = null;
+        this.registry.remove('currentGift');
+        updateInventoryHUD(this.inventoryHUD);
+
+        // One row: icon + count per item, popping in one after another.
+        const items = giftContents(granted);
+        const spacing = 170;
+        const startX = x - ((items.length - 1) * spacing) / 2;
+        const shown = [];
+        items.forEach((item, index) => {
+            const ix = startX + index * spacing;
+            const icon = this.add.image(ix, y - 20, item.sprite).setOrigin(0.5).setScale(0);
+            const count = this.add.text(ix, y + 60, `+${item.count}`, {
+                fontSize: '44px', fontFamily: 'Arial', fill: '#FFD700', stroke: '#000000', strokeThickness: 5
+            }).setOrigin(0.5).setScale(0);
+            icon.setData('clearOnNewEncounter', true);
+            count.setData('clearOnNewEncounter', true);
+            shown.push(icon, count);
+            this.tweens.add({
+                targets: [icon, count], scale: 1.4 * item.spriteScale, duration: 350, delay: index * 200, ease: 'Back.easeOut'
+            });
+        });
+
+        this.time.delayedCall(1800 + items.length * 200, () => {
+            this.tweens.add({
+                targets: shown, alpha: 0, duration: 400,
+                onComplete: () => {
+                    shown.forEach(obj => obj.destroy());
+                    this.isAnimating = false;
+                    this.startNewEncounter();
+                }
+            });
+        });
     }
 
     displayPokemon() {
@@ -713,7 +859,8 @@ export class MainGameScene extends Phaser.Scene {
 
     dismissNoPokeballsPopupIfStocked() {
         if (!this.noPokeballsPopupElements || this.noPokeballsPopupElements.length === 0) return;
-        if (!hasPokeballs()) return;
+        // Balls arrived, or a present (which can be opened without any) is next.
+        if (!hasPokeballs() && !nextSpawnIsGift()) return;
         this.noPokeballsPopupElements.forEach(el => {
             if (el && el.destroy) el.destroy();
         });

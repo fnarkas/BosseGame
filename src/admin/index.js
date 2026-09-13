@@ -15,6 +15,8 @@ import { renderMinigamesSection, mountMinigamesSection } from './sections/miniga
 import { renderEmojiWordsSection, mountEmojiWordsSection } from './sections/emojiWords.js';
 import { renderWeightsSection, mountWeightsSection } from './sections/weights.js';
 import { renderPokemonSection, mountPokemonSection } from './sections/pokemon.js';
+import { renderGamesSection } from './sections/games.js';
+import { applyPokedexConfig } from '../pokemonPool.js';
 
 export const USER_PARAM = 'user';
 
@@ -24,7 +26,8 @@ export const ADMIN_TABS = [
     { id: 'minigames', label: '🎮 Minigames', section: 'admin-minigames' },
     { id: 'weights', label: '🎲 Probabilities', section: 'admin-weights' },
     { id: 'words', label: '📚 Dictionary', section: 'admin-emoji-words' },
-    { id: 'pokedex', label: '📖 Pokédex', section: 'admin-pokedex' }
+    { id: 'pokedex', label: '📖 Pokédex', section: 'admin-pokedex' },
+    { id: 'games', label: '🕹️ Try a game', section: 'admin-games' }
 ];
 export const DEFAULT_TAB = ADMIN_TABS[0].id;
 
@@ -97,6 +100,7 @@ function renderPanelBody(tabId, config) {
         case 'weights': return renderWeightsSection(config);
         case 'words': return renderEmojiWordsSection(config);
         case 'pokedex': return renderPokemonSection();
+        case 'games': return renderGamesSection();
         default: return '';
     }
 }
@@ -146,6 +150,8 @@ async function renderFor(name, accounts, banner) {
             await login(name, { remember: false });
             resetConfigCache();
             config = await getConfig();
+            // The Pokédex tab lists this account's pool, not the previous one's.
+            await applyPokedexConfig();
             selected = name;
             const url = new URL(window.location.href);
             url.searchParams.set(USER_PARAM, name);

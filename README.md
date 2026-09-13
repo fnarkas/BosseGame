@@ -13,9 +13,11 @@ piano med mera.
 
 ### Funktioner
 
-- **151 Pokemon** (Gen 1) med bilder, typer och uttal
+- **Alla 1025 Pokemon** (Gen 1–9) med bilder, typer och uttal – hur många som finns i spelet
+  (151 som standard) ställs in per barn i adminpanelen, som också visar och styr vilka
+  Pokemon som dyker upp härnäst
 - **Svenska alfabetet** (A–Ö) med inspelat ljud för varje bokstav
-- **23 minispel**, valda med ett lyckohjul vars sannolikheter styrs från adminpanelen
+- **24 minispel**, valda med ett lyckohjul vars sannolikheter styrs från adminpanelen
 - **Adaptiv svårighet** – bokstäver och tal som barnet blandar ihop kommer oftare,
   och rätt svar sägs alltid högt när barnet svarar fel
 - **Streak-bonus** – fler mynt i rad, extra bonus vid 3 och 5 rätt
@@ -56,7 +58,7 @@ driftsättning (databas, certifikat, kopior, loggar) ligger i `~/srv/pokemon-dat
 Spelet nås sedan på `https://olofs-mac-mini.local/`. `DEPLOY_HOST` och `DEPLOY_DIR` ändrar målet.
 
 Om Tailscale körs på servern sätter skriptet också upp Tailscale Serve, så att spelet nås på
-`https://olofs-mac-mini.<tailnet>.ts.net/` från alla enheter i tailnetet, med ett riktigt
+`https://olofs-mac-mini.<tailnet>.ts.net:8443/` från alla enheter i tailnetet, med ett riktigt
 certifikat som Tailscale utfärdar och förnyar själv (ingen varning). Det kräver att MagicDNS och
 "HTTPS Certificates" är påslagna under DNS i Tailscales adminkonsol. `POKEMON_TAILSCALE=0`
 hoppar över steget.
@@ -67,9 +69,9 @@ hoppar över steget.
 |---|---|
 | `/` | Huvudspelet (fånga Pokemon) |
 | `/pokeballs` | Lyckohjulet med slumpade minispel |
-| `/games` | Lista över alla minispel med direktlänkar (t.ex. `/letters`, `/addition`) |
+| `/letters`, `/addition`, … | Ett enskilt minispel på repeat (alla länkas från adminpanelens flik "Try a game") |
 | `/store` | Affären |
-| `/admin` | Adminpanel per konto: sannolikheter, inställningar per minispel, ordlista, Pokemon (`?user=Namn`) |
+| `/admin` | Adminpanel per konto: sannolikheter, inställningar per minispel, ordlista, Pokemon, nästa Pokemon i kö, prova minispel (`?user=Namn`). Ändringar når ett spel som redan är igång inom några sekunder |
 | `/reset` | Nollställ allt |
 
 ## Tester

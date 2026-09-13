@@ -6,7 +6,7 @@ import { clampCount } from './inventory.js';
  * Handles coin storage and operations
  */
 
-const COIN_KEY = 'coinCount';
+export const COIN_KEY = 'coinCount';
 
 /**
  * Get current coin count

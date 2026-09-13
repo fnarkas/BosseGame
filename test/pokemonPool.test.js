@@ -1,84 +1,67 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { resetStorage, getInt, setInt } from '../src/storage.js';
+import { setTestConfig } from './helpers/setup.js';
 import { POKEMON_DATA } from '../src/pokemonData.js';
 import {
-    getUnlockedMax, getAvailablePokemon, countCaughtAvailable, isPokedexComplete,
-    canUnlockMore, unlockNextBatch, unlockOne, markCelebrationDue, isCelebrationDue, clearCelebrationDue,
-    BASE_POKEMON_COUNT, UNLOCK_BATCH_SIZE, TOTAL_POKEMON, UNLOCKED_MAX_KEY
+    DEFAULT_MAX_POKEMON_ID, TOTAL_POKEMON, GENERATIONS, getAvailablePokemon, getMaxPokemonId, setMaxPokemonId,
+    clampMaxPokemonId, isPokemonAvailable, getPokemonById, applyPokedexConfig, resetPokemonPool
 } from '../src/pokemonPool.js';
-import { saveCaughtPokemonList } from '../src/caughtPokemon.js';
 
-const caughtUpTo = (max) => POKEMON_DATA.filter(p => p.id <= max).map(p => ({ id: p.id, name: p.name, caughtDate: 'x' }));
+describe('pokemon pool', () => {
+    beforeEach(() => resetPokemonPool());
 
-describe('pokemonPool', () => {
-    beforeEach(() => resetStorage());
+    it('holds every generation in the data file, in dex order without gaps', () => {
+        expect(TOTAL_POKEMON).toBe(POKEMON_DATA.length);
+        expect(TOTAL_POKEMON).toBeGreaterThanOrEqual(1025);
+        POKEMON_DATA.forEach((pokemon, index) => expect(pokemon.id).toBe(index + 1));
+        expect(GENERATIONS.map(g => g.lastId)).toEqual([151, 251, 386, 493, 649, 721, 809, 905, 1025]);
+    });
 
-    it('starts with the first generation unlocked', () => {
-        expect(BASE_POKEMON_COUNT).toBe(151);
-        expect(getUnlockedMax()).toBe(151);
+    it('defaults to the 151 Kanto Pokemon', () => {
+        expect(getMaxPokemonId()).toBe(DEFAULT_MAX_POKEMON_ID);
         expect(getAvailablePokemon()).toHaveLength(151);
         expect(getAvailablePokemon().at(-1).name).toBe('Mew');
-        expect(TOTAL_POKEMON).toBe(POKEMON_DATA.length);
+        expect(isPokemonAvailable(151)).toBe(true);
+        expect(isPokemonAvailable(152)).toBe(false);
     });
 
-    it('clamps a corrupt stored ceiling into range', () => {
-        setInt(UNLOCKED_MAX_KEY, 5);
-        expect(getUnlockedMax()).toBe(151);
-        setInt(UNLOCKED_MAX_KEY, 99999);
-        expect(getUnlockedMax()).toBe(TOTAL_POKEMON);
+    it('clamps the limit to a valid dex number', () => {
+        expect(clampMaxPokemonId(0)).toBe(1);
+        expect(clampMaxPokemonId('251')).toBe(251);
+        expect(clampMaxPokemonId(251.6)).toBe(252);
+        expect(clampMaxPokemonId(99999)).toBe(TOTAL_POKEMON);
+        expect(clampMaxPokemonId('abc')).toBe(DEFAULT_MAX_POKEMON_ID);
+        expect(clampMaxPokemonId(undefined)).toBe(DEFAULT_MAX_POKEMON_ID);
     });
 
-    it('counts only unlocked Pokemon as caught, accepting legacy plain ids', () => {
-        expect(countCaughtAvailable([1, { id: 151 }, { id: 152 }, 9999, null])).toBe(2);
-        expect(isPokedexComplete(caughtUpTo(150))).toBe(false);
-        expect(isPokedexComplete(caughtUpTo(151))).toBe(true);
-        expect(isPokedexComplete(caughtUpTo(151).map(p => p.id))).toBe(true);
-    });
-
-    it('unlocks the next hundred and persists it in account state', () => {
-        saveCaughtPokemonList(caughtUpTo(151));
-        expect(canUnlockMore()).toBe(true);
-        const batch = unlockNextBatch();
-        expect(batch.from).toBe(151);
-        expect(batch.to).toBe(151 + UNLOCK_BATCH_SIZE);
-        expect(batch.pokemon).toHaveLength(100);
-        expect(batch.pokemon[0].name).toBe('Chikorita');
-        expect(getInt(UNLOCKED_MAX_KEY)).toBe(251);
+    it('resizes the pool when the limit changes', () => {
+        setMaxPokemonId(251);
         expect(getAvailablePokemon()).toHaveLength(251);
-        // Not complete any more: 100 new ones to catch
-        expect(isPokedexComplete()).toBe(false);
-        expect(countCaughtAvailable()).toBe(151);
+        expect(getAvailablePokemon().at(-1).name).toBe('Celebi');
+        setMaxPokemonId(TOTAL_POKEMON);
+        expect(getAvailablePokemon()).toHaveLength(TOTAL_POKEMON);
+        setMaxPokemonId(3);
+        expect(getAvailablePokemon().map(p => p.name)).toEqual(['Bulbasaur', 'Ivysaur', 'Venusaur']);
     });
 
-    it('unlocks a single extra Pokemon and still lands the next batch on the boundary', () => {
-        const one = unlockOne();
-        expect(one).toEqual({ from: 151, to: 152, pokemon: [POKEMON_DATA[151]] });
-        expect(one.pokemon[0].name).toBe('Chikorita');
-        expect(getUnlockedMax()).toBe(152);
-        expect(isPokedexComplete(caughtUpTo(151))).toBe(false);
-        expect(isPokedexComplete(caughtUpTo(152))).toBe(true);
-        const batch = unlockNextBatch();
-        expect(batch.from).toBe(152);
-        expect(batch.to).toBe(251);
-        expect(batch.pokemon).toHaveLength(99);
-        expect(unlockNextBatch().to).toBe(351);
+    it('reads the limit from the pokedex config section', async () => {
+        setTestConfig({ pokedex: { maxPokemonId: 386 } });
+        const config = await applyPokedexConfig();
+        expect(config.maxPokemonId).toBe(386);
+        expect(getMaxPokemonId()).toBe(386);
+        expect(getAvailablePokemon()).toHaveLength(386);
     });
 
-    it('remembers that a catch completed the Pokedex until the celebration runs', () => {
-        expect(isCelebrationDue()).toBe(false);
-        markCelebrationDue();
-        expect(isCelebrationDue()).toBe(true);
-        clearCelebrationDue();
-        expect(isCelebrationDue()).toBe(false);
+    it('falls back to the default on a missing or broken config section', async () => {
+        setTestConfig({ pokedex: { maxPokemonId: 'lots' } });
+        expect((await applyPokedexConfig()).maxPokemonId).toBe(DEFAULT_MAX_POKEMON_ID);
+        setTestConfig({ pokedex: { maxPokemonId: 5000 } });
+        expect((await applyPokedexConfig()).maxPokemonId).toBe(TOTAL_POKEMON);
     });
 
-    it('stops at the last Pokemon in the data', () => {
-        setInt(UNLOCKED_MAX_KEY, TOTAL_POKEMON - 10);
-        const batch = unlockNextBatch();
-        expect(batch.to).toBe(TOTAL_POKEMON);
-        expect(batch.pokemon).toHaveLength(10);
-        expect(canUnlockMore()).toBe(false);
-        expect(unlockNextBatch()).toBeNull();
+    it('looks up any Pokemon by id, in or out of the pool', () => {
+        expect(getPokemonById(25).name).toBe('Pikachu');
+        expect(getPokemonById(1025).name).toBe('Pecharunt');
+        expect(getPokemonById(0)).toBeNull();
     });
 
     it('every Pokemon has a plain species name the child can spell', () => {

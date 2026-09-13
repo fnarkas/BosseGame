@@ -10,12 +10,9 @@ import { getGameModeMistakes } from '../../src/wrongAnswers.js';
 const VOWELS = ['a', 'e', 'i', 'o', 'u', 'y', 'å', 'ä', 'ö'];
 
 // Index of the card that answers the current question. Long is always the
-// left card (index 0) in the spelling and consonant rounds; in the judge round
-// the left card is ✅.
+// left card (index 0), in both the spelling and the consonant round.
 function correctIndex(mode) {
-    const { targetIsLong, playedIsLong } = mode.challengeData;
-    if (mode.roundType === 1) return targetIsLong === playedIsLong ? 0 : 1;
-    return targetIsLong ? 0 : 1;
+    return mode.challengeData.targetIsLong ? 0 : 1;
 }
 const cards = (mode) => mode.optionButtons.map(b => b.card);
 const correctCard = (mode) => cards(mode)[correctIndex(mode)];
@@ -62,8 +59,8 @@ describe('VowelLengthMode', () => {
                 expect(VOWEL_PAIRS).toContain(c.pair);
                 expect([c.pair.long, c.pair.short]).toContain(c.target);
                 expect(c.targetIsLong).toBe(c.target === c.pair.long);
-                expect(typeof c.playedIsLong).toBe('boolean');
-                expect(mode.roundType).toBe(i % 3);
+                // Two task types alternate: spelling, consonants, spelling, ...
+                expect(mode.roundType).toBe((i % 3) % 2);
             }
         });
 
@@ -167,7 +164,7 @@ describe('VowelLengthMode', () => {
             cards(mode).forEach(c => expect(c.input.enabled).toBe(false));
         });
 
-        it('walks through all three rounds on the same pair and rewards exactly once', () => {
+        it('alternates the two task types on the same pair and rewards exactly once', () => {
             const pair = mode.challengeData.pair;
             const rounds = [];
             for (let i = 0; i < 3; i++) {
@@ -176,7 +173,7 @@ describe('VowelLengthMode', () => {
                 scene.click(correctCard(mode));
                 scene.advance(NEXT_QUESTION_MS);
             }
-            expect(rounds).toEqual([0, 1, 2]);
+            expect(rounds).toEqual([0, 1, 0]);
             expect(calls).toHaveLength(1);
             expect(calls[0].ok).toBe(true);
             expect([pair.long, pair.short]).toContain(calls[0].answer);
@@ -186,27 +183,23 @@ describe('VowelLengthMode', () => {
             expect(scene._useAfterDestroy).toEqual([]);
         });
 
-        it('judge round: the written word is shown, one reading is played, ✅/❌ answer it', () => {
-            scene.click(correctCard(mode));
-            scene.advance(NEXT_QUESTION_MS);
-            expect(mode.roundType).toBe(1);
-            const { target, pair, playedIsLong } = mode.challengeData;
-            expect(mode.letterObjects.map(l => l.text.text).join('')).toBe(target.toUpperCase());
-            // Vowel is not tappable while the question is open (it would give the answer away)
-            expect(mode.letterObjects.find(l => l.isVowel).text.input).toBeFalsy();
-            expect(mode.optionButtons.map(b => b.text.text)).toEqual(['✅', '❌']);
-            expect(scene.lastAudio()).toBe(`word_audio_${playedIsLong ? pair.long : pair.short}`);
-            scene.click(correctCard(mode));
-            expect(mode.correctCount).toBe(2);
-        });
-
-        it('consonant round: word with a gap, one or two consonants to choose from', () => {
-            for (let i = 0; i < 2; i++) {
+        it('never asks the old judge question: no ✅/❌ cards in any round', () => {
+            for (let i = 0; i < 3; i++) {
+                expect(mode.optionButtons.map(b => b.text.text)).not.toContain('✅');
+                // Vowel is not tappable while the question is open (it would give the answer away)
+                const vowel = mode.letterObjects.find(l => l.isVowel);
+                if (vowel) expect(vowel.text.input).toBeFalsy();
                 scene.click(correctCard(mode));
                 scene.advance(NEXT_QUESTION_MS);
             }
-            expect(mode.roundType).toBe(2);
-            const { parts } = mode.challengeData;
+        });
+
+        it('consonant round: word with a gap, one or two consonants to choose from', () => {
+            scene.click(correctCard(mode));
+            scene.advance(NEXT_QUESTION_MS);
+            expect(mode.roundType).toBe(1);
+            const { parts, target } = mode.challengeData;
+            expect(scene.lastAudio()).toBe(`word_audio_${target}`);
             expect(mode.letterObjects.map(l => l.text.text).join('')).toBe((parts.stem + parts.tail).toUpperCase());
             // One slot more than there are letters: the gap
             const gapBoxes = scene.liveObjectsOfType('Rectangle').filter(r => r.y === 350 && r.width === 64);
@@ -247,8 +240,8 @@ describe('VowelLengthMode', () => {
             expect(mode.roundType).toBe(1);
             scene.click(correctCard(mode));
             scene.advance(NEXT_QUESTION_MS);
-            expect(mode.roundType).toBe(2);
-            // Same pair and length as the missed question, now from the third angle
+            expect(mode.roundType).toBe(0);
+            // Same pair and length as the missed question, asked a third time
             expect(mode.challengeData.target).toBe(target);
         });
 

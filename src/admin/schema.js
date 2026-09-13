@@ -356,7 +356,7 @@ export const MINIGAME_CONFIG_SCHEMA = [
         saveLabel: '💾 Save Vowel Length Config',
         fields: [
             number('vowelLengthRequired', 'Correct Answers Needed:', 3, 1, 9,
-                'Tasks per round. With 3 the child sees all three task types once each.', { key: 'required' }),
+                'Tasks per round. The two task types alternate: spelling, consonants, spelling, …', { key: 'required' }),
             checkbox('vowelLengthListenHelp', 'Listen Help on the Answer Cards', true,
                 'Puts a 🔊 badge on each answer card, so the child can hear both options and compare ' +
                 'before choosing. That turns task 1 into a comparison rather than a memory test — ' +
@@ -368,14 +368,49 @@ export const MINIGAME_CONFIG_SCHEMA = [
             body: 'Swedish has complementary quantity: in a stressed syllable either the vowel is long and the ' +
                 'following consonant short (tak = ta:k), or the vowel is short and the consonant long ' +
                 '(tack = tak:). The doubled consonant in writing marks which one it is.<br><br>' +
-                '27 minimal pairs, one pair per round, seen from three angles:<br>' +
+                '27 minimal pairs, one pair per round, seen from two angles in turn:<br>' +
                 '1. Hear the word → pick the written form (glas / glass)<br>' +
-                '2. See the word, hear one reading → is it right? (✅ / ❌)<br>' +
-                '3. Hear the word → pick one or two consonants (s / ss)<br><br>' +
+                '2. Hear the word → pick one or two consonants (s / ss)<br><br>' +
                 'After every answer the word is spelled out and the vowel visibly stretches or snaps together. ' +
                 'The vowel letter is tappable and plays that vowel sound alone, long or short. ' +
                 'A miss does not reset progress. Edit the pairs in src/vowelLengthPairs.js, then run ' +
                 'generate_vowel_audio.py.'
+        }
+    },
+    {
+        id: 'vowelsort',
+        key: 'vowelSort',
+        option: '🧺 Vowel Sort (kort / lång)',
+        title: 'Vowel Sort Configuration',
+        saveLabel: '💾 Save Vowel Sort Config',
+        fields: [
+            {
+                id: 'vowelSortStage', key: 'stage', label: 'Stage:', type: 'select', default: 'drag',
+                options: [
+                    { value: 'drag', label: '1. Drag the letters into the LÅNG / KORT buckets' },
+                    { value: 'buttons', label: '2. One sound alone → LÅNG or KORT button' },
+                    { value: 'mixed', label: 'Mixed: alternate 1 and 2' }
+                ],
+                help: 'Start on stage 1, where the long and short sound of the same vowel can be compared. ' +
+                    'Move to stage 2 once the child sorts reliably: there each sound comes alone, with nothing to compare against.'
+            },
+            number('vowelSortLetters', 'Letters per Board (stage 1):', 2, 2, 6,
+                'Even number: every vowel comes once long and once short. 2 = one vowel, 4 = two vowels, 6 = three.',
+                { key: 'letters', step: 2 }),
+            number('vowelSortRequired', 'Tasks per Round:', 3, 1, 9,
+                'Boards (stage 1) or questions (stage 2) needed for the reward. A miss does not reset progress.',
+                { key: 'required' })
+        ],
+        about: {
+            title: 'ℹ️ About Vowel Sort:',
+            body: 'Only the link between a vowel sound and the words <strong>lång</strong> / <strong>kort</strong>, ' +
+                'written out instead of stretched letters, for a child who can read a little.<br><br>' +
+                'Stage 1: letter cards, the same vowel once long and once short. Tapping a card plays its sound; ' +
+                'the child drags each card into the LÅNG or KORT bucket. A wrong drop shakes the card back and lights ' +
+                'the right bucket while the sound plays again; the board stays so the card can be sorted again.<br><br>' +
+                'Stage 2: one sound on its own, then two buttons. No other sound to compare with: this shows the ' +
+                'length is heard by itself.<br><br>' +
+                'A missed sound comes back in the next task and once more a little later.'
         }
     },
     {

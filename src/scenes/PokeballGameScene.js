@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
 import { getMinigameByForced, getMinigameForMode, isLegendaryMode, pickWeightedMinigame } from '../minigameRegistry.js';
-import { getCoinCount, addCoins, getRandomCoinReward } from '../currency.js';
+import { getCoinCount, addCoins, getRandomCoinReward, COIN_KEY } from '../currency.js';
 import { showGiftBoxReward } from '../rewardAnimation.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier, milestoneBonus } from '../streak.js';
 import { playChime } from '../sfx.js';
 import { createBoosterBar, updateBoosterBar, destroyBoosterBar, hideBoosterBar, showBoosterBar } from '../boosterBar.js';
 import { loadModeWeights } from '../minigameWheel.js';
+import { refreshWheel } from '../wheelTexture.js';
+import { pullChanges, onRemoteChange } from '../account.js';
 import { saveActiveMinigame, loadActiveMinigame, clearActiveMinigame } from '../minigameSession.js';
 import { ensureAudioPacks } from '../lazyLoad.js';
 
@@ -126,6 +128,14 @@ export class PokeballGameScene extends Phaser.Scene {
         }).setOrigin(1, 0);
         this.coinCounterText.setDepth(1002); // Above overlay
 
+        // Coins the parent grants in /admin while the child plays show up
+        // without a reload (account.js live sync).
+        this.stopRemoteWatch = onRemoteChange((keys) => {
+            if (!keys.includes(COIN_KEY) || !this.coinCounterText || !this.coinCounterText.scene) return;
+            this.coinCount = getCoinCount();
+            this.coinCounterText.setText(`${this.coinCount}`);
+        });
+
         // Check if we're in forced/debug mode
         const forcedMode = this.registry.get('pokeballGameMode');
 
@@ -194,6 +204,9 @@ export class PokeballGameScene extends Phaser.Scene {
     }
 
     async selectRandomGameMode() {
+        // Pick up probabilities the parent may just have saved in /admin, so
+        // the very next spin uses them (the wheel is redrawn to match).
+        await pullChanges();
         // Weights (config merged over defaults) come from the shared wheel module,
         // so mode selection and the wheel graphic always agree. Higher weight =
         // higher probability of being selected; weight 0 = never selected.
@@ -201,7 +214,16 @@ export class PokeballGameScene extends Phaser.Scene {
         return pickWeightedMinigame(weights);
     }
 
-    showDiceRollAnimation() {
+    async showDiceRollAnimation() {
+        // The wheel must show the slices the mode was rolled from: redraw it
+        // if the probabilities changed since it was last drawn.
+        try {
+            await refreshWheel(this);
+        } catch (error) {
+            console.warn('Could not refresh the wheel, using the current one:', error);
+        }
+        if (this.sceneGone()) return;
+
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
 
@@ -334,7 +356,7 @@ export class PokeballGameScene extends Phaser.Scene {
         const start = () => {
             // Skip if the scene stopped or moved on while we were loading.
             if (this.gameMode !== mode) return;
-            if (this.scene.isActive && !this.scene.isActive()) return;
+            if (this.sceneGone()) return;
             mode.generateChallenge();
             mode.createChallengeUI(this);
         };
@@ -433,6 +455,10 @@ export class PokeballGameScene extends Phaser.Scene {
                     // Remember the newly rolled mode so a reload resumes it.
                     saveActiveMinigame(this.gameMode.constructor.name);
 
+                    // The reward is over: the home button works again while the
+                    // wheel waits to be spun (the wheel gates its own input).
+                    this.isProcessingAnswer = false;
+
                     // Show dice rolling animation before next challenge
                     this.showDiceRollAnimation();
                 } else {
@@ -460,6 +486,15 @@ export class PokeballGameScene extends Phaser.Scene {
                 this.isProcessingAnswer = false;
             });
         }
+    }
+
+    // True once this scene has been stopped (the home button, a debug route),
+    // so an async step that finishes late must not build UI into it. A scene
+    // that is merely paused (Pokedex or store open) is not gone: what it was
+    // preparing must still appear when it resumes.
+    sceneGone() {
+        if (!this.scene.isActive || this.scene.isActive()) return false;
+        return !(this.scene.isPaused && this.scene.isPaused());
     }
 
     // Leave the minigame scene and go back to catching Pokemon.
@@ -551,6 +586,10 @@ export class PokeballGameScene extends Phaser.Scene {
 
     // Scene shutdown: tear down the running mode and HUD.
     teardown() {
+        if (this.stopRemoteWatch) {
+            this.stopRemoteWatch();
+            this.stopRemoteWatch = null;
+        }
         if (this.gameMode) {
             try {
                 this.gameMode.cleanup(this);
