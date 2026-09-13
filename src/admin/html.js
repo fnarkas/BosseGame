@@ -209,6 +209,18 @@ export const ADMIN_CSS = `
 .admin-game-link:hover { border-color: var(--admin-blue); background: #f3f8ff; }
 .admin-game-link img { width: 48px; height: 48px; object-fit: contain; flex: none; }
 
+/* Logs */
+.admin-log-scroll { max-height: 70vh; overflow: auto; border: 1px solid var(--admin-line); border-radius: 10px; background: #fff; }
+.admin-log-table { width: 100%; border-collapse: collapse; font-size: 13px; font-family: Menlo, Consolas, monospace; }
+.admin-log-table td { padding: 5px 8px; border-top: 1px solid #eef1f5; vertical-align: top; }
+.admin-log-day td { background: #f3f6fa; color: var(--admin-muted); font-weight: 700; font-family: inherit; }
+.admin-log-time { white-space: nowrap; color: var(--admin-muted); width: 80px; }
+.admin-log-source { white-space: nowrap; color: var(--admin-blue); width: 70px; }
+.admin-log-event { white-space: nowrap; font-weight: 700; width: 140px; }
+.admin-log-data { white-space: pre-wrap; word-break: break-word; }
+.admin-log-row.problem { background: #fff3f3; }
+.admin-log-row.problem .admin-log-event { color: var(--admin-red); }
+
 /* Dictionary */
 .admin-word-form { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; margin-bottom: 10px; }
 .admin-word-form input { padding: 8px 10px; border: 1px solid #c5ccd6; border-radius: 8px; }

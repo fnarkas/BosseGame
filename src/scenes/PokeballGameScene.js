@@ -5,6 +5,7 @@ import { showGiftBoxReward } from '../rewardAnimation.js';
 import { getStreak, incrementStreak, resetStreak, getMultiplier, milestoneBonus } from '../streak.js';
 import { playChime } from '../sfx.js';
 import { createBoosterBar, updateBoosterBar, destroyBoosterBar, hideBoosterBar, showBoosterBar } from '../boosterBar.js';
+import { remoteLog } from '../remoteLog.js';
 import { loadModeWeights } from '../minigameWheel.js';
 import { refreshWheel } from '../wheelTexture.js';
 import { pullChanges, onRemoteChange } from '../account.js';
@@ -201,6 +202,7 @@ export class PokeballGameScene extends Phaser.Scene {
         const entry = forcedEntry || await this.selectRandomGameMode();
         this.gameMode = new entry.Mode();
         console.log(`Selected game mode: ${entry.name}${forcedEntry ? ' (forced)' : ''}`);
+        remoteLog('game', 'modeSelected', { mode: entry.key, forced: !!forcedEntry });
     }
 
     async selectRandomGameMode() {
@@ -223,6 +225,7 @@ export class PokeballGameScene extends Phaser.Scene {
             console.warn('Could not refresh the wheel, using the current one:', error);
         }
         if (this.sceneGone()) return;
+        remoteLog('game', 'wheelShown', { mode: this.gameMode.constructor.name });
 
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
@@ -271,6 +274,7 @@ export class PokeballGameScene extends Phaser.Scene {
 
         // Wait for player to click the wheel to start spinning
         wheelSprite.once('pointerdown', () => {
+            remoteLog('game', 'wheelTapped');
             // Stop pulsing animation
             this.tweens.killTweensOf(wheelSprite);
             wheelSprite.setScale(0.8);
@@ -332,6 +336,7 @@ export class PokeballGameScene extends Phaser.Scene {
                     destroyBoosterBar(wheelBoosterBar);
 
                     // Start the actual game
+                    remoteLog('game', 'wheelLanded', { slice: selectedSlice });
                     this.loadNextChallenge();
                 });
             }
@@ -357,6 +362,7 @@ export class PokeballGameScene extends Phaser.Scene {
             // Skip if the scene stopped or moved on while we were loading.
             if (this.gameMode !== mode) return;
             if (this.sceneGone()) return;
+            remoteLog('game', 'challengeStarted', { mode: mode.constructor.name });
             mode.generateChallenge();
             mode.createChallengeUI(this);
         };
@@ -376,6 +382,7 @@ export class PokeballGameScene extends Phaser.Scene {
     handleAnswer(isCorrect, answer, x, y) {
         if (this.isProcessingAnswer) return;
         this.isProcessingAnswer = true;
+        remoteLog('game', 'answer', { mode: this.gameMode.constructor.name, correct: !!isCorrect, answer: String(answer).slice(0, 40) });
 
         if (isCorrect) {
             const legendary = isLegendaryMode(this.gameMode);
@@ -440,6 +447,7 @@ export class PokeballGameScene extends Phaser.Scene {
 
                 // This game is finished — forget it so a reload doesn't resume it.
                 clearActiveMinigame();
+                remoteLog('game', 'rewardDone', { coins: finalCoinReward, bonus, streak: newStreak });
 
                 // Switch mode
                 await this.selectGameMode();
@@ -499,6 +507,7 @@ export class PokeballGameScene extends Phaser.Scene {
 
     // Leave the minigame scene and go back to catching Pokemon.
     goHome() {
+        remoteLog('game', 'homeTap', { blocked: this.isProcessingAnswer });
         if (this.isProcessingAnswer) return;
         clearActiveMinigame();
         this.scene.start('MainGameScene');

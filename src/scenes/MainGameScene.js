@@ -12,6 +12,7 @@ import {
     markCelebrationDue, isCelebrationDue, clearCelebrationDue
 } from '../pokedexUnlock.js';
 import { showPokedexCelebration } from '../pokedexCelebration.js';
+import { remoteLog } from '../remoteLog.js';
 import { saveCaughtPokemonList, caughtIdSet } from '../caughtPokemon.js';
 import { ensureAssets } from '../lazyLoad.js';
 import { pokemonImageAsset, pokemonAudioAsset } from '../assetManifest.js';
@@ -334,6 +335,7 @@ export class MainGameScene extends Phaser.Scene {
     showGift() {
         const width = this.cameras.main.width;
         const gift = this.currentGift;
+        remoteLog('game', 'gift', { gift });
         const x = width / 2;
         const y = 300;
 
@@ -432,6 +434,7 @@ export class MainGameScene extends Phaser.Scene {
 
     displayPokemon() {
         const width = this.cameras.main.width;
+        remoteLog('game', 'encounter', { id: this.currentPokemon.id, name: this.currentPokemon.name, tutorial: !!this.isTutorialCatch });
 
         // Create Pokemon sprite
         this.currentPokemonSprite = this.add.image(width / 2, 250, `pokemon_${this.currentPokemon.id}`);
@@ -656,6 +659,7 @@ export class MainGameScene extends Phaser.Scene {
 
     catchSuccess(pokeball) {
         const originalY = pokeball.y;
+        remoteLog('game', 'caught', { id: this.currentPokemon.id, name: this.currentPokemon.name });
 
         // More distinct bounce animation (down then up)
         this.tweens.add({
@@ -869,6 +873,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     catchFailed(pokeball) {
+        remoteLog('game', 'escaped', { id: this.currentPokemon.id, name: this.currentPokemon.name });
         // DRAMATIC BREAK-FREE ANIMATION
 
         // Step 1: Violent shaking (much more intense than wiggle)
@@ -1015,6 +1020,7 @@ export class MainGameScene extends Phaser.Scene {
     pokemonRunsAway() {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
+        remoteLog('game', 'ranAway', { id: this.currentPokemon.id, name: this.currentPokemon.name });
         const pokemonX = this.currentPokemonSprite.x;
         const pokemonY = this.currentPokemonSprite.y;
 
@@ -1140,6 +1146,7 @@ export class MainGameScene extends Phaser.Scene {
         const batch = unlockNextBatch();
         clearCelebrationDue();
         console.log(`Pokedex complete (${completedCount})! Unlocked #${batch.from + 1}-${batch.to}`);
+        remoteLog('game', 'celebration', { completedCount, from: batch.from, to: batch.to });
         this.isAnimating = true;
         this.registry.remove('currentPokemon');
         showPokedexCelebration(this, { completedCount, batch }, () => {

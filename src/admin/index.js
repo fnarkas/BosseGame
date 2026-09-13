@@ -16,6 +16,7 @@ import { renderEmojiWordsSection, mountEmojiWordsSection } from './sections/emoj
 import { renderWeightsSection, mountWeightsSection } from './sections/weights.js';
 import { renderPokemonSection, mountPokemonSection } from './sections/pokemon.js';
 import { renderGamesSection } from './sections/games.js';
+import { renderLogsSection, mountLogsSection } from './sections/logs.js';
 import { applyPokedexConfig } from '../pokemonPool.js';
 
 export const USER_PARAM = 'user';
@@ -27,7 +28,8 @@ export const ADMIN_TABS = [
     { id: 'weights', label: '🎲 Probabilities', section: 'admin-weights' },
     { id: 'words', label: '📚 Dictionary', section: 'admin-emoji-words' },
     { id: 'pokedex', label: '📖 Pokédex', section: 'admin-pokedex' },
-    { id: 'games', label: '🕹️ Try a game', section: 'admin-games' }
+    { id: 'games', label: '🕹️ Try a game', section: 'admin-games' },
+    { id: 'logs', label: '🪵 Logs', section: 'admin-logs' }
 ];
 export const DEFAULT_TAB = ADMIN_TABS[0].id;
 
@@ -101,6 +103,7 @@ function renderPanelBody(tabId, config) {
         case 'words': return renderEmojiWordsSection(config);
         case 'pokedex': return renderPokemonSection();
         case 'games': return renderGamesSection();
+        case 'logs': return renderLogsSection();
         default: return '';
     }
 }
@@ -179,6 +182,7 @@ async function renderFor(name, accounts, banner) {
     mountWeightsSection(root);
     mountEmojiWordsSection(root);
     mountPokemonSection(root);
+    mountLogsSection(root);
 }
 
 function mountSyncPill(root) {

@@ -21,12 +21,44 @@ import { normalizeName, MAX_KEY_LENGTH, defaultDatabasePath } from './db.js';
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 
 // Client diagnostics (src/remoteLog.js): the last few hundred events are kept
-// in memory and, when a file is configured, appended as JSON lines.
-//   POST /api/log  { name, ua, events: [{ t, source, event, data }] } -> { ok, stored }
-//   GET  /api/log?n=100                                               -> [entries, newest last]
-const LOG_RING_SIZE = 500;
+// in memory and, when a file is configured, appended as JSON lines. Reads
+// come from the file when there is one (they survive a server restart), so
+// the admin Logs tab always sees the recent history.
+//   POST /api/log  { name, ua, path, events: [{ t, source, event, data }] } -> { ok, stored }
+//   GET  /api/log?n=100&name=Bosse                                          -> [entries, newest last]
+const LOG_RING_SIZE = 1000;
 const MAX_LOG_EVENTS_PER_POST = 100;
 const MAX_LOG_LINE = 4000;
+const LOG_TAIL_BYTES = 2 * 1024 * 1024;
+
+// The last entries of a JSON-lines log file (at most LOG_TAIL_BYTES of it).
+export function readLogTail(file) {
+    let fd = null;
+    try {
+        const size = fs.statSync(file).size;
+        const length = Math.min(size, LOG_TAIL_BYTES);
+        const buffer = Buffer.alloc(length);
+        fd = fs.openSync(file, 'r');
+        fs.readSync(fd, buffer, 0, length, size - length);
+        const lines = buffer.toString('utf8').split('\n');
+        // A tail that starts mid-line drops that partial first line.
+        if (length < size) lines.shift();
+        const entries = [];
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+                entries.push(JSON.parse(line));
+            } catch (error) {
+                // A torn line from a crash mid-write: skip it.
+            }
+        }
+        return entries;
+    } catch (error) {
+        return null;
+    } finally {
+        if (fd !== null) fs.closeSync(fd);
+    }
+}
 
 export function defaultClientLogPath() {
     if (process.env.POKEMON_CLIENT_LOG) return process.env.POKEMON_CLIENT_LOG;
@@ -120,12 +152,13 @@ export function createApiHandler(db, { clientLog = defaultClientLogPath() } = {}
         const events = Array.isArray(body.events) ? body.events.slice(0, MAX_LOG_EVENTS_PER_POST) : [];
         const name = typeof body.name === 'string' ? body.name.slice(0, 40) : null;
         const ua = typeof body.ua === 'string' ? body.ua.slice(0, 300) : undefined;
+        const pagePath = typeof body.path === 'string' ? body.path.slice(0, 200) : undefined;
         const received = new Date().toISOString();
         const lines = [];
         for (const event of events) {
             if (!event || typeof event !== 'object') continue;
             const entry = {
-                received, name, ua,
+                received, name, ua, path: pagePath,
                 t: Number.isFinite(event.t) ? new Date(event.t).toISOString() : null,
                 source: String(event.source || '').slice(0, 60),
                 event: String(event.event || '').slice(0, 60),
@@ -167,7 +200,14 @@ export function createApiHandler(db, { clientLog = defaultClientLogPath() } = {}
         }
         if (method === 'GET' && pathname === '/log') {
             const n = Math.min(LOG_RING_SIZE, Math.max(1, parseInt(url.searchParams.get('n'), 10) || 100));
-            return send(res, 200, ring.slice(-n));
+            // Account names match case-insensitively, like the login does
+            const wanted = normalizeName(url.searchParams.get('name'));
+            const name = wanted ? wanted.toLowerCase() : null;
+            const source = clientLog ? (readLogTail(clientLog) || ring) : ring;
+            const entries = name
+                ? source.filter(entry => typeof entry.name === 'string' && entry.name.trim().toLowerCase() === name)
+                : source;
+            return send(res, 200, entries.slice(-n));
         }
         if (method === 'POST' && pathname === '/login') {
             const body = await readJson(req);

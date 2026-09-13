@@ -4,12 +4,15 @@ import { installFakeScene, flush } from '../helpers/fakeScene.js';
 import { MainGameScene } from '../../src/scenes/MainGameScene.js';
 import { addPokeball, getInventory } from '../../src/inventory.js';
 import { addCoins, getCoinCount } from '../../src/currency.js';
-import { getInt, getBool } from '../../src/storage.js';
+import { getBool } from '../../src/storage.js';
 import { POKEMON_DATA } from '../../src/pokemonData.js';
 import { saveCaughtPokemonList } from '../../src/caughtPokemon.js';
-import { UNLOCKED_MAX_KEY, CELEBRATION_DUE_KEY } from '../../src/pokemonPool.js';
+import { getMaxPokemonId, resetPokemonPool } from '../../src/pokemonPool.js';
+import { CELEBRATION_DUE_KEY } from '../../src/pokedexUnlock.js';
 
 async function makeScene({ caught = [], balls = 5, coins = 0, currentPokemon = null } = {}) {
+    // The pool size is module state (BootScene applies the config); start from 151
+    resetPokemonPool();
     for (let i = 0; i < balls; i++) addPokeball('pokeball');
     if (coins) addCoins(coins);
     const scene = new MainGameScene();
@@ -99,7 +102,7 @@ describe('MainGameScene (Pokemon catching)', () => {
         saveCaughtPokemonList(caught);
         const { scene, fake } = await makeScene({ caught });
         expect(fake.findText('🏆')).toBeNull();
-        expect(getInt(UNLOCKED_MAX_KEY)).toBe(152);
+        expect(getMaxPokemonId()).toBe(152);
         expect(scene.currentPokemon.id).toBe(152); // Chikorita, the only one missing
         expect(hearts(fake).text).toBe('❤️❤️❤️');
 
@@ -109,7 +112,7 @@ describe('MainGameScene (Pokemon catching)', () => {
         // next batch still ends on the hundred boundary
         expect(fake.findText('🏆')).toBeTruthy();
         expect(fake.findText('152')).toBeTruthy();
-        expect(getInt(UNLOCKED_MAX_KEY)).toBe(251);
+        expect(getMaxPokemonId()).toBe(251);
         expect(getBool(CELEBRATION_DUE_KEY)).toBe(false);
         fake.advance(6000);
         await flush();
@@ -135,7 +138,7 @@ describe('MainGameScene (Pokemon catching)', () => {
         // The show is on: trophy, the number caught, and the next batch is already saved
         expect(fake.findText('🏆')).toBeTruthy();
         expect(fake.findText('151')).toBeTruthy();
-        expect(getInt(UNLOCKED_MAX_KEY)).toBe(251);
+        expect(getMaxPokemonId()).toBe(251);
         expect(scene.isAnimating).toBe(true);
         expect(fake.interactives().filter(o => o.getData('letter'))).toHaveLength(0);
 
@@ -170,7 +173,7 @@ describe('MainGameScene (Pokemon catching)', () => {
         const { scene, fake } = await makeScene({ caught });
         expect(fake.findText('🏆')).toBeNull();
         expect(scene.currentPokemon.id).toBe(151);
-        expect(getInt(UNLOCKED_MAX_KEY, 151)).toBe(151);
+        expect(getMaxPokemonId()).toBe(151);
     });
 
     it('loses one life per wrong letter and the Pokemon runs away on the third', async () => {

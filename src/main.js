@@ -15,6 +15,12 @@ import { clearAllStorage } from './utils/clearStorage.js';
 import { ensureLoggedIn } from './login.js';
 import { getCurrentAccount, resetAccount, startLiveSync } from './account.js';
 import { bindLiveUpdates } from './liveUpdates.js';
+import { installRemoteLogging, remoteLog } from './remoteLog.js';
+
+// The iPad has no console we can read: errors, warnings and the game's
+// milestones go to the server (admin Logs tab) from here on.
+installRemoteLogging();
+remoteLog('app', 'boot', { path: window.location.pathname });
 
 // Make POKEMON_DATA globally available
 window.POKEMON_DATA = POKEMON_DATA;

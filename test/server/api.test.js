@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Readable } from 'node:stream';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { openDatabase, normalizeName } from '../../server/db.js';
 import { createApiHandler } from '../../server/api.js';
 
@@ -116,6 +119,33 @@ describe('server/api', () => {
         const last = await request(handler, 'GET', '/log?n=1');
         expect(last.json.map(e => e.event)).toEqual(['error']);
         expect((await request(handler, 'POST', '/api/log', { events: 'nope' })).json).toEqual({ ok: true, stored: 0 });
+    });
+
+    it('filters the log by account and reads it back from the file after a restart', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokemon-log-'));
+        const file = path.join(dir, 'logs', 'client.log');
+        try {
+            const handler = createApiHandler(db, { clientLog: file });
+            await request(handler, 'POST', '/api/log', {
+                name: 'Bosse', path: '/pokeballs', events: [{ t: 1700000000000, source: 'game', event: 'wheelShown' }]
+            });
+            await request(handler, 'POST', '/api/log', {
+                name: 'Anna', events: [{ t: 1700000001000, source: 'console', event: 'error', data: { message: 'x' } }]
+            });
+            const mine = await request(handler, 'GET', '/api/log?name=bosse');
+            expect(mine.json.map(e => `${e.name}:${e.event}`)).toEqual(['Bosse:wheelShown']);
+            expect(mine.json[0].path).toBe('/pokeballs');
+
+            // A fresh handler (server restart): the ring is empty, the file is not
+            const restarted = createApiHandler(db, { clientLog: file });
+            const all = await request(restarted, 'GET', '/api/log');
+            expect(all.json.map(e => e.event)).toEqual(['wheelShown', 'error']);
+            fs.appendFileSync(file, '{"torn": tru');
+            const torn = await request(restarted, 'GET', '/api/log?n=1');
+            expect(torn.json.map(e => e.event)).toEqual(['error']);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     it('lists accounts, most recent first', async () => {
